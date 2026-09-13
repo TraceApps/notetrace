@@ -53,7 +53,13 @@ test('sync never lets an older device copy overwrite a newer server row', () => 
 });
 
 test('backup dumps and restores every note table', () => {
-  for (const t of ['notes', 'labels', 'checklist_items', 'note_labels', 'note_versions']) {
+  // Derived from the schema so a new note table can't be left out of backups.
+  const noteTables = [...dbJs.matchAll(/CREATE TABLE IF NOT EXISTS (\w+) \(([\s\S]*?)\n  \);/g)]
+    .filter(([, name, body]) => name === 'notes' || name === 'labels' || /\bnote_id\b/.test(body))
+    .map(([, name]) => name);
+  assert.ok(noteTables.includes('note_members'), `schema parse found ${noteTables}`);
+  for (const t of noteTables) {
+    assert.match(backup, new RegExp(`DELETE FROM ${t}'`), `${t} not wiped before restore`);
     assert.match(backup, new RegExp(`_selectIfExists\\('${t}'\\)|SELECT \\* FROM ${t}`), `${t} missing from dump`);
     assert.match(backup, new RegExp(`_bulkRestoreSchemaDriven\\('${t}'`), `${t} missing from restore`);
   }

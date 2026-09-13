@@ -246,6 +246,7 @@ n = (await api('GET', `/api/notes/${phoneNoteId}`)).json;
 s = (await api('GET', '/api/notes?q=eggs')).json;
 ok(rs.ok && n.items.length === 1 && n.labels.length === 1, 'backup restore keeps items + labels');
 ok(s.length === 1, 'search index rebuilt after restore');
+ok((await api('GET', `/api/notes/${shared.id}/members`)).json.members?.length === 1, 'backup restore keeps who notes are shared with');
 const ex = (await api('GET', '/api/data/export')).json;
 ok(ex.checklist_items?.length >= 1 && ex.labels?.length >= 1 && Array.isArray(ex.note_versions), 'export includes new tables');
 

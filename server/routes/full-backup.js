@@ -194,6 +194,7 @@ function dumpDatabase() {
     checklist_items: _selectIfExists('checklist_items'),
     note_labels:     _selectIfExists('note_labels'),
     note_versions:   _selectIfExists('note_versions'),
+    note_members:    _selectIfExists('note_members'),
     oidc_providers:        _selectIfExists('oidc_providers'),
     user_oidc_links:       _selectIfExists('user_oidc_links'),
     // Admin-created invitations that have not been consumed yet.
@@ -223,6 +224,7 @@ function restoreFromZip(zip) {
     db.pragma('defer_foreign_keys = ON');
     // Wipe in dependency order, children before parents.
     db.prepare('DELETE FROM note_labels').run();
+    db.prepare('DELETE FROM note_members').run();
     db.prepare('DELETE FROM checklist_items').run();
     db.prepare('DELETE FROM note_versions').run();
     db.prepare('DELETE FROM labels').run();
@@ -275,6 +277,7 @@ function restoreFromZip(zip) {
     _bulkRestoreSchemaDriven('checklist_items', data.checklist_items);
     _bulkRestoreSchemaDriven('note_labels',     data.note_labels);
     _bulkRestoreSchemaDriven('note_versions',   data.note_versions);
+    _bulkRestoreSchemaDriven('note_members',    data.note_members);
 
     // Side tables. Schema-driven INSERTs (column list pulled from PRAGMA)
     // so a backup made on a slightly different schema version still
