@@ -45,6 +45,8 @@ export default defineConfig({
       registerType: 'prompt',
       workbox: {
         globPatterns: ['offline.html'],
+        // Opens the note when a reminder notification is clicked (public/sw-notifications.js).
+        importScripts: ['sw-notifications.js'],
         navigateFallback: null,
         navigateFallbackDenylist: [/.*/],
         cleanupOutdatedCaches: true,

@@ -147,3 +147,14 @@ export function reminderPresets(now = new Date()) {
   presets.push({ key: 'next_week', date: at(toMonday, 8) });
   return presets;
 }
+
+/**
+ * The occurrence of a note's reminder that is due at `now` (passed, but
+ * no more than `windowMs` ago), or null. Mirrors server/lib/reminders.js.
+ */
+export function dueOccurrence(note, now = new Date(), windowMs = 10 * 60 * 1000) {
+  const occ = nextOccurrence(note.reminder_at, note.reminder_rrule, note.reminder_tz, new Date(now.getTime() - windowMs));
+  if (!occ) return null;
+  const age = now.getTime() - occ.getTime();
+  return age >= 0 && age <= windowMs ? occ : null;
+}

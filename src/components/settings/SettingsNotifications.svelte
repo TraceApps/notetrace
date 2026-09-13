@@ -30,6 +30,7 @@
     return v === true || v === 'true';
   }
   let notifNoteReminders   = getBool('notifNoteReminders', true);
+  let browserPermission = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
 
   function toggleReminder(key, value) {
     setS(key, value);
@@ -80,6 +81,7 @@
     }
     try {
       const result = await Notification.requestPermission();
+      browserPermission = result;
       if (result === 'granted') showSuccess($_('settings_notifications.toast.permission_granted'));
       else if (result === 'denied') showError($_('settings_notifications.toast.permission_denied'));
     } catch (e) {
@@ -94,7 +96,7 @@
     <div class="setting-row">
       <div>
         <span class="setting-label">{$_('settings_notifications.enable_on_device')}</span>
-        <span class="setting-desc">Use this browser / phone's notification system for reminders. Works alongside the push service below.</span>
+        <span class="setting-desc">{isNative ? $_('settings_notifications.enable_on_device_desc_native') : $_('settings_notifications.enable_on_device_desc_web')}</span>
       </div>
       <input type="checkbox" class="toggle-cb" checked={$notifLocalEnabled}
         on:change={e => notifLocalEnabled.set(e.target.checked)} />
@@ -104,11 +106,15 @@
       <div class="setting-row">
         <div>
           <span class="setting-label">{$_('settings_notifications.browser_permission')}</span>
-          <span class="setting-desc">Most browsers require explicit permission before fired notifications appear.</span>
+          <span class="setting-desc">{$_('settings_notifications.browser_permission_desc')}</span>
         </div>
-        <button class="btn btn-secondary" on:click={requestDevicePermission}>
-          Request permission
-        </button>
+        {#if browserPermission === 'granted'}
+          <span class="perm-ok"><span class="material-symbols-rounded">check</span>{$_('settings_notifications.permission_allowed')}</span>
+        {:else}
+          <button class="btn btn-secondary" on:click={requestDevicePermission}>
+            {$_('settings_notifications.request_permission')}
+          </button>
+        {/if}
       </div>
     {/if}
   </div>
@@ -263,4 +269,6 @@
   }
   .toggle-cb:checked { background: var(--accent-dim); border-color: var(--accent); }
   .toggle-cb:checked::after { background: var(--accent); transform: translateX(16px); }
+  .perm-ok { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--accent); white-space: nowrap; }
+  .perm-ok .material-symbols-rounded { font-size: 18px; }
 </style>

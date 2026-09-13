@@ -156,6 +156,12 @@
     }).catch(() => {});
   }
 
+  $: if (!isNative && $_) {
+    let label = '';
+    try { label = $_('reminders.reminder'); } catch { /* locale still loading */ }
+    if (label) import('./lib/web-reminders.js').then(({ setWebReminderLabel }) => setWebReminderLabel(label)).catch(() => {});
+  }
+
   // Drive svelte-i18n's active locale from the user's saved language setting.
   $: if ($language) locale.set($language);
   import NativeSetup from './routes/NativeSetup.svelte';
@@ -327,6 +333,9 @@
         rescheduleReminders();
       }).catch(() => { /* ignore */ });
     } else {
+      // Browser reminders while a NoteTrace tab is open.
+      import('./lib/web-reminders.js').then(({ startWebReminders }) => startWebReminders()).catch(() => {});
+
       // PWA: register the service worker via virtual:pwa-register so we
       // get onNeedRefresh callbacks. Without this, registerType:'prompt'
       // downloads new bundles but never tells the app they're ready.

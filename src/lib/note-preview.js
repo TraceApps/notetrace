@@ -37,3 +37,17 @@ export function isEmptyNote(note) {
   const hasItems = Array.isArray(note.items) && note.items.some(i => String(i.text || '').trim());
   return !String(note.title || '').trim() && !String(note.body_md || '').trim() && !hasItems;
 }
+
+/**
+ * Title and body for a reminder notification. An untitled note uses its
+ * first line as the title. `fallback` is shown when the note is empty.
+ */
+export function reminderNotificationText(note, fallback = 'Reminder') {
+  const body = note.kind === 'checklist'
+    ? (note.items || []).filter(i => !i.checked).slice(0, 4).map(i => `\u2022 ${i.text}`).join('\n')
+    : markdownToPreview(note.body_md, 200);
+  if (note.title) return { title: note.title, body };
+  if (!body) return { title: fallback, body: '' };
+  const lines = body.split('\n');
+  return { title: lines[0].slice(0, 80), body: lines.slice(1).join('\n') };
+}

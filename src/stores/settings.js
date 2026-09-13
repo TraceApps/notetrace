@@ -20,7 +20,7 @@ export const USER_PREFS = new Set([
   // Smart Log (hold-to-record on the FAB → AI parses spoken intent → tool execution)
   'smartLogEnabled',
   // Notifications
-  'notifLocalEnabled','notifPushService',
+  'notifPushService',
   'appriseUrl','appriseTag','gotifyUrl','gotifyToken','ntfyUrl','ntfyTopic','ntfyToken',
   'notifNoteReminders',
   // Hours between automatic update checks: 1, 4, 12, 24, or 0 for manual only.
@@ -33,6 +33,7 @@ export const DEVICE_PREFS = new Set([
   'biometricLoginEnabled', // Android-only, per-device biometric unlock for sign-in
   'appLockEnabled',        // Android-only: require biometric / device credential to open the app
   'appLockTimeoutMin',     // minutes in the background before the lock re-engages (0 = immediately)
+  'notifLocalEnabled',     // reminder notifications on this device (phone, or this browser while open)
 ]);
 
 const SERVER_SETTINGS = USER_PREFS;

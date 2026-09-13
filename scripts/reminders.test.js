@@ -50,6 +50,13 @@ for (const [name, R] of [['client', client], ['server', server]]) {
   });
 }
 
+test('client: due occurrence uses its own shorter window', () => {
+  const note = { reminder_at: '2026-03-10 14:00:00', reminder_rrule: null, reminder_tz: NY };
+  assert.equal(client.dueOccurrence(note, new Date('2026-03-10T14:05:00Z')).toISOString(), '2026-03-10T14:00:00.000Z');
+  assert.equal(client.dueOccurrence(note, new Date('2026-03-10T14:20:00Z')), null);
+  assert.equal(client.dueOccurrence(note, new Date('2026-03-10T14:20:00Z'), 30 * 60 * 1000).toISOString(), '2026-03-10T14:00:00.000Z');
+});
+
 test('server: due occurrence is found once passed, within the late window', () => {
   const note = { reminder_at: '2026-03-10 14:00:00', reminder_rrule: null, reminder_tz: NY };
   assert.equal(server.dueOccurrence(note, new Date('2026-03-10T13:59:00Z')), null);

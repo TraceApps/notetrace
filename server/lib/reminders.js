@@ -115,9 +115,9 @@ export const LATE_WINDOW_MS = 2 * 60 * 60 * 1000;
  * The occurrence of a note's reminder that is due at `now` (passed, but
  * within LATE_WINDOW_MS), or null.
  */
-export function dueOccurrence(note, now = new Date()) {
-  const occ = nextOccurrence(note.reminder_at, note.reminder_rrule, note.reminder_tz, new Date(now.getTime() - LATE_WINDOW_MS));
+export function dueOccurrence(note, now = new Date(), windowMs = LATE_WINDOW_MS) {
+  const occ = nextOccurrence(note.reminder_at, note.reminder_rrule, note.reminder_tz, new Date(now.getTime() - windowMs));
   if (!occ) return null;
   const age = now.getTime() - occ.getTime();
-  return age >= 0 && age <= LATE_WINDOW_MS ? occ : null;
+  return age >= 0 && age <= windowMs ? occ : null;
 }
