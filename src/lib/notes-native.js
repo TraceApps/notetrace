@@ -12,6 +12,8 @@ export const NOTE_COLORS = ['plum', 'moss', 'clay', 'tide', 'sand', 'rose'];
 const REPEATS = ['daily', 'weekly', 'monthly', 'yearly'];
 const VERSION_SESSION_MS = 10 * 60 * 1000;
 const VERSION_KEEP_PER_NOTE = 50;
+const TRASH_RETENTION_DAYS = 30;
+let _trashPurged = false;
 
 function _now() {
   return new Date().toISOString().replace('T', ' ').slice(0, 19);
@@ -200,6 +202,13 @@ async function _setLabels(noteId, labelIds, ts) {
 
 export const NotesNative = {
   async getNotes({ view = 'notes', label = null, q = '' } = {}) {
+    // Local mode has no server to empty the trash, so the first read of
+    // each session does it. Connected devices get the server's purge via
+    // sync as well; purging twice is harmless.
+    if (!_trashPurged) {
+      _trashPurged = true;
+      await NotesNative.purgeExpiredTrash().catch(() => {});
+    }
     const where = ['n.user_id = ?', 'n.deleted_at IS NULL'];
     const args = [LOCAL_USER_ID];
     if (view === 'trash') where.push('n.trashed_at IS NOT NULL');
@@ -326,6 +335,14 @@ export const NotesNative = {
     await _run(`UPDATE notes SET deleted_at = ?, updated_at = ?, sync_status = 'pending' WHERE id = ?`, [ts, ts, id]);
     await _run(`DELETE FROM note_versions WHERE note_id = ?`, [id]);
     return { ok: true };
+  },
+
+  /** Permanently delete notes trashed more than TRASH_RETENTION_DAYS ago. */
+  async purgeExpiredTrash() {
+    const cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS * 86400000).toISOString().replace('T', ' ').slice(0, 19);
+    const rows = await _q(`SELECT id FROM notes WHERE trashed_at IS NOT NULL AND trashed_at < ? AND deleted_at IS NULL`, [cutoff]);
+    for (const r of rows) await NotesNative.deleteNoteForever(r.id);
+    return rows.length;
   },
 
   async emptyTrash() {

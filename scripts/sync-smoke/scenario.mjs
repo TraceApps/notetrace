@@ -107,4 +107,12 @@ await sync(A);
 const impServer = (await get('/api/notes', tok)).find(n => n.title === 'Imported offline');
 ok(impServer && impServer.labels.length === 1 && impServer.updated_at === '2023-05-02 10:00:00', 'A: imported note and its label sync to the server with its date');
 
+// 8. On-device trash purge after 30 days.
+const oldNote = await B.N.createNote({ title: 'Old trash', body_md: 'x' });
+await B.N.trashNote(oldNote.id);
+const { getDb: getDbB } = await import('./.build/devB/db-native.mjs');
+await (await getDbB()).run(`UPDATE notes SET trashed_at = '2020-01-01 00:00:00' WHERE id = ?`, [oldNote.id]);
+const purged = await B.N.purgeExpiredTrash();
+ok(purged === 1 && !(await B.N.getNotes({ view: 'trash' })).some(n => n.id === oldNote.id), 'B: notes trashed over 30 days ago are purged on the device');
+
 console.log(f ? `${f} FAILED` : 'all passed'); process.exit(f ? 1 : 0);
