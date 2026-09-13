@@ -55,6 +55,47 @@ Checklist items merge per item (a stable uuid plus tombstones for
 deletes), so a device with a stale list can never wipe items another
 device added.
 
+### Shared notes keep one owner
+
+A note belongs to its owner (`notes.user_id`). `note_members` grants
+other accounts `view` or `edit`. Content (title, body, color,
+checklist) is shared; pin and archive live on the member's row, labels
+are per person (`note_labels.user_id`), and reminders, trash, and
+permanent delete stay with the owner. Checklist items always carry the
+owner's `user_id`, whoever adds them, so the owner's queries and sync
+see every item. Access rules live in `server/lib/notes.js`
+(`noteAccess`), and sync applies the same rules: a member's pull gets
+shared notes with their own pin and archive plus `share_role`,
+`share_owner`, and `share_count`, and `revoked_notes` tells a device
+to drop notes it can no longer see. Sharing changes re-stamp the note
+so every device that can see it pulls it again.
+
+### Reminders have two delivery paths
+
+A reminder is stored as its first occurrence (UTC), a repeat, and the
+IANA time zone it was set in, so a repeat keeps its wall-clock time
+across daylight saving (`nextOccurrence` in `src/lib/reminders.js`,
+mirrored in `server/lib/reminders.js`, both covered by tests).
+
+- **Android:** `src/lib/note-reminders.js` rebuilds the scheduled
+  local notifications from the note list after every change or sync.
+- **Server:** `server/lib/reminder-delivery.js` runs every minute,
+  finds occurrences that just came due (up to 2 hours late after a
+  restart), and sends each one once, deduped in `notification_log` by
+  occurrence time, to the owner's push service and the
+  `reminder.fired` webhook.
+
+### Imports parse on the client
+
+Google Keep and Markdown imports are read and parsed in the browser or
+WebView (`src/lib/import-export/`, pure modules with tests) and sent
+in batches to `POST /api/notes/import`, or written straight to the
+on-device database in Android local mode. Original dates are kept and
+an exact repeat of a note already present is skipped, so importing the
+same file twice is harmless. The Markdown export builds its ZIP on the
+client from the normal notes API, so it works in every mode, and it
+imports back without losing labels, color, reminder, or dates.
+
 ### Federation-style calls go through the server
 
 Anything that talks to another service with a secret (AI providers
@@ -91,6 +132,13 @@ Connection changes it later.
   `/api/sync/push` and `/api/sync/pull`
 - **Local backup:** `src/lib/local-backup.js` dumps the local SQLite
   tables + base64-inlined images to a single file
+- **Share sheet:** `ShareIntentPlugin.java` hands text shared from other
+  apps to `src/lib/share-intent.js`, which opens a prefilled note. The
+  PWA does the same through the manifest `share_target` and
+  `/share-target`
+- **App lock:** `src/lib/app-lock.js` covers the UI with
+  `LockScreen.svelte` on launch and after a chosen time in the
+  background; unlock is fingerprint, face, or the device credential
 
 ## Conventions
 

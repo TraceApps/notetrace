@@ -34,8 +34,8 @@ signatures on the receiving end and cannot be retrieved again later.
 | `checklist.completed` | Every item on a checklist note has been checked off. |
 | `reminder.fired` | A note reminder comes due. |
 
-These events are registered now so webhooks can subscribe to them;
-they begin firing as the notes features they belong to are built.
+Imports don't fire `note.created`, so importing a large Google Keep
+export doesn't flood a receiver.
 
 ## Payload
 
@@ -48,6 +48,23 @@ Every delivery is a JSON POST with this envelope:
   "data": { ... event-specific ... }
 }
 ```
+
+Event data:
+
+```json
+// note.created
+{ "note_id": 42, "title": "Groceries", "kind": "checklist" }
+
+// checklist.completed
+{ "note_id": 42, "title": "Groceries" }
+
+// reminder.fired (one delivery per occurrence of a repeating reminder)
+{ "note_id": 42, "title": "Water the plants", "reminder_at": "2026-09-14T12:00:00.000Z", "repeat": "weekly" }
+```
+
+`reminder.fired` goes to the note's owner. It fires within about a
+minute of the reminder time, and a server that was down at that moment
+still sends it if it's back within two hours.
 
 ## Verifying a delivery
 

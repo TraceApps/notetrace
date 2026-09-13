@@ -39,7 +39,15 @@ It runs as a single Docker container on your own hardware, with a PWA for the br
 
 ## Status
 
-NoteTrace is in early development. The foundation it shares with the other Trace apps is in place:
+NoteTrace is in active development toward its first release candidate. Working today:
+
+- **Notes and checklists.** Card grid with a pinned section and quick capture, a rich editor that stores Markdown, checklists with drag to reorder, labels and colors, archive, trash with a 30-day purge, full-text search, and version history.
+- **Reminders.** One-off or repeating (daily, weekly, monthly, yearly), kept at the same local time across daylight saving. Android schedules them on the device; the server delivers them through your push service and a `reminder.fired` webhook.
+- **Sharing.** Share a note or list with other accounts on your server, with view or edit access. Pin, archive, labels, and reminders stay personal.
+- **Import and export.** Google Keep (Google Takeout), Markdown files (Obsidian, Memos, Joplin, and other Markdown exports), and a Markdown ZIP export.
+- **Android extras.** Share text and links into a new note from any app, and an optional fingerprint, face, or PIN app lock.
+
+The foundation it shares with the other Trace apps:
 
 - **Accounts.** Multi-user with OIDC SSO (Authentik, Keycloak, Pocket ID, Authelia, and others).
 - **Backups.** Full-database zip, scheduled auto-backups, portable export, Android local-backup zip.
@@ -49,7 +57,7 @@ NoteTrace is in early development. The foundation it shares with the other Trace
 - **Push notifications.** Apprise, Gotify, and ntfy.
 - **Integrations.** API tokens, webhooks, and an MCP endpoint.
 
-Planned for the first release candidate: the notes grid and quick capture, a rich editor that stores Markdown, checklists, pins, labels, colors, archive and trash, full-text search, version history, reminders, shared notes and lists, Google Takeout (Keep) import, and Markdown export. See [ROADMAP.md](ROADMAP.md).
+What comes next, including the Wear OS companion, is in [ROADMAP.md](ROADMAP.md).
 
 ---
 

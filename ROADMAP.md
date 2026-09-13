@@ -17,28 +17,31 @@ Items marked ~~strikethrough~~ have been implemented.
 
 ## Core Notes
 
-- Notes grid with pinned section and a quick-capture bar
-- Rich editor that stores Markdown
-- Checklists (text and checklist notes, switchable), drag to reorder
-- Pin, archive, trash (30-day purge)
-- Labels with colors, note colors
-- Full-text search across titles, bodies, and checklist items
-- Version history with one-tap restore
+- ~~Notes grid with pinned section and a quick-capture bar~~
+- ~~Rich editor that stores Markdown~~
+- ~~Checklists (text and checklist notes, switchable), drag to reorder~~
+- ~~Pin, archive, trash (30-day purge)~~
+- ~~Labels with colors, note colors~~
+- ~~Full-text search across titles, bodies, and checklist items~~
+- ~~Version history with one-tap restore~~
 
 ## Android and Sync
 
-- Note sync with per-item checklist merge
-- Capture from the Android share sheet (text, links, images)
-- Native reminders on Android
-- Biometric unlock
+- ~~Note sync with per-item checklist merge~~
+- ~~Capture text and links from the Android share sheet~~
+- Capture images from the Android share sheet
+- ~~Native reminders on Android~~
+- ~~Biometric app lock~~
 
 ## Sharing and Import
 
-- Shared notes and lists with view or edit access
-- Reminders with repeats (daily, weekly, monthly) delivered through push
-- Google Takeout import (Google Keep notes, checklists, labels, colors, attachments)
-- Memos and Blinko import
-- Markdown ZIP export
+- ~~Shared notes and lists with view or edit access~~
+- ~~Reminders with repeats (daily, weekly, monthly, yearly) delivered through push~~
+- ~~Google Takeout import (Google Keep notes, checklists, labels, colors, links)~~
+- Google Keep image and drawing attachments
+- ~~Markdown import (Obsidian, Memos, Joplin, and other Markdown exports)~~
+- Blinko backup import
+- ~~Markdown ZIP export~~
 
 ## Advanced
 
@@ -47,7 +50,8 @@ Items marked ~~strikethrough~~ have been implemented.
 - Voice notes with transcription
 - Image attachments with text search inside images
 - Trace AI note tools: tidy, summarize, ask your notes
-- MCP note tools and note webhook events
+- ~~Note webhook events~~
+- MCP note tools
 - CookTrace integration: send a checklist to a CookTrace shopping list
 
 ## Wear OS Companion

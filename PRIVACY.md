@@ -11,6 +11,7 @@ NoteTrace is a self-hosted notes app. Your data is stored on **your own server**
 ### What NoteTrace stores on YOUR server:
 
 - Notes (titles, bodies, checklists, colors, pin / archive / trash state, reminder times)
+- Who each note is shared with, and whether they can view or edit it (only accounts on your own server)
 - AI chat history (if Trace is enabled)
 - User account information (username, hashed password, optional email, optional display name, optional avatar)
 - OIDC SSO links (provider, subject claim)
@@ -36,6 +37,8 @@ NoteTrace connects to the following external services **only when you explicitly
 - **Webhooks.** Optional and off by default. If an admin enables them, event payloads are sent to the URLs you configure.
 - **GitHub Releases.** The in-app update check reads public release information from GitHub. No account data is sent.
 
+Google Keep (Takeout) and Markdown imports are read on your own device or browser and saved only to your own server or on-device database.
+
 ## Data Retention
 
 Your data is retained on your server until you delete it. You can:
@@ -53,6 +56,7 @@ The NoteTrace Android app stores data locally on your device in a SQLite databas
 - **Camera.** Note photos, Trace image attachments
 - **Microphone.** Voice input for Trace
 - **Notifications.** Note reminders, backup-failed alerts
+- **Biometric.** Optional App Lock and biometric sign-in; fingerprint and face data never leave Android's secure hardware
 - **Schedule / use exact alarm.** Precise reminder delivery even when the app is backgrounded
 - **Receive boot completed.** Re-arm scheduled reminders after device reboot
 - **External storage (Android 12 and below).** Save exported backups to your Downloads folder
@@ -64,7 +68,7 @@ NoteTrace does **not** request Health Connect, contacts, or location permissions
 
 NoteTrace does not add its own SQLite-level encryption (e.g. SQLCipher) on top of the database. Instead, it relies on Android's built-in file-based encryption (FBE), which has been the default on every Android device since Android 7 (2016). FBE encrypts the app's private data directory using a key derived from your device PIN, password, or biometric, so a locked phone is already encrypted at rest.
 
-An attacker with physical access to your *locked* device cannot read your data. An attacker with physical access to your *unlocked* device can read it, but they could also simply open the app.
+An attacker with physical access to your *locked* device cannot read your data. An attacker with physical access to your *unlocked* device can read it. Settings > App Lock adds a fingerprint, face, or PIN prompt before the app opens, which keeps notes out of view on an unlocked phone; it's a screen lock, not extra encryption.
 
 Full backups (ZIP exports) are unencrypted by default; keep them in trusted storage if you back up off-device.
 
