@@ -28,7 +28,7 @@ import { isNative } from './platform.js';
 import { getDb, LOCAL_USER_ID } from './db-native.js';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 
-const TABLES = ['notes', 'user_settings', 'ai_chat_history'];
+const TABLES = ['notes', 'labels', 'checklist_items', 'note_labels', 'note_versions', 'user_settings', 'ai_chat_history'];
 
 async function _selectAll(db, table) {
   const r = await db.query(`SELECT * FROM ${table}`, []);

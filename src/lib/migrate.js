@@ -17,7 +17,9 @@
 import { CapacitorHttp } from '@capacitor/core';
 import { isNative } from './platform.js';
 
-const DOMAIN_TABLES = ['notes'];
+// Parents before children. Every row is re-queued with server_id NULL so
+// it inserts on the new server.
+const DOMAIN_TABLES = ['notes', 'labels', 'checklist_items', 'note_labels'];
 
 /**
  * Count local rows that would be uploaded. Fast, no network. Returns
@@ -68,7 +70,7 @@ export async function uploadLocalToServer({ serverUrl, authToken, onProgress } =
       onProgress?.(t, 0, 1);
       const r = await db.query(`SELECT COUNT(*) AS n FROM ${t} WHERE deleted_at IS NULL`, []);
       await db.run(`UPDATE ${t} SET server_id = NULL, sync_status = 'pending'`, []);
-      summary.success[t] = r?.values?.[0]?.n || 0;
+      if (t in summary.success) summary.success[t] = r?.values?.[0]?.n || 0;
       onProgress?.(t, 1, 1);
     }
   } catch (e) {
@@ -119,7 +121,7 @@ export async function wipeLocalData() {
   const { getDb } = await import('./db-native.js');
   const db = await getDb();
   let touched = 0;
-  for (const t of DOMAIN_TABLES) {
+  for (const t of [...DOMAIN_TABLES, 'note_versions']) {
     try {
       const r = await db.run(`DELETE FROM ${t}`);
       touched += r?.changes?.changes || 0;

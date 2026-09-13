@@ -57,6 +57,68 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_notes_server  ON notes(server_id);
   CREATE INDEX IF NOT EXISTS idx_notes_sync    ON notes(sync_status);
 
+  CREATE TABLE IF NOT EXISTS checklist_items (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    server_id   INTEGER,
+    uuid        TEXT NOT NULL UNIQUE,
+    user_id     INTEGER DEFAULT 1,
+    note_id     INTEGER NOT NULL,
+    text        TEXT NOT NULL DEFAULT '',
+    checked     INTEGER NOT NULL DEFAULT 0,
+    position    REAL NOT NULL DEFAULT 0,
+    created_at  TEXT DEFAULT (datetime('now')),
+    updated_at  TEXT DEFAULT (datetime('now')),
+    deleted_at  TEXT DEFAULT NULL,
+    sync_status TEXT DEFAULT 'synced'
+  );
+  CREATE INDEX IF NOT EXISTS idx_items_note   ON checklist_items(note_id);
+  CREATE INDEX IF NOT EXISTS idx_items_server ON checklist_items(server_id);
+  CREATE INDEX IF NOT EXISTS idx_items_sync   ON checklist_items(sync_status);
+
+  CREATE TABLE IF NOT EXISTS labels (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    server_id   INTEGER,
+    user_id     INTEGER DEFAULT 1,
+    name        TEXT NOT NULL,
+    color       TEXT,
+    position    INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT DEFAULT (datetime('now')),
+    updated_at  TEXT DEFAULT (datetime('now')),
+    deleted_at  TEXT DEFAULT NULL,
+    sync_status TEXT DEFAULT 'synced'
+  );
+  CREATE INDEX IF NOT EXISTS idx_labels_server ON labels(server_id);
+  CREATE INDEX IF NOT EXISTS idx_labels_sync   ON labels(sync_status);
+
+  CREATE TABLE IF NOT EXISTS note_labels (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    server_id   INTEGER,
+    user_id     INTEGER DEFAULT 1,
+    note_id     INTEGER NOT NULL,
+    label_id    INTEGER NOT NULL,
+    created_at  TEXT DEFAULT (datetime('now')),
+    updated_at  TEXT DEFAULT (datetime('now')),
+    deleted_at  TEXT DEFAULT NULL,
+    sync_status TEXT DEFAULT 'synced',
+    UNIQUE (note_id, label_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_note_labels_server ON note_labels(server_id);
+  CREATE INDEX IF NOT EXISTS idx_note_labels_sync   ON note_labels(sync_status);
+
+  -- Local restore points for this device. Not synced; the server keeps
+  -- its own history, including conflict copies.
+  CREATE TABLE IF NOT EXISTS note_versions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    note_id     INTEGER NOT NULL,
+    title       TEXT NOT NULL DEFAULT '',
+    body_md     TEXT NOT NULL DEFAULT '',
+    kind        TEXT NOT NULL DEFAULT 'text',
+    items_json  TEXT,
+    reason      TEXT NOT NULL DEFAULT 'edit',
+    created_at  TEXT DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_note_versions_note ON note_versions(note_id, created_at);
+
   -- Settings table — every change writes here first (sync_status='pending'),
   -- the sync engine pushes pending rows to the server, server pull marks
   -- them 'synced' on success. PWA never touches this table.
@@ -275,7 +337,22 @@ export async function dbSetMeta(key, value) {
 
 // Tables sync.js pushes. Keep in dependency order so server-side FK
 // translation has parent ids minted by the time children push.
-const SYNC_TABLES = ['notes', 'ai_chat_history'];
+const SYNC_TABLES = ['notes', 'labels', 'checklist_items', 'note_labels', 'ai_chat_history'];
+
+// FK columns on synced child tables, and the parent table each points at.
+// Local rows hold local ids; sync.js translates them to server ids on push
+// and dbApplyPull translates server ids back to local ids on pull.
+export const SYNC_PARENTS = {
+  checklist_items: { note_id: 'notes' },
+  note_labels: { note_id: 'notes', label_id: 'labels' },
+};
+
+// Natural keys used to match a pulled row to a local row that hasn't
+// received its server_id yet (created here, not pushed before the pull).
+const SYNC_UNIQUE_KEYS = {
+  checklist_items: ['uuid'],
+  note_labels: ['note_id', 'label_id'],
+};
 
 /** All rows with sync_status='pending' grouped by table. */
 export async function dbGetPendingChanges() {
@@ -344,9 +421,9 @@ export async function dbSetServerId(table, clientId, serverId, snapshotUpdatedAt
 export async function dbApplyPull(payload) {
   if (!isNative || !payload?.tables) return;
   const db = await getDb();
-  // FK columns to translate from server ids to local ids, keyed by
-  // column name. Checklist items and labels add entries here.
-  const parents = {};
+  // FK column -> candidate parent tables, used to translate server ids
+  // to local ids.
+  const parents = { note_id: ['notes'], label_id: ['labels'] };
 
   // Build a per-table { server_id → local_id } map by scanning the
   // local server_id column once. Re-scanned per pull so it picks up
@@ -372,17 +449,33 @@ export async function dbApplyPull(payload) {
     if (table === 'settings') continue;
 
     for (const row of rows) {
-      const existing = (await db.query(
+      let existing = (await db.query(
         `SELECT id, sync_status FROM ${table} WHERE server_id = ? LIMIT 1`,
         [row.id]
       ))?.values?.[0];
 
       // Translate FK columns from server ids to local ids.
       const translated = { ...row };
+      let unresolved = false;
       for (const [fk, candidates] of Object.entries(parents)) {
         if (fk in translated && translated[fk] != null) {
           translated[fk] = await translateFK(translated[fk], candidates);
+          if (translated[fk] == null && SYNC_PARENTS[table]?.[fk]) unresolved = true;
         }
+      }
+      // A child whose parent isn't here (e.g. a tombstoned note that was
+      // never pulled) has nothing to attach to.
+      if (unresolved) continue;
+
+      // Not known by server_id: match a local row created on this device
+      // that shares the natural key, and adopt the server id.
+      if (!existing && SYNC_UNIQUE_KEYS[table]) {
+        const keys = SYNC_UNIQUE_KEYS[table];
+        existing = (await db.query(
+          `SELECT id, sync_status FROM ${table} WHERE ${keys.map(k => `${k} = ?`).join(' AND ')} LIMIT 1`,
+          keys.map(k => translated[k])
+        ))?.values?.[0];
+        if (existing) await db.run(`UPDATE ${table} SET server_id = ? WHERE id = ?`, [row.id, existing.id]);
       }
 
       // Local pending edits shouldn't be overwritten by the server's

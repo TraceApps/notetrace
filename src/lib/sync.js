@@ -19,6 +19,7 @@ import {
   dbGetPendingChanges, dbGetPendingSettingsForPush,
   dbSetServerId, dbApplyPull,
   dbGetMeta, dbSetMeta, dbMarkSettingsSynced, dbMarkTableSynced,
+  SYNC_PARENTS,
 } from './db-native.js';
 
 let _syncInFlight = null;
@@ -367,14 +368,30 @@ async function pushChanges() {
 
   const tablesToSend = {};
   let total = 0;
+  const { getDb } = await import('./db-native.js');
+  const db = await getDb();
   for (const [table, rows] of Object.entries(pending)) {
     if (!Array.isArray(rows) || rows.length === 0) continue;
-    tablesToSend[table] = rows.map(r => {
-      const out = { ...r, client_id: r.id, server_id: r.server_id || null };
-      delete out.id;
-      delete out.sync_status;
-      return out;
-    });
+    const fks = SYNC_PARENTS[table] || {};
+    const out = [];
+    for (const r of rows) {
+      const row = { ...r, client_id: r.id, server_id: r.server_id || null };
+      delete row.id;
+      delete row.sync_status;
+      // Local FK ids become server ids. A parent with no server id yet is
+      // pending in this same push, so its local id goes through and is
+      // listed in _local_fks for the server to map.
+      const localFks = [];
+      for (const [fk, parentTable] of Object.entries(fks)) {
+        if (row[fk] == null) continue;
+        const parent = (await db.query(`SELECT server_id FROM ${parentTable} WHERE id = ?`, [row[fk]]))?.values?.[0];
+        if (parent?.server_id) row[fk] = parent.server_id;
+        else localFks.push(fk);
+      }
+      if (localFks.length) row._local_fks = localFks;
+      out.push(row);
+    }
+    tablesToSend[table] = out;
     total += rows.length;
   }
   if (total === 0 && settings.length === 0) {
@@ -571,7 +588,7 @@ export async function pushAllFromDevice() {
   if (!_shouldRun()) return { ok: false, reason: 'not-server-mode' };
   const { getDb } = await import('./db-native.js');
   const db = await getDb();
-  const tables = ['notes', 'ai_chat_history'];
+  const tables = ['notes', 'labels', 'checklist_items', 'note_labels', 'ai_chat_history'];
   for (const t of tables) {
     await db.run(`UPDATE ${t} SET sync_status = 'pending'`, []);
   }

@@ -13,6 +13,7 @@
  */
 
 import { getDb, LOCAL_USER_ID } from './db-native.js';
+import { NotesNative } from './notes-native.js';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 
 // ── Small utilities ──────────────────────────────────────────────────
@@ -65,7 +66,8 @@ function _fileToBase64(file) {
 
 export const NoteApiNative = {
 
-  // Notes CRUD arrives with the notes data layer.
+  // Notes, checklist items, versions, labels: see notes-native.js.
+  ...NotesNative,
 
   // ── AI chat history ────────────────────────────────────────────────
 

@@ -30,6 +30,11 @@ function _schedulePush() {
 // or returns a fixed-shape no-op) trigger _schedulePush() after the
 // local write returns. Reads pass through untouched.
 const WRITE_METHODS = new Set([
+  'createNote', 'updateNote', 'convertNote', 'trashNote', 'restoreNote',
+  'deleteNoteForever', 'emptyTrash',
+  'addItem', 'updateItem', 'deleteItem', 'reorderItems',
+  'restoreVersion',
+  'createLabel', 'updateLabel', 'deleteLabel', 'reorderLabels',
   'appendAiChat', 'clearAiChat',
   'uploadImage',
 ]);

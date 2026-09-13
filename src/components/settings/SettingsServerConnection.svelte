@@ -131,8 +131,11 @@
       if (modeChoice === 'upload' || modeChoice === 'merge') {
         const { uploadLocalToServer } = await import('../../lib/migrate.js');
         const stageLabels = {
-          notes:    'notes',
-          settings: 'settings',
+          notes:           'notes',
+          labels:          'labels',
+          checklist_items: 'checklist items',
+          note_labels:     'note labels',
+          settings:        'settings',
         };
         migrationSummary = await uploadLocalToServer({
           serverUrl: url,

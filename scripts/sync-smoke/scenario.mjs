@@ -1,0 +1,68 @@
+import * as A from './.build/devA/device.mjs';
+import * as B from './.build/devB/device.mjs';
+const B_URL = process.env.NOTETRACE_URL || 'http://localhost:3004';
+let f = 0; const ok = (c, m) => { console.log(c ? '  ok  ' : '  FAIL', m); if (!c) f++; };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const post = async (p, body, tok) => (await fetch(B_URL + p, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(tok ? { Authorization: 'Bearer ' + tok } : {}) }, body: JSON.stringify(body) })).json();
+const get = async (p, tok) => (await fetch(B_URL + p, { headers: { Authorization: 'Bearer ' + tok } })).json();
+await post('/api/auth/register', { username: 'sync', password: 'Sync!Test1', full_name: 'Sync' });
+const tok = (await post('/api/auth/login', { username: 'sync', password: 'Sync!Test1' })).token;
+A.setToken(tok); B.setToken(tok);
+await A.dbInit(); await B.dbInit();
+const sync = async d => { await d.pullChanges(); await d.pushChanges(); await d.pullChanges(); };
+
+// 1. Device A creates a labeled checklist offline, then syncs.
+const label = await A.N.createLabel({ name: 'Home' });
+let na = await A.N.createNote({ title: 'Groceries', kind: 'checklist', items: [{ text: 'Limes' }, { text: 'Rice' }], labels: [label.id] });
+await sync(A);
+let server = await get('/api/notes', tok);
+ok(server.length === 1 && server[0].items.length === 2 && server[0].labels.length === 1, 'A: new note + items + label link reach server in one push');
+
+// 2. Device B pulls it down.
+await sync(B);
+let nb = (await B.N.getNotes())[0];
+const bLabels = await B.N.getLabels();
+ok(nb && nb.items.length === 2 && nb.labels.length === 1 && nb.labels[0] === bLabels[0].id, 'B: pulled note has items and the label mapped to its local id');
+
+// 3. Concurrent offline item edits on both devices.
+const limes = na.items.find(i => i.text === 'Limes').uuid;
+const rice = nb.items.find(i => i.text === 'Rice').uuid;
+await sleep(1100);
+await A.N.updateItem(na.id, limes, { checked: true });
+await B.N.addItem(nb.id, { text: 'Cilantro' });
+await B.N.deleteItem(nb.id, rice);
+await sync(A); await sync(B); await sync(A);
+server = (await get('/api/notes', tok))[0];
+na = await A.N.getNote(na.id); nb = await B.N.getNote(nb.id);
+const summary = n => n.items.map(i => `${i.text}${i.checked ? '+' : ''}`).sort().join(',');
+ok(summary(server) === 'Cilantro,Limes+', `server merged item edits from both devices (${summary(server)})`);
+ok(summary(na) === summary(server) && summary(nb) === summary(server), `both devices converge (${summary(na)} / ${summary(nb)})`);
+
+// 4. Conflicting title edits: B's newer edit wins everywhere, A's is kept as a version.
+await sleep(1100);
+await A.N.updateNote(na.id, { title: 'Groceries (A)' });
+await sleep(1100);
+await B.N.updateNote(nb.id, { title: 'Groceries (B)' });
+await sync(B); await sync(A); await sync(B);
+server = (await get('/api/notes', tok))[0];
+na = await A.N.getNote(na.id); nb = await B.N.getNote(nb.id);
+ok(server.title === 'Groceries (B)' && na.title === 'Groceries (B)' && nb.title === 'Groceries (B)', 'newer title wins on server and both devices');
+const versions = await get(`/api/notes/${server.id}/versions`, tok);
+ok(versions.some(v => v.title === 'Groceries (A)'), 'losing title kept in server version history');
+
+// 5. Label removal and trash sync.
+await sleep(1100);
+await B.N.updateNote(nb.id, { labels: [] });
+await sync(B); await sync(A);
+na = await A.N.getNote(na.id);
+ok(na.labels.length === 0, 'label removal syncs to the other device');
+await sleep(1100);
+await A.N.trashNote(na.id);
+await sync(A); await sync(B);
+ok((await B.N.getNotes({ view: 'trash' })).length === 1, 'trash syncs to the other device');
+await sleep(1100);
+await B.N.emptyTrash();
+await sync(B); await sync(A);
+ok((await A.N.getNotes({ view: 'trash' })).length === 0 && (await get('/api/notes?view=trash', tok)).length === 0, 'permanent delete syncs everywhere');
+
+console.log(f ? `${f} FAILED` : 'all passed'); process.exit(f ? 1 : 0);

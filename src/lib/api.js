@@ -155,6 +155,41 @@ const _NoteApiHttp = {
     return { ...rest, img_url: imgUrl || img_url || null };
   },
 
+  // Notes
+  getNotes({ view = 'notes', label = null, q = '' } = {}) {
+    const p = new URLSearchParams();
+    if (view !== 'notes') p.set('view', view);
+    if (label != null) p.set('label', label);
+    if (q) p.set('q', q);
+    const qs = p.toString();
+    return this.get(`/api/notes${qs ? '?' + qs : ''}`);
+  },
+  getNote(id)                    { return this.get(`/api/notes/${id}`); },
+  createNote(data)               { return this.post('/api/notes', data); },
+  updateNote(id, patch)          { return this.patch(`/api/notes/${id}`, patch); },
+  convertNote(id, kind)          { return this.post(`/api/notes/${id}/convert`, { kind }); },
+  trashNote(id)                  { return this.del(`/api/notes/${id}`); },
+  restoreNote(id)                { return this.post(`/api/notes/${id}/restore`); },
+  deleteNoteForever(id)          { return this.del(`/api/notes/${id}/forever`); },
+  emptyTrash()                   { return this.del('/api/notes/trash'); },
+
+  // Checklist items
+  addItem(noteId, data)          { return this.post(`/api/notes/${noteId}/items`, data); },
+  updateItem(noteId, uuid, patch){ return this.patch(`/api/notes/${noteId}/items/${encodeURIComponent(uuid)}`, patch); },
+  deleteItem(noteId, uuid)       { return this.del(`/api/notes/${noteId}/items/${encodeURIComponent(uuid)}`); },
+  reorderItems(noteId, uuids)    { return this.put(`/api/notes/${noteId}/items/order`, { uuids }); },
+
+  // Versions
+  getVersions(noteId)            { return this.get(`/api/notes/${noteId}/versions`); },
+  restoreVersion(noteId, vid)    { return this.post(`/api/notes/${noteId}/versions/${vid}/restore`); },
+
+  // Labels
+  getLabels()                    { return this.get('/api/labels'); },
+  createLabel(data)              { return this.post('/api/labels', data); },
+  updateLabel(id, data)          { return this.patch(`/api/labels/${id}`, data); },
+  deleteLabel(id)                { return this.del(`/api/labels/${id}`); },
+  reorderLabels(ids)             { return this.put('/api/labels/order', { ids }); },
+
   // Users (sharing picker)
   getUsersList()                 { return this.get('/api/auth/users/list'); },
 
