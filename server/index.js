@@ -189,6 +189,16 @@ router.use('/api/admin/webhooks', webhooksRoutes);
 router.use('/api/mcp',          mcpRoutes);
 router.get('/api/health', (req, res) => res.json({ ok: true }));
 
+// Web Share Target (installed PWA): the OS sends a GET here with the shared
+// title / text / url. Hand them to the hash router, which opens a new note.
+router.get('/share-target', (req, res) => {
+  const p = new URLSearchParams({ share: '1' });
+  for (const k of ['title', 'text', 'url']) {
+    if (typeof req.query[k] === 'string' && req.query[k]) p.set(k, req.query[k].slice(0, 20000));
+  }
+  res.redirect(303, `${BASE_URL}/#/?${p.toString()}`);
+});
+
 // Serve Svelte frontend (production build) — anything except index.html.
 // Content-hashed assets (in /assets/) are safe to cache forever — new deploy =
 // new filename. The index.html itself goes through the SPA fallback below so

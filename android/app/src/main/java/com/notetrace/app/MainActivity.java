@@ -1,10 +1,22 @@
 package com.notetrace.app;
 
+import android.content.Intent;
+import android.os.Bundle;
+
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
-    // Capacitor's BridgeActivity does all the WebView setup. NoteTrace
-    // doesn't yet ship native background workers — when notification
-    // features land (cook reminders, thaw alerts, etc.), enqueue the
-    // schedulers from onCreate here.
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(ShareIntentPlugin.class);
+        super.onCreate(savedInstanceState);
+        ShareIntentPlugin.handleIntent(getIntent());
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        ShareIntentPlugin.handleIntent(intent);
+    }
 }

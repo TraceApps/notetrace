@@ -64,13 +64,20 @@ export default defineConfig({
       manifest: {
         name: 'NoteTrace',
         short_name: 'NoteTrace',
-        description: 'Trace Every Recipe — From Pantry to Plate. Self-hosted recipes, pantry, and cook diary.',
+        description: 'Trace Every Thought. Self-hosted notes, lists, and reminders.',
         theme_color: '#0A0B0F',
         background_color: '#0A0B0F',
         display: 'standalone',
-        orientation: 'portrait-primary',
+        orientation: 'any',
         start_url: './',
         scope: './',
+        // Installed PWA shows up in the OS share sheet; the server turns the
+        // GET into a hash route that opens a pre-filled new note.
+        share_target: {
+          action: 'share-target',
+          method: 'GET',
+          params: { title: 'title', text: 'text', url: 'url' },
+        },
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
