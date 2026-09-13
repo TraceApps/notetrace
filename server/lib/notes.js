@@ -779,3 +779,74 @@ export function revokedNoteIds(u, since) {
           OR (m.deleted_at IS NULL AND n.trashed_at IS NOT NULL AND n.synced_at >= ?))`
   ).all(u, since, since).map(r => r.id);
 }
+
+// ── Import ───────────────────────────────────────────────────────────
+
+export const IMPORT_BATCH_MAX = 500;
+
+function _cleanTs(v) {
+  if (v == null || v === '') return null;
+  const ms = tsMs(v);
+  return Number.isFinite(ms) ? new Date(ms).toISOString().replace('T', ' ').slice(0, 19) : null;
+}
+
+/**
+ * Import already-parsed notes (see src/lib/import-export) keeping their
+ * original dates. Labels are matched by name, created when missing. A
+ * note identical to one already here (same title, kind, body, and
+ * created time) is skipped, so importing the same export twice doesn't
+ * duplicate anything. No webhooks fire for imports.
+ */
+export const importNotes = db.transaction((u, list = []) => {
+  const result = { imported: 0, skipped: 0, labels_created: 0 };
+  const labelIds = new Map(listLabels(u).map(l => [l.name.toLowerCase(), l.id]));
+  const ts = now();
+  for (const raw of list.slice(0, IMPORT_BATCH_MAX)) {
+    if (!raw || typeof raw !== 'object') { result.skipped++; continue; }
+    const kind = NOTE_KINDS.has(raw.kind) ? raw.kind : 'text';
+    const title = _cleanTitle(raw.title);
+    const body = kind === 'text' ? _cleanBody(raw.body_md) : '';
+    const items = kind === 'checklist' && Array.isArray(raw.items)
+      ? raw.items.filter(i => i && String(i.text ?? '').trim()).slice(0, 2000)
+      : [];
+    if (!title && !body.trim() && !items.length) { result.skipped++; continue; }
+    const created = _cleanTs(raw.created_at) || ts;
+    const updated = _cleanTs(raw.updated_at) || created;
+    const dup = db.prepare(
+      `SELECT 1 FROM notes WHERE ${userClause(u)} AND deleted_at IS NULL
+         AND title = ? AND kind = ? AND body_md = ? AND created_at = ? LIMIT 1`
+    ).get(...userArgs(u), title, kind, body, created);
+    if (dup) { result.skipped++; continue; }
+
+    const reminderAt = _cleanReminderAt(raw.reminder_at);
+    const info = db.prepare(
+      `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived, trashed_at,
+                          reminder_at, reminder_rrule, reminder_tz, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(u, title, body, kind, _cleanColor(raw.color),
+          raw.pinned && !raw.archived && !raw.trashed ? 1 : 0, raw.archived ? 1 : 0,
+          raw.trashed ? ts : null,
+          reminderAt, reminderAt ? _cleanRepeat(raw.reminder_rrule) : null, reminderAt ? _cleanTz(raw.reminder_tz) : null,
+          created, updated);
+    const id = Number(info.lastInsertRowid);
+    items.forEach((it, i) => _upsertItem(u, id, { text: it.text, checked: !!it.checked, position: i + 1 }, updated));
+
+    const ids = [];
+    for (const name of Array.isArray(raw.labels) ? raw.labels : []) {
+      const clean = String(name ?? '').trim().slice(0, 60);
+      if (!clean) continue;
+      let lid = labelIds.get(clean.toLowerCase());
+      if (!lid) {
+        const label = createLabel(u, { name: clean });
+        if (!label || label.error) continue;
+        lid = label.id;
+        labelIds.set(clean.toLowerCase(), lid);
+        result.labels_created++;
+      }
+      ids.push(lid);
+    }
+    if (ids.length) _setLabels(u, id, ids, updated);
+    result.imported++;
+  }
+  return result;
+});

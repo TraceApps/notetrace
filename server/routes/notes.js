@@ -32,6 +32,15 @@ router.post('/', wrap((req, res) => {
   res.status(201).json(Notes.createNote(uid(req), req.body || {}));
 }));
 
+// Import parsed notes (Google Keep, Markdown). Body: { notes: [...] }, at
+// most IMPORT_BATCH_MAX per request; the client sends larger imports in batches.
+router.post('/import', wrap((req, res) => {
+  const list = req.body?.notes;
+  if (!Array.isArray(list)) return res.status(400).json({ error: 'notes must be an array' });
+  if (list.length > Notes.IMPORT_BATCH_MAX) return res.status(413).json({ error: `At most ${Notes.IMPORT_BATCH_MAX} notes per request` });
+  res.json(Notes.importNotes(uid(req), list));
+}));
+
 // Empty trash. Registered before /:id routes so "trash" never parses as an id.
 router.delete('/trash', wrap((req, res) => {
   res.json({ deleted: Notes.emptyTrash(uid(req)) });

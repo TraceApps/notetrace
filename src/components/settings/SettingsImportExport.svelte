@@ -1,0 +1,176 @@
+<script>
+  // Import from Google Keep (Takeout) or Markdown files, and export every
+  // note as Markdown. Works on the web, Android with a server, and local mode.
+  import { _ } from 'svelte-i18n';
+  import { showError, showSuccess } from '../../stores/toast.js';
+  import { signalNotesChanged, refreshLabels } from '../../stores/notes.js';
+  import { parseImportFile, importParsedNotes, buildMarkdownExport } from '../../lib/import-export/index.js';
+  import { shareBlob } from '../../lib/share-file.js';
+
+  let includeTrashed = false;
+  let tagsToLabels = true;
+  let busy = null;          // 'keep' | 'markdown' | 'export'
+  let progress = '';
+  let summary = null;       // { source, imported, skipped, labels_created, attachments, unreadable, trashedSkipped }
+  let keepInput, mdInput;
+
+  async function runImport(source, file) {
+    if (!file || busy) return;
+    busy = source;
+    summary = null;
+    progress = $_('import_export.reading');
+    try {
+      const parsed = await parseImportFile(file, source, { includeTrashed, tagsToLabels });
+      if (!parsed.notes.length) {
+        showError(source === 'keep' ? $_('import_export.no_keep_notes') : $_('import_export.no_markdown_notes'));
+        return;
+      }
+      const r = await importParsedNotes(parsed.notes, (done, total) => {
+        progress = $_('import_export.progress', { values: { done, total } });
+      });
+      summary = { source, ...r, attachments: parsed.attachments, unreadable: parsed.unreadable, trashedSkipped: parsed.trashedSkipped };
+      signalNotesChanged();
+      refreshLabels();
+      showSuccess($_('import_export.imported_toast', { values: { count: r.imported } }));
+    } catch (e) {
+      showError(e?.message || $_('import_export.import_failed'));
+    } finally {
+      busy = null;
+      progress = '';
+      if (keepInput) keepInput.value = '';
+      if (mdInput) mdInput.value = '';
+    }
+  }
+
+  async function exportMarkdown() {
+    if (busy) return;
+    busy = 'export';
+    try {
+      const { blob, count } = await buildMarkdownExport();
+      const name = `notetrace-markdown-${new Date().toISOString().slice(0, 10)}.zip`;
+      const res = await shareBlob(blob, name, $_('import_export.export_share_title'));
+      if (!res?.canceled) showSuccess($_('import_export.exported_toast', { values: { count } }));
+    } catch (e) {
+      showError(e?.message || $_('import_export.export_failed'));
+    } finally {
+      busy = null;
+    }
+  }
+</script>
+
+<div class="ie-body">
+  <p class="sub-label">{$_('import_export.import')}</p>
+  <div class="card settings-card">
+    <div class="setting-row">
+      <div>
+        <span class="setting-label">{$_('import_export.keep_title')}</span>
+        <span class="setting-desc">{$_('import_export.keep_desc')}</span>
+      </div>
+      <button class="btn btn-secondary" on:click={() => keepInput.click()} disabled={!!busy}>
+        <span class="material-symbols-rounded">upload_file</span>
+        {busy === 'keep' ? $_('import_export.importing') : $_('import_export.choose_file')}
+      </button>
+      <input bind:this={keepInput} type="file" accept=".zip,.json,application/zip,application/json" hidden
+        on:change={(e) => runImport('keep', e.target.files?.[0])} />
+    </div>
+    <div class="setting-row sub">
+      <div>
+        <span class="setting-label">{$_('import_export.include_trashed')}</span>
+      </div>
+      <input type="checkbox" class="toggle-cb" bind:checked={includeTrashed} disabled={!!busy} />
+    </div>
+    <div class="setting-divider"></div>
+    <div class="setting-row">
+      <div>
+        <span class="setting-label">{$_('import_export.markdown_title')}</span>
+        <span class="setting-desc">{$_('import_export.markdown_desc')}</span>
+      </div>
+      <button class="btn btn-secondary" on:click={() => mdInput.click()} disabled={!!busy}>
+        <span class="material-symbols-rounded">upload_file</span>
+        {busy === 'markdown' ? $_('import_export.importing') : $_('import_export.choose_file')}
+      </button>
+      <input bind:this={mdInput} type="file" accept=".zip,.md,.markdown,.txt,application/zip,text/markdown,text/plain" hidden
+        on:change={(e) => runImport('markdown', e.target.files?.[0])} />
+    </div>
+    <div class="setting-row sub">
+      <div>
+        <span class="setting-label">{$_('import_export.tags_to_labels')}</span>
+      </div>
+      <input type="checkbox" class="toggle-cb" bind:checked={tagsToLabels} disabled={!!busy} />
+    </div>
+
+    {#if progress}
+      <div class="setting-divider"></div>
+      <p class="ie-status" aria-live="polite">{progress}</p>
+    {:else if summary}
+      <div class="setting-divider"></div>
+      <div class="ie-status" aria-live="polite">
+        <p>{$_('import_export.summary_imported', { values: { count: summary.imported } })}</p>
+        {#if summary.skipped}<p class="muted">{$_('import_export.summary_skipped', { values: { count: summary.skipped } })}</p>{/if}
+        {#if summary.labels_created}<p class="muted">{$_('import_export.summary_labels', { values: { count: summary.labels_created } })}</p>{/if}
+        {#if summary.trashedSkipped}<p class="muted">{$_('import_export.summary_trashed', { values: { count: summary.trashedSkipped } })}</p>{/if}
+        {#if summary.attachments}<p class="muted">{$_('import_export.summary_attachments', { values: { count: summary.attachments } })}</p>{/if}
+        {#if summary.unreadable}<p class="muted">{$_('import_export.summary_unreadable', { values: { count: summary.unreadable } })}</p>{/if}
+      </div>
+    {/if}
+  </div>
+
+  <p class="sub-label">{$_('import_export.export')}</p>
+  <div class="card settings-card">
+    <div class="setting-row">
+      <div>
+        <span class="setting-label">{$_('import_export.export_title')}</span>
+        <span class="setting-desc">{$_('import_export.export_desc')}</span>
+      </div>
+      <button class="btn btn-secondary" on:click={exportMarkdown} disabled={!!busy}>
+        <span class="material-symbols-rounded">download</span>
+        {busy === 'export' ? $_('import_export.exporting') : $_('import_export.export_button')}
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .ie-body { display: flex; flex-direction: column; gap: 10px; }
+  .sub-label {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-3); padding: 4px 2px 2px; margin: 0;
+  }
+  .card.settings-card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); overflow: hidden;
+  }
+  .setting-row {
+    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+    gap: 12px; padding: 14px 16px;
+  }
+  .setting-row.sub { padding-top: 0; }
+  .setting-row > div:first-child { flex: 1 1 220px; min-width: 0; }
+  .setting-label { font-size: 14px; color: var(--text-1); display: block; font-weight: 500; }
+  .setting-row.sub .setting-label { font-size: 13px; color: var(--text-2); font-weight: 400; }
+  .setting-desc { font-size: 12px; color: var(--text-3); margin-top: 4px; line-height: 1.45; display: block; }
+  .setting-divider { height: 1px; background: var(--border); margin: 0 16px; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .btn .material-symbols-rounded { font-size: 18px; }
+  .ie-status { padding: 12px 16px; font-size: 13px; color: var(--text-1); display: flex; flex-direction: column; gap: 4px; }
+  .ie-status .muted { color: var(--text-3); font-size: 12px; }
+  .toggle-cb {
+    width: 40px; height: 24px; flex-shrink: 0;
+    appearance: none; -webkit-appearance: none;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    position: relative; cursor: pointer;
+    transition: background var(--dur-fast);
+  }
+  .toggle-cb::after {
+    content: '';
+    position: absolute; top: 1px; left: 1px;
+    width: 20px; height: 20px;
+    background: var(--text-3); border-radius: 50%;
+    transition: transform var(--dur-base) var(--ease-spring), background var(--dur-fast);
+  }
+  .toggle-cb:checked { background: var(--accent-dim); border-color: var(--accent); }
+  .toggle-cb:checked::after { background: var(--accent); transform: translateX(16px); }
+  .toggle-cb:disabled { opacity: 0.5; cursor: default; }
+</style>

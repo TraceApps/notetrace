@@ -33,6 +33,7 @@
   import SettingsAppLock         from '../components/settings/SettingsAppLock.svelte';
   import SettingsNotifications   from '../components/settings/SettingsNotifications.svelte';
   import SettingsBackup          from '../components/settings/SettingsBackup.svelte';
+  import SettingsImportExport    from '../components/settings/SettingsImportExport.svelte';
   import SettingsUpdates         from '../components/settings/SettingsUpdates.svelte';
   import SettingsDiagnostics     from '../components/settings/SettingsDiagnostics.svelte';
   import SettingsUserManagement  from '../components/settings/SettingsUserManagement.svelte';
@@ -149,6 +150,7 @@
     ai:            { titleKey: 'settings.ai.section',                icon: 'bolt' },
     notifications: { titleKey: 'settings.notifications.section',     icon: 'notifications' },
     email:         { titleKey: 'settings.email.section',             icon: 'mail' },
+    importexport:  { titleKey: 'import_export.section',              icon: 'swap_vert' },
     backup:        { titleKey: 'settings.backup.section',            icon: 'archive' },
     users:         { titleKey: 'settings.users.section',             icon: 'group' },
     auth:          { titleKey: 'settings.authentication.section',    icon: 'shield_person' },
@@ -172,6 +174,7 @@
     ai:            SettingsTrace,
     notifications: SettingsNotifications,
     email:         SettingsEmail,
+    importexport:  SettingsImportExport,
     backup:        SettingsBackup,
     users:         SettingsUserManagement,
     auth:          SettingsAuth,
@@ -196,6 +199,7 @@
     ai:            ['ai','trace','assistant','provider','model','custom model','model id','api key','chat','claude','openai','gemini','sonnet','opus','haiku','gpt','gemini 3','base url','artificial intelligence','smart log','smartlog','quick log','voice','dictate','hold to record','mic'],
     notifications: ['notifications','reminders','cook day','thaw','alerts','push','apprise','gotify','ntfy','expiration','expiry','expires','expiring','pantry expiry','digest','weekly summary','shopping nudge'],
     email:         ['email','smtp','mail','password reset','invite','from address','tls','outgoing','send test','test email','recipient','test recipient','connection status','change password','change smtp'],
+    importexport:  ['import','export','google keep','keep','takeout','markdown','obsidian','memos','joplin','zip','migrate','move from'],
     backup:        ['backup','export','import','restore','json','full backup','reset','danger zone'],
     users:         ['users','user management','accounts','login','admin','register','invite'],
     auth:          ['authentication','auth','sso','single sign-on','single sign on','oidc','openid','authentik','keycloak','authelia','password login'],
@@ -428,6 +432,11 @@
   <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'notifications')} class:active={currentSection === 'notifications'} aria-current={currentSection === 'notifications' ? 'page' : undefined} on:click={() => toggleSection('notifications')}>
     <span class="material-symbols-rounded si">notifications</span>
     <span>{$_('settings.notifications.section')}</span>
+    <span class="material-symbols-rounded chevron">expand_more</span>
+  </button>
+  <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'importexport')} class:active={currentSection === 'importexport'} aria-current={currentSection === 'importexport' ? 'page' : undefined} on:click={() => toggleSection('importexport')}>
+    <span class="material-symbols-rounded si">swap_vert</span>
+    <span>{$_('import_export.section')}</span>
     <span class="material-symbols-rounded chevron">expand_more</span>
   </button>
   <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'backup')} class:active={currentSection === 'backup'} aria-current={currentSection === 'backup' ? 'page' : undefined} on:click={() => toggleSection('backup')}>

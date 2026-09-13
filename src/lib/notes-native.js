@@ -406,6 +406,55 @@ export const NotesNative = {
     return _note(noteId);
   },
 
+  // Import (local mode). Same rules as server/lib/notes.js importNotes:
+  // original dates kept, labels matched by name, exact repeats skipped.
+  async importNotes(list = []) {
+    const result = { imported: 0, skipped: 0, labels_created: 0 };
+    const labelIds = new Map((await NotesNative.getLabels()).map(l => [l.name.toLowerCase(), l.id]));
+    const ts = _now();
+    for (const raw of list) {
+      const kind = raw?.kind === 'checklist' ? 'checklist' : 'text';
+      const title = String(raw?.title ?? '').slice(0, 1000);
+      const body = kind === 'text' ? String(raw?.body_md ?? '') : '';
+      const items = kind === 'checklist' && Array.isArray(raw?.items) ? raw.items.filter(i => String(i?.text ?? '').trim()) : [];
+      if (!title && !body.trim() && !items.length) { result.skipped++; continue; }
+      const created = _reminderAt(raw.created_at) || ts;
+      const updated = _reminderAt(raw.updated_at) || created;
+      const dup = (await _q(
+        `SELECT 1 FROM notes WHERE deleted_at IS NULL AND title = ? AND kind = ? AND body_md = ? AND created_at = ? LIMIT 1`,
+        [title, kind, body, created]))[0];
+      if (dup) { result.skipped++; continue; }
+      const reminderAt = _reminderAt(raw.reminder_at);
+      const id = await _insert(
+        `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived, trashed_at,
+                            reminder_at, reminder_rrule, reminder_tz, created_at, updated_at, sync_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+        [LOCAL_USER_ID, title, body, kind, NOTE_COLORS.includes(raw.color) ? raw.color : null,
+         raw.pinned && !raw.archived && !raw.trashed ? 1 : 0, raw.archived ? 1 : 0, raw.trashed ? ts : null,
+         reminderAt, reminderAt && REPEATS.includes(raw.reminder_rrule) ? raw.reminder_rrule : null,
+         reminderAt ? (raw.reminder_tz || null) : null, created, updated]);
+      for (let i = 0; i < items.length; i++) {
+        await _upsertItem(id, { text: items[i].text, checked: !!items[i].checked, position: i + 1 }, updated);
+      }
+      const ids = [];
+      for (const name of Array.isArray(raw.labels) ? raw.labels : []) {
+        const clean = String(name ?? '').trim().slice(0, 60);
+        if (!clean) continue;
+        let lid = labelIds.get(clean.toLowerCase());
+        if (!lid) {
+          lid = (await NotesNative.createLabel({ name: clean }))?.id;
+          if (!lid) continue;
+          labelIds.set(clean.toLowerCase(), lid);
+          result.labels_created++;
+        }
+        ids.push(lid);
+      }
+      if (ids.length) await _setLabels(id, ids, updated);
+      result.imported++;
+    }
+    return result;
+  },
+
   // Labels
 
   async getLabels() {

@@ -222,6 +222,22 @@ ok(pull3.revoked_notes.includes(shared.id) && (await as(samToken, 'GET', '/api/n
 await api('POST', `/api/notes/${shared.id}/restore`);
 ok((await as(samToken, 'GET', `/api/notes/${shared.id}`)).status === 200, 'restoring brings it back for members');
 
+console.log('import');
+const importBatch = [
+  { title: 'From Keep', body_md: 'Line one  \nline two', kind: 'text', color: 'tide', pinned: true, labels: ['Imported', 'home'], created_at: '2024-09-10 20:26:40', updated_at: '2024-09-12 14:06:40' },
+  { title: 'Keep list', kind: 'checklist', items: [{ text: 'Limes', checked: false }, { text: 'Rice', checked: true }], archived: true, created_at: '2024-09-11 08:00:00' },
+  { title: '', body_md: '', kind: 'text' },
+];
+let imp = (await api('POST', '/api/notes/import', { notes: importBatch })).json;
+ok(imp.imported === 2 && imp.skipped === 1 && imp.labels_created === 1, `import saves notes, skips empty ones, reuses labels by name (${JSON.stringify(imp)})`);
+const impNote = (await api('GET', '/api/notes?q=keep')).json.find(x => x.title === 'From Keep');
+ok(impNote && impNote.created_at === '2024-09-10 20:26:40' && impNote.updated_at === '2024-09-12 14:06:40' && impNote.pinned && impNote.labels.length === 2, 'imported note keeps dates, pin, and labels');
+const impList = (await api('GET', '/api/notes?view=archive')).json.find(x => x.title === 'Keep list');
+ok(impList && impList.items.length === 2 && impList.items[1].checked, 'imported checklist lands in Archive with checked state');
+imp = (await api('POST', '/api/notes/import', { notes: importBatch })).json;
+ok(imp.imported === 0 && imp.skipped === 3, 'importing the same notes again adds nothing');
+ok((await api('POST', '/api/notes/import', { notes: 'nope' })).status === 400, 'import rejects a non-array body');
+
 console.log('backup + export');
 const bk = (await api('POST', '/api/full-backup')).json;
 const rs = (await api('POST', `/api/full-backup/${bk.filename}/restore`)).json;

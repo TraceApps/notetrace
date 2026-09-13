@@ -102,7 +102,7 @@
         <li class="sd-row">
           <span class="sd-avatar">{initial(data.owner)}</span>
           <span class="sd-name">
-            {nameOf(data.owner)}{#if data.owner.user_id === $currentUser?.id}<span class="sd-you"> {$_('sharing.you')}</span>{/if}
+            <span>{nameOf(data.owner)}{#if data.owner.user_id === $currentUser?.id}<span class="sd-you"> {$_('sharing.you')}</span>{/if}</span>
             <span class="sd-sub">{$_('sharing.owner')}</span>
           </span>
         </li>
@@ -111,7 +111,7 @@
         <li class="sd-row">
           <span class="sd-avatar">{initial(m)}</span>
           <span class="sd-name">
-            {nameOf(m)}{#if m.user_id === $currentUser?.id}<span class="sd-you"> {$_('sharing.you')}</span>{/if}
+            <span>{nameOf(m)}{#if m.user_id === $currentUser?.id}<span class="sd-you"> {$_('sharing.you')}</span>{/if}</span>
             <span class="sd-sub">@{m.username}</span>
           </span>
           {#if owner}
@@ -167,7 +167,7 @@
     background: var(--accent-dim); color: var(--accent); font-weight: 600; font-size: 14px;
   }
   .sd-name { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 14px; color: var(--text-1); overflow-wrap: anywhere; }
-  .sd-you { color: var(--text-3); }
+  .sd-you { color: var(--text-3); margin-left: 4px; }
   .sd-sub { font-size: 12px; color: var(--text-3); }
   .sd-role-text { flex-shrink: 0; }
   .sd-role {

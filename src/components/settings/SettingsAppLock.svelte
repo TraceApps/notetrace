@@ -29,7 +29,7 @@
   }
 </script>
 
-<div class="section-body">
+<div class="applock-body">
   <div class="card settings-card">
     <div class="setting-row">
       <div>
@@ -61,6 +61,37 @@
 </div>
 
 <style>
-  .note { padding: 12px 16px; }
-  .select { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-1); height: 36px; padding: 0 10px; font-size: 14px; }
+  .card.settings-card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); overflow: hidden;
+  }
+  .setting-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 16px; }
+  .setting-row > div:first-child { flex: 1; min-width: 0; }
+  .setting-label { font-size: 14px; color: var(--text-1); display: block; font-weight: 500; }
+  .setting-desc { font-size: 12px; color: var(--text-3); margin-top: 4px; line-height: 1.45; display: block; }
+  .setting-divider { height: 1px; background: var(--border); margin: 0 16px; }
+  .note { padding: 12px 16px; margin: 0; }
+  .select {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--text-1); height: 36px; padding: 0 10px; font-size: 13px; cursor: pointer;
+  }
+  .toggle-cb {
+    width: 40px; height: 24px; flex-shrink: 0;
+    appearance: none; -webkit-appearance: none;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    position: relative; cursor: pointer;
+    transition: background var(--dur-fast);
+  }
+  .toggle-cb::after {
+    content: '';
+    position: absolute; top: 1px; left: 1px;
+    width: 20px; height: 20px;
+    background: var(--text-3); border-radius: 50%;
+    transition: transform var(--dur-base) var(--ease-spring), background var(--dur-fast);
+  }
+  .toggle-cb:checked { background: var(--accent-dim); border-color: var(--accent); }
+  .toggle-cb:checked::after { background: var(--accent); transform: translateX(16px); }
+  .toggle-cb:disabled { opacity: 0.5; cursor: default; }
 </style>

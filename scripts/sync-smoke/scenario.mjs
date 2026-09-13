@@ -97,4 +97,14 @@ ok(!(await C.N.getNotes()).some(n => n.title === 'Camping list'), 'C: removed me
 await sync(A);
 ok((await A.N.getNote(shared.id)).share_count === 0, 'A: owner device sees the note is no longer shared');
 
+// 7. Local-mode import (on-device) and its sync up to the server.
+const localImp = await A.N.importNotes([
+  { title: 'Imported offline', body_md: 'From a Keep export', kind: 'text', labels: ['Keep import'], created_at: '2023-05-01 09:00:00', updated_at: '2023-05-02 10:00:00' },
+  { title: 'Imported offline', body_md: 'From a Keep export', kind: 'text', created_at: '2023-05-01 09:00:00' },
+]);
+ok(localImp.imported === 1 && localImp.skipped === 1 && localImp.labels_created === 1, `A: on-device import skips the repeat (${JSON.stringify(localImp)})`);
+await sync(A);
+const impServer = (await get('/api/notes', tok)).find(n => n.title === 'Imported offline');
+ok(impServer && impServer.labels.length === 1 && impServer.updated_at === '2023-05-02 10:00:00', 'A: imported note and its label sync to the server with its date');
+
 console.log(f ? `${f} FAILED` : 'all passed'); process.exit(f ? 1 : 0);

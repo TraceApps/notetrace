@@ -172,6 +172,7 @@ const _NoteApiHttp = {
   restoreNote(id)                { return this.post(`/api/notes/${id}/restore`); },
   deleteNoteForever(id)          { return this.del(`/api/notes/${id}/forever`); },
   emptyTrash()                   { return this.del('/api/notes/trash'); },
+  importNotes(notes)             { return this.post('/api/notes/import', { notes }); },
 
   // Checklist items
   addItem(noteId, data)          { return this.post(`/api/notes/${noteId}/items`, data); },
@@ -223,6 +224,9 @@ import { NoteApiCached } from './api-cached.js';
 const SERVER_ONLY_METHODS = new Set([
   'getUsersList', 'getAppConfig',
   'getMembers', 'addMember', 'updateMember', 'removeMember',
+  // Imports run on the server (keeping original dates) and reach this
+  // device through sync.
+  'importNotes',
   // Low-level HTTP primitives, used by components that don't have a
   // dedicated NoteApi wrapper (invite list, session config, admin OIDC
   // CRUD, etc.). NoteApiNative stubs these to throw in pure local mode;
