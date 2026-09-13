@@ -1,0 +1,163 @@
+<h1 align="center">NoteTrace</h1>
+
+<p align="center"><b>Trace Every Thought</b></p>
+
+<p align="center">A self-hosted notes app: quick to capture, easy to find.<br/>
+No accounts, no telemetry, no cloud sync unless you opt in.</p>
+
+<p align="center">
+  <img src="public/icons/logo.png" alt="NoteTrace" width="180" />
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0-blue"></a>
+  <a href="https://github.com/traceapps/notetrace/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/traceapps/notetrace?label=release&color=blue"></a>
+  <a href="https://github.com/traceapps/notetrace/pkgs/container/notetrace"><img alt="GHCR" src="https://img.shields.io/badge/ghcr.io-traceapps%2Fnotetrace-2496ED?logo=docker&logoColor=white"></a>
+  <a href="https://hub.docker.com/r/traceapps/notetrace"><img alt="Docker Hub pulls" src="https://img.shields.io/docker/pulls/traceapps/notetrace?logo=docker&logoColor=white&label=docker%20pulls"></a>
+</p>
+
+---
+
+**Jump to:** [What it is](#what-notetrace-is) · [Status](#status) · [Install](#install) · [Env vars](#env-vars)
+
+---
+
+## What NoteTrace is
+
+NoteTrace is a self-hosted alternative to Google Keep. Open it and start typing: notes, checklists, and reminders in a clean card grid, with the polish and a few of the advanced features that simple note apps leave out.
+
+It runs as a single Docker container on your own hardware, with a PWA for the browser and a native Android app for your phone. Fourth app in the Trace family alongside [NutriTrace](https://github.com/traceapps/nutritrace), [LiftTrace](https://github.com/traceapps/lifttrace), and [CookTrace](https://github.com/traceapps/cooktrace).
+
+## Principles
+
+- **Self-hosting is and will remain free.** The server, PWA, and source code will never be paywalled.
+- **No trackers, no analytics, no telemetry.** NoteTrace doesn't phone home; your usage is invisible to anyone but you.
+- **Your data stays on your hardware.** No central server, no cloud sync that can read it; nothing leaves your network unless you opt into a third-party integration (an AI provider, a push service).
+- **Open source under AGPL-3.0.** Every line that touches your data is readable.
+
+---
+
+## Status
+
+NoteTrace is in early development. The foundation it shares with the other Trace apps is in place:
+
+- **Accounts.** Multi-user with OIDC SSO (Authentik, Keycloak, Pocket ID, Authelia, and others).
+- **Backups.** Full-database zip, scheduled auto-backups, portable export, Android local-backup zip.
+- **Android app.** Offline local mode or server-connected differential sync.
+- **In-app updates.** Stable and Dev channels, same as the rest of the family.
+- **Trace AI.** Multi-provider assistant (Claude / OpenAI / Gemini / any OpenAI-compatible endpoint).
+- **Push notifications.** Apprise, Gotify, and ntfy.
+- **Integrations.** API tokens, webhooks, and an MCP endpoint.
+
+Planned for the first release candidate: the notes grid and quick capture, a rich editor that stores Markdown, checklists, pins, labels, colors, archive and trash, full-text search, version history, reminders, shared notes and lists, Google Takeout (Keep) import, and Markdown export. See [ROADMAP.md](ROADMAP.md).
+
+---
+
+## Apps
+
+- **Web (PWA).** Any modern browser. Add to home screen for a full-screen app-like experience.
+- **Android.** Signed APK on the [Releases page](https://github.com/traceapps/notetrace/releases/latest). Local mode is fully offline; connected mode syncs to your server.
+- **Wear OS.** Planned companion app for checklists, voice notes, and reminders.
+- **iOS.** Not currently available.
+
+---
+
+## Install
+
+Published to two registries with identical tag sets: `ghcr.io/traceapps/notetrace` (primary) and `traceapps/notetrace` on [Docker Hub](https://hub.docker.com/r/traceapps/notetrace) (mirror).
+
+Minimal `docker-compose.yml`:
+
+```yaml
+services:
+  notetrace:
+    image: ghcr.io/traceapps/notetrace:latest
+    container_name: notetrace
+    ports:
+      - "3004:3001"
+    volumes:
+      - ./data/db:/data/db
+      - ./data/uploads:/data/uploads
+    environment:
+      - JWT_SECRET=change-me-to-a-long-random-string
+      - DB_PATH=/data/db/notetrace.db
+      - UPLOADS_PATH=/data/uploads
+    restart: unless-stopped
+```
+
+Generate the JWT secret with `openssl rand -base64 48`, then:
+
+```bash
+docker compose up -d
+```
+
+Open `http://localhost:3004` and a first-run wizard walks you through creating an admin account. See [DEPLOY.md](DEPLOY.md) for the full walkthrough.
+
+---
+
+## Env vars
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `JWT_SECRET` | - | Signing key for auth tokens. Required when user management is on. |
+| `DB_PATH` | `/data/db/notetrace.db` | SQLite file inside the container. |
+| `UPLOADS_PATH` | `/data/uploads` | Uploaded images and server-side backups. |
+| `PORT` | `3001` | Port the server listens on inside the container. |
+| `BASE_URL` | - | Mount at a subpath, e.g. `/notetrace`. |
+| `LOG_LEVEL` | `info` | `error` \| `warn` \| `info` \| `debug`. |
+| `INSECURE_COOKIES` | unset | Set to `1` on plain-HTTP LAN deployments so the auth cookie isn't dropped. |
+| `MAX_SESSION_HOURS` | `8760` | Session-length cap in hours. Lower for shared / kiosk machines. |
+| `BACKUP_UPLOAD_MAX_MB` | `512` | Upload cap for restore-from-zip. |
+| `BACKUP_SCHEDULE` | - | `off` \| `daily` \| `weekly` \| `monthly`. Locks the UI field when set. |
+| `BACKUP_TIME` | - | Auto-backup time (HH:MM, container TZ). Locks the UI field. |
+| `BACKUP_RETENTION` | - | How many auto-backups to keep. |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` / `SMTP_SECURE` | - | Password reset + invite email. Without SMTP, invites fall back to a copyable link. |
+| `AI_PROVIDER` / `AI_API_KEY` / `AI_MODEL` / `AI_BASE_URL` / `AI_ENABLED` | - | Lock Trace to a server-side provider. |
+| `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` (or numbered `OIDC_PROVIDER_N_*`) | - | OIDC SSO provider(s). Env-defined providers are read-only in the UI. |
+| `MCP_ENABLED` / `MCP_WRITE_ENABLED` / `MCP_DESTROY_ENABLED` | unset | Model Context Protocol endpoint and its write / destructive tiers. |
+| `WEBHOOKS_ENABLED` | unset | Outgoing signed webhooks. |
+
+Env values take priority over Settings-UI values and lock the field for all users. The full annotated list is in [.env.example](.env.example).
+
+---
+
+## Data persistence
+
+Bind-mount two host directories: the SQLite database (`DB_PATH` dir) and uploads (`UPLOADS_PATH`, which also holds `uploads/backups/`). The container is stateless beyond these two volumes.
+
+## Updating
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Schema migrates on startup. Images are multi-arch (linux/amd64 + linux/arm64).
+
+---
+
+## Tech stack
+
+Svelte 5 (compat mode) + Vite 7 PWA · Capacitor 8 Android · Node.js + Express 5 + better-sqlite3 · JWT httpOnly cookies + OIDC 1.0 (PKCE + state + nonce) · multi-arch Docker via GitHub Actions → GHCR + Docker Hub.
+
+---
+
+## Trace family
+
+Part of the **TraceApps** family. Sister apps: [NutriTrace](https://github.com/traceapps/nutritrace) for nutrition tracking, [LiftTrace](https://github.com/traceapps/lifttrace) for weightlifting, [CookTrace](https://github.com/traceapps/cooktrace) for recipes and cooking. Docs for the family at [traceapps.github.io/docs](https://traceapps.github.io/docs/).
+
+---
+
+## More
+
+[ROADMAP.md](ROADMAP.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [PRIVACY.md](PRIVACY.md)
+
+## Support
+
+NoteTrace is free to self-host and always will be. It's built and maintained by one person; donations help cover real costs. Starring the repo helps with discoverability and costs nothing.
+
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Buy_me_a_coffee-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/traceapps)
+
+## License
+
+[AGPL-3.0](LICENSE): entire codebase including the Android app source.

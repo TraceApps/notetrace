@@ -1,0 +1,930 @@
+{
+  "nav": {
+    "notes":    "Notes",
+    "settings": "Settings"
+  },
+  "sync": {
+    "retry":            "Retry",
+    "retrying":         "Retrying…",
+    "dismiss_message":  "Dismiss sync message",
+    "error_title":      "Sync failed",
+    "connection": {
+      "server_fallback":  "server",
+      "no_network_title": "No network connection",
+      "cant_reach_title": "Can’t reach {host}",
+      "reconnect":        "Reconnect to the internet.",
+      "server_error":     "The server returned HTTP {status}. Try again shortly.",
+      "mobile_data":      "You’re connected through mobile data. This server may require your home Wi-Fi or VPN.",
+      "check_connection": "Check your Wi-Fi, VPN, or server.",
+      "saved_locally":    "Your changes are saved locally and will sync automatically."
+    }
+  },
+  "routes": {
+    "notes": {
+      "title": "Notes",
+      "empty_title": "No Notes Yet",
+      "empty_body": "Notes you create will show up here."
+    },
+    "recipes":  {
+      "title": "Recipes",
+      "search_placeholder": "Search recipes…",
+      "new_recipe": "New Recipe",
+      "empty_title": "No Recipes Yet",
+      "empty_desc": "Add your first recipe to get started.",
+      "create_cta": "Create a Recipe",
+      "no_match": "No recipes match \"{q}\"."
+    },
+    "pantry":   {
+      "title": "Pantry",
+      "search_placeholder": "Search pantry…",
+      "empty_title": "Pantry Is Empty",
+      "empty_desc": "Add ingredients here, or save a recipe. Every ingredient you use auto-populates the pantry.",
+      "add_item": "Add an Item",
+      "no_match": "No matches for \"{q}\"."
+    },
+    "diary":    {
+      "title": "Diary",
+      "empty_title": "Nothing Logged Yet",
+      "empty_desc": "Mark recipes as cooked from the recipe page, or plan one for a future date.",
+      "plan_cook": "Plan a Cook",
+      "no_matches_title": "No Matches",
+      "no_matches_desc": "No diary entries found for {name} in the current range.",
+      "this_recipe": "this recipe",
+      "clear_filter": "Clear Filter"
+    },
+    "shopping": {
+      "title": "Shopping",
+      "empty_title": "List Is Empty",
+      "empty_desc": "Add items above, or pull missing ingredients from a recipe.",
+      "add_from_recipe": "Add from Recipe",
+      "add_placeholder": "Add item…",
+      "group_by_label": "Group by",
+      "group_by_aisle": "By Aisle",
+      "group_by_recipe": "By Recipe",
+      "group_by_flat": "Flat",
+      "uncategorized": "Uncategorized",
+      "other": "Other",
+      "change_aisle": "Change Aisle",
+      "delete": "Delete",
+      "aisle_help": "Pick a known aisle or type a fresh label. Items added later from the same pantry category will use its default aisle automatically.",
+      "aisle_placeholder": "e.g. Produce, Dairy, Bakery…",
+      "aisle_set": "Set",
+      "aisle_none": "No aisle",
+      "hide_checked": "Hide checked",
+      "show_checked_n": "Show {n} checked"
+    },
+    "settings": { "title": "Settings" }
+  },
+  "common": {
+    "sign_out":     "Sign Out",
+    "log_out":      "Log Out",
+    "signing_out":  "Signing out…",
+    "experimental": "Experimental",
+    "hide":         "Hide",
+    "save":         "Save",
+    "saving":       "Saving…",
+    "cancel":       "Cancel",
+    "delete":       "Delete",
+    "back":         "Back",
+    "edit":         "Edit",
+    "done":         "Done",
+    "close":        "Close",
+    "clear":        "Clear",
+    "loading":      "Loading…",
+    "signed_in":    "Signed In",
+    "signed_out":   "Signed Out",
+    "linked":       "Linked",
+    "unlinked":     "Unlinked",
+    "admin":        "admin",
+    "errors": {
+      "cant_reach_server": "Could not reach server",
+      "failed":            "Failed",
+      "unlink_failed":     "Could not unlink"
+    }
+  },
+  "trace": {
+    "panel_label":         "AI coach chat",
+    "panel_sub":           "Your AI Notes Assistant",
+    "welcome_name":        "Hi, I'm {name}!",
+    "welcome_desc":        "Ask me to tidy a rough note, summarize something long, turn a thought into a checklist, or brainstorm ideas.",
+    "chip_tidy":           "Tidy a Note",
+    "chip_tidy_ask":       "Clean up this note so it reads clearly:",
+    "chip_summarize":      "Summarize",
+    "chip_summarize_ask":  "Summarize this in a few bullet points:",
+    "chip_list":           "Make a Checklist",
+    "chip_list_ask":       "Turn this into a checklist:",
+    "chip_ideas":          "Brainstorm",
+    "chip_ideas_ask":      "Help me brainstorm ideas for:",
+    "ask_placeholder":     "Ask {name}…",
+    "listening":           "Listening…",
+    "clear_conversation":  "Clear conversation",
+    "clear_confirm_title":   "Clear this conversation?",
+    "clear_confirm_message": "Messages in this conversation will be deleted. This can't be undone.",
+    "clear_confirm_ok":      "Clear",
+    "attach_image":        "Attach image"
+  },
+  "editor": {
+    "name_required":      "Name *",
+    "description":        "Description",
+    "rating":             "Rating",
+    "prep_min":           "Prep (min)",
+    "cook_min":           "Cook (min)",
+    "rest_min":           "Rest (min)",
+    "total_min":          "Total (min)",
+    "yield":              "Yield",
+    "category":           "Category",
+    "source_url":         "Source URL",
+    "video_url":          "Video URL",
+    "add_ingredient":     "Add Ingredient",
+    "add_step":           "Add Step",
+    "add_group":          "Add Group"
+  },
+  "recipe": {
+    "prep_time":          "Prep Time",
+    "cook_time":          "Cook Time",
+    "rest_time":          "Rest Time",
+    "total_time":         "Total Time",
+    "servings":           "Servings",
+    "serving_singular":   "Serving",
+    "ingredients":        "Ingredients",
+    "instructions":       "Instructions",
+    "kitchen_gear":       "Kitchen Gear",
+    "video_instructions": "Video Instructions",
+    "notes":              "Notes",
+    "nutrition":          "Nutrition",
+    "cook_history":       "Cook History",
+    "cook_mode":          "Cook Mode",
+    "tags":               "Tags"
+  },
+  "settings": {
+    "appearance": {
+      "section":          "Appearance",
+      "theme":            "Theme",
+      "accent_color":     "Accent Color",
+      "navigation_style": "Navigation Style"
+    },
+    "regional":           {
+      "section":  "Regional & Units",
+      "language": "Language"
+    },
+    "cooking":            { "section": "Cooking" },
+    "nutrition":          { "section": "Nutrition" },
+    "server_connection":  { "section": "Server Connection" },
+    "email":              { "section": "Email (SMTP)" },
+    "backup":             { "section": "Backup & Restore" },
+    "import":             { "section": "Import from Another App" },
+    "kitchens":           { "section": "Kitchens" },
+    "diagnostics":        { "section": "Diagnostics" },
+    "updates":            { "section": "Updates" },
+    "about":              { "section": "About" },
+    "support_dev":        { "section": "Support Development" },
+    "diary":              { "section": "Diary" },
+    "water":              { "section": "Water" },
+    "foods":              { "section": "Foods" },
+    "categories":         { "section": "Categories" },
+    "nutrients":          { "section": "Nutrients" },
+    "goals":              { "section": "Goals" },
+    "body_stats":         { "section": "Body Stats" },
+    "statistics":         { "section": "Statistics" },
+    "connected_services": { "section": "Food Sources" },
+    "ai":                 { "section": "AI Assistant" },
+    "notifications":      { "section": "Notifications" },
+    "wellness":           { "section": "Wellness" },
+    "sharing":            { "section": "Food Sharing" },
+    "profile_hero": {
+      "label_fallback":  "My Profile",
+      "subtitle_empty":  "Tap to add your name and photo"
+    },
+    "authentication":     { "section": "Authentication" },
+    "apitokens":          { "section": "API Tokens" },
+    "webhooks":           { "section": "Webhooks" },
+    "users":              {
+      "section":              "Users",
+      "users_heading":        "Users",
+      "add_user":             "+ Add User",
+      "username":             "Username",
+      "username_required":    "Username *",
+      "full_name":            "Full Name (Optional)",
+      "password_required":    "Password *",
+      "confirm_required":     "Confirm *",
+      "role":                 "Role",
+      "role_admin":           "admin",
+      "role_user":            "user",
+      "role_self_suffix":     "(you)",
+      "create":               "Create",
+      "creating":             "Creating…",
+      "delete_user_title":    "Delete {name}?",
+      "delete_user_message":  "All of this user’s data — foods, meals, diary entries, settings — will be removed. This cannot be undone.",
+      "delete":               "Delete",
+      "promote_title":        "Promote {name}?",
+      "promote_message":      "They’ll be able to manage users, sharing, email config, and OIDC providers.",
+      "promote_confirm":      "Promote",
+      "demote_title":         "Demote {name}?",
+      "demote_message":       "They’ll lose admin access. You can promote them back later.",
+      "demote_confirm":       "Demote",
+      "reset_password":       "Reset Password",
+      "reset_password_prompt": "Set new password for {name}\n\n(Must be 8+ chars with upper, lower, number, and special character.)",
+      "invite_user":          "Invite User",
+      "invite_user_explainer": "Send a sign-up link so the user picks their own password. Recommended.",
+      "email_optional":       "Email (Optional)",
+      "send_invite":          "Send Invite",
+      "generate_link":        "Generate Invite Link",
+      "invite_sent":          "Invite sent",
+      "invite_sent_to":       "Invite sent to {email}",
+      "user_fallback":        "user",
+      "share_link_intro":     "Share this link:",
+      "copy":                 "Copy",
+      "copy_link":            "Copy Link",
+      "add_user_show":        "Add User Manually",
+      "add_user_hide":        "Hide Manual Add",
+      "add_user_explainer":   "You set the username and password yourself, then share them with the user. Useful when SMTP isn’t configured or for offline setups.",
+      "create_directly":      "Create User",
+      "session_duration":     "Session Duration",
+      "session_never":        "Never Expires",
+      "session_8h":           "8 hours",
+      "session_1d":           "1 day",
+      "session_7d":           "7 days",
+      "session_30d":          "30 days",
+      "session_90d":          "90 days",
+      "session_1y":           "1 year",
+      "save":                 "Save",
+      "disable_um":           "Disable User Management",
+      "disable_um_subtitle":  "Removes all user accounts and returns to single-user mode",
+      "disable_um_title":     "Disable User Management?",
+      "disable_um_message":   "This will remove all user accounts and their data cannot be recovered. The app will return to single-user mode.",
+      "disable_um_confirm":   "Disable & Delete All",
+      "enable_um":            "Enable User Management",
+      "enable_um_subtitle":   "Add multiple user accounts with separate data & settings",
+      "create_admin_account": "Create Admin Account",
+      "create_admin_explainer": "The first account is always admin. All existing food, meal, and diary data on this server will be assigned to it.",
+      "enable_create":        "Enable & Create Admin",
+      "enabling":             "Enabling…",
+      "toast_user_created":   "User added",
+      "toast_user_deleted":   "User deleted",
+      "toast_password_reset": "Password reset",
+      "toast_role_changed":   "{name} is now {role}",
+      "toast_um_enabled":     "User management enabled",
+      "toast_um_disabled":    "User management disabled",
+      "toast_invite_sent":    "Invite sent",
+      "toast_link_copied":    "Copied!",
+      "err_username_required": "Username is required",
+      "err_passwords_mismatch": "Passwords do not match",
+      "err_username_password_required": "Username and password required",
+      "err_registration_failed": "Registration failed",
+      "err_failed_to_add":    "Failed to add user",
+      "err_could_not_change_role": "Could not change role",
+      "err_could_not_reset_password": "Could not reset password",
+      "err_could_not_reach_server": "Could not reach server"
+    },
+    "server":             { "section": "Server Connection" }
+  },
+  "login": {
+    "subtitle":             "Sign in to your account",
+    "username":             "Username",
+    "username_placeholder": "Enter username",
+    "password":             "Password",
+    "password_placeholder": "Enter password",
+    "sign_in":              "Sign In",
+    "signing_in":           "Signing in…",
+    "forgot_password":      "Forgot Password?",
+    "locked_out":           "Locked Out?",
+    "sso_sign_in_with":     "Sign In with {provider}",
+    "sso_or":               "or",
+    "no_signin_methods":    "No sign-in methods available. Ask your administrator.",
+    "errors": {
+      "failed": "Login failed"
+    },
+    "recovery": {
+      "confirm":           "This will delete all user accounts. Your food & diary data will be kept. Continue?",
+      "explainer":         "If you never set up user accounts intentionally, you can disable user management. <strong>This will delete all user accounts.</strong> Your food &amp; diary data will be kept.",
+      "token_prompt":      "Enter the <code>RECOVERY_TOKEN</code> from your server environment:",
+      "token_placeholder": "Recovery token",
+      "action":            "Disable User Management & Reset",
+      "disabling":         "Disabling…",
+      "failed":            "Recovery failed",
+      "success":           "User management disabled — you are now in single-user mode",
+      "done":              "User management has been disabled.<br>Redirecting…"
+    }
+  },
+  "forgot_password": {
+    "title":             "Reset Password",
+    "intro":             "Enter your email address and we'll send you a link to reset your password.",
+    "email_label":       "Email Address",
+    "send_link":         "Send Reset Link",
+    "sending":           "Sending…",
+    "back_to_signin":    "Back to Sign In",
+    "sent":              "If an account exists for <strong>{email}</strong>, a reset link has been sent. Check your inbox."
+  },
+  "reset_password": {
+    "title":               "New Password",
+    "verifying":           "Verifying link…",
+    "invalid_link":        "This reset link is invalid or has expired.",
+    "request_new":         "Request a New Link",
+    "success":             "Password updated. Redirecting…",
+    "set_for":             "Set a new password for <strong>{username}</strong>",
+    "new_password":        "New Password",
+    "confirm_password":    "Confirm Password",
+    "password_placeholder": "8+ chars, upper, lower, number, symbol",
+    "submit":              "Set New Password",
+    "saving":              "Saving…",
+    "errors": {
+      "required": "Password is required",
+      "mismatch": "Passwords do not match",
+      "failed":   "Reset failed"
+    }
+  },
+  "profile": {
+    "title":                "Profile",
+    "personal_info":        "Personal Info",
+    "security":             "Security",
+    "change_photo":         "Change Photo",
+    "full_name":            "Full Name",
+    "full_name_placeholder": "Your full name",
+    "email_placeholder":    "Used for password resets",
+    "nickname":             "Nickname / Display Name",
+    "nickname_placeholder": "What should we call you?",
+    "birthday":             "Birthday",
+    "gender":               "Gender",
+    "gender_unset":         "Prefer not to say",
+    "change_password":      "Change Password",
+    "set_password":         "Set Password",
+    "current_password":     "Current Password",
+    "confirm_new_password": "Confirm New Password",
+    "saved":                "Profile saved",
+    "password_changed":     "Password changed",
+    "linked_accounts":      "Linked Accounts",
+    "no_linked_accounts":   "No identity providers linked yet.",
+    "link_with":            "Link with",
+    "unlink":               "Unlink",
+    "danger_zone":          "Danger Zone",
+    "delete_account":       "Delete My Account",
+    "delete_account_explainer": "Permanently remove your account and all associated data — foods, meals, diary, wellness, settings.",
+    "delete_account_title": "Delete Your Account?",
+    "delete_account_message": "Your foods, meals, diary, settings, and wellness data will be permanently removed. This cannot be undone.",
+    "delete_account_confirm": "Delete Account",
+    "deleting":             "Deleting…",
+    "account_deleted":      "Account deleted",
+    "errors": {
+      "save_failed":            "Could not save profile",
+      "upload_failed":          "Upload failed",
+      "password_change_failed": "Could not change password",
+      "delete_account_failed":  "Could not delete account"
+    }
+  },
+  "accept_invite": {
+    "title":                "Create Account",
+    "verifying":            "Verifying invite…",
+    "invalid_link":         "This invite link is invalid or has expired. Ask your admin for a new one.",
+    "success":              "Account created! Redirecting…",
+    "intro":                "You've been invited to NoteTrace. Choose a username and password to get started.",
+    "intro_with_email":     "You were invited as <strong>{email}</strong>. Choose a username and password to get started.",
+    "username_label":       "Username *",
+    "username_placeholder": "Choose a username",
+    "full_name_label":      "Full Name (Optional)",
+    "full_name_placeholder": "Your name",
+    "password_label":       "Password *",
+    "confirm_label":        "Confirm Password *",
+    "submit":               "Create Account",
+    "creating":             "Creating account…",
+    "errors": {
+      "username_required": "Username is required",
+      "failed":            "Failed to create account"
+    }
+  },
+  "settings_page": {
+    "toast": {
+      "copy_failed":            "Copy failed, select the text manually",
+      "no_log_file":            "No log file yet, turn on Diagnostic Mode and reproduce the issue first"
+    },
+    "profile_hero": {
+      "admin_badge":            "Admin",
+      "tap_to_setup":           "Tap to set up your profile"
+    },
+    "group": {
+      "display":                "Display",
+      "integrations":           "Integrations",
+      "admin":                  "Admin"
+    },
+    "appearance": {
+      "theme":                  "Theme",
+      "accent_color":           "Accent Color",
+      "navigation_style":       "Navigation Style",
+      "persistent_sidebar":     "Persistent Sidebar",
+      "persistent_sidebar_desc": "Sidebar stays open and shifts page content instead of overlaying it.",
+      "start_page":             "Start Page",
+      "reduce_motion":          "Reduce Motion",
+      "page_banners":           "Page Banners",
+      "page_banners_desc":      "Header style at the top of every page. Animated is a compact accent-gradient bar with a chosen motion style; Gradient is the same bar, static; Off is a plain glass header.",
+      "banner_animated":        "Animated",
+      "banner_gradient":        "Gradient",
+      "banner_off":             "Off",
+      "animation_style":        "Animation Style",
+      "animation_style_desc":   "Shimmer is a soft white sweep, Drift is a slow hue rotation, Pulse is a gentle breathing, Aurora is a soft accent-tinted cloud-of-light. All honour Reduce Motion.",
+      "anim_shimmer":           "Shimmer",
+      "anim_drift":             "Drift",
+      "anim_pulse":             "Pulse",
+      "anim_aurora":            "Aurora"
+    },
+    "regional": {
+      "language":               "Language",
+      "language_desc":          "UI language. A translation may lag one or two releases behind English; missing strings fall back to English.",
+      "date_format":            "Date Format",
+      "date_natural":           "D MMM YYYY",
+      "time_format":            "Time Format",
+      "measurement_system":     "Measurement System",
+      "imperial":               "Imperial",
+      "metric":                 "Metric",
+      "energy":                 "Energy"
+    },
+    "cooking": {
+      "default_servings":       "Default Servings",
+      "show_shared":            "Show Shared Recipes in My Main List",
+      "url_import_engine":      "URL Import Engine",
+      "url_engine_desc_standard_html": "<strong>Standard</strong> reads the page's schema.org/Recipe data. Free and fast; works on most major recipe sites.",
+      "url_engine_desc_enhanced_html": "<strong>Enhanced</strong> runs recipe-scrapers, which has site-specific extractors for ~300 popular sites and falls back to schema.org on everything else.",
+      "url_engine_desc_smart_html":  "<strong>Smart</strong> hands the page to your Trace AI. Slower and uses your AI quota, but recovers recipes from sites that block scrapers or hide their content in non-standard markup.",
+      "engine_standard":        "Standard",
+      "engine_enhanced":        "Enhanced",
+      "engine_enhanced_server_suffix": " (server required)",
+      "engine_smart":           "Smart",
+      "engine_smart_required_suffix": " (Trace AI required)",
+      "smart_note":             "Smart sends every URL import to your AI, which uses your provider's quota on every paste. Standard or Enhanced are free and handle most sites; consider setting Smart only as a fallback.",
+      "enhanced_fallback":      "Enhanced Fallback",
+      "enhanced_fallback_desc": "When the server is unreachable or recipe-scrapers isn't installed, fall back to this.",
+      "shopping_list":          "Shopping List",
+      "default_grouping":       "Default Grouping",
+      "group_by_aisle":         "By Aisle",
+      "group_by_recipe":        "By Recipe",
+      "group_by_flat":          "Flat",
+      "checked_items":          "Checked Items",
+      "sink_to_bottom":         "Sink to Bottom",
+      "hide":                   "Hide"
+    },
+    "pantry_search": {
+      "section":                "Pantry Search",
+      "default_source":         "Default Search Source",
+      "default_source_desc":    "Which source chip the Pantry page opens with. All fans out to every enabled database; My Pantry starts in your local library.",
+      "source_all":             "All",
+      "source_local":           "My Pantry"
+    },
+    "off": {
+      "section":                "Open Food Facts",
+      "enable":                 "Enable Open Food Facts",
+      "search_language":        "Search Language",
+      "search_country":         "Search Country",
+      "upload_country":         "Upload Country",
+      "auto":                   "Auto",
+      "account_username":       "Account Username",
+      "off_username_ph":        "OFF username",
+      "account_password":       "Account Password",
+      "off_password_ph":        "OFF password"
+    },
+    "usda": {
+      "section":                "USDA FoodData Central",
+      "enable":                 "Enable USDA FoodData",
+      "api_key":                "API Key",
+      "api_key_ph":             "Paste your USDA API key here"
+    },
+    "nutritrace": {
+      "section":                "NutriTrace"
+    },
+    "scanner": {
+      "section":                "Barcode Scanner",
+      "beep_on_scan":           "Beep on Scan"
+    },
+    "diag": {
+      "mode":                   "Diagnostic Mode",
+      "view_logs":              "View Diagnostic Logs",
+      "logs_desc_prefix":       "Recent log lines from the app's console. Useful for bug reports; copy or share into a ",
+      "logs_desc_github":       "GitHub issue",
+      "logs_desc_android":      " On Android with Diagnostic Mode on, you can also share the persisted log file or any captured crash report.",
+      "logs_desc_suffix":       ". Nothing is sent anywhere automatically.",
+      "crash_available":        "Crash report available"
+    },
+    "about": {
+      "app_name":               "NoteTrace",
+      "federation_prefix":      "Optional federation with ",
+      "federation_suffix":      " for nutrition tracking",
+      "family_prefix":          "Part of the ",
+      "family_suffix":          " family (with NutriTrace and LiftTrace)",
+      "support_dev":            "Support Development"
+    },
+    "custom_color": {
+      "saturation":             "Saturation",
+      "lightness":              "Lightness",
+      "hex_code":               "Hex Code",
+      "apply":                  "Apply Color"
+    }
+  },
+  "backup_page": {
+    "toast": {
+      "deleted":                "Deleted",
+      "restored_reloading":     "Restored, reloading…",
+      "all_data_cleared":       "All data cleared",
+      "clear_failed":           "Clear failed: {msg}",
+      "all_settings_cleared":   "All settings cleared",
+      "exported":               "Exported",
+      "backup_saved":           "Backup saved",
+      "imported_reloading":     "Imported, reloading",
+      "imported":               "Imported"
+    },
+    "full_backup":              "Full Backup",
+    "auto_backup":              "Auto Backup",
+    "env_lock_pill":            "Locked by env",
+    "env_lock_title":           "Locked by BACKUP_SCHEDULE / BACKUP_TIME / BACKUP_RETENTION env var",
+    "schedule":                 "Schedule",
+    "daily":                    "Daily",
+    "weekly":                   "Weekly",
+    "monthly":                  "Monthly",
+    "time":                     "Time",
+    "keep_last":                "Keep Last",
+    "col_name":                 "Name",
+    "col_created":              "Created",
+    "col_size":                 "Size",
+    "restore_from_zip":         "Restore From ZIP",
+    "portable_json":            "Portable JSON Export",
+    "export_json":              "Export JSON",
+    "import_json":              "Import JSON",
+    "danger_zone":              "Danger Zone",
+    "clear_all_data":           "Clear All Data",
+    "clear_all_settings":       "Clear All Settings"
+  },
+  "settings_email_ct": {
+    "toast": {
+      "smtp_host_required":      "SMTP test failed: host required",
+      "invalid_email":           "Enter a valid email address"
+    },
+    "hint":                      "Used for password resets and user invites",
+    "smtp_host":                 "SMTP Host",
+    "port":                      "Port",
+    "username":                  "Email or Username",
+    "username_ph":               "SMTP username or email",
+    "password":                  "Password",
+    "password_ph":               "SMTP password or app password",
+    "from_address":              "From Address",
+    "send_test_email":           "Send Test Email",
+    "cancel":                    "Cancel",
+    "send":                      "Send"
+  },
+  "settings_trace_ct": {
+    "toast": {
+      "fill_fields":             "Fill in provider, API key, and model first",
+      "connected":               "Trace AI connected, assistant is ready"
+    },
+    "enable_assistant":          "Enable Trace Assistant",
+    "provider":                  "Provider",
+    "base_url":                  "Base URL",
+    "base_url_desc":             "/v1/chat/completions endpoint",
+    "model":                     "Model",
+    "custom_model_id":           "Custom Model ID",
+    "assistant_name":            "Assistant Name",
+    "assistant_name_ph":         "Trace",
+    "chef_hat":                  "Chef Hat",
+    "smart_log":                 "Smart Log"
+  },
+  "settings_users_ct": {
+    "toast": {
+      "invite_revoked":          "Invite revoked",
+      "invite_email_or_blank":   "Enter a valid email or leave blank to generate a shareable link",
+      "cant_create_invite":      "Could not create invite"
+    },
+    "pending_invites":           "Pending Invites",
+    "require_strong_passwords":  "Require Strong Passwords",
+    "session_duration":          "Session Duration",
+    "session_never":             "Never Expires",
+    "disable_um":                "Disable User Management",
+    "enable_um":                 "Enable User Management",
+    "create_admin_account":      "Create Admin Account"
+  },
+  "settings_auth_extra": {
+    "toast": {
+      "issuer_client_required":     "Issuer URL and Client ID are required",
+      "redirect_required":          "At least one redirect URI is required",
+      "cant_reach_server":          "Could not reach server",
+      "provider_deleted":           "Provider deleted",
+      "need_active_provider":       "Add at least one active OIDC provider before disabling password login."
+    },
+    "user_mgmt_required":            "User Management Is Required",
+    "admin_only":                    "Admin Only",
+    "discovery_ok":                  "Discovery OK",
+    "discovery_failed":              "Discovery failed",
+    "provider_type":                 "Provider Type",
+    "display_name":                  "Display Name",
+    "scope":                         "Scope",
+    "token_endpoint_auth_method":    "Token Endpoint Auth Method",
+    "auto_link_desc_html":           "When the IdP says <code>email_verified=true</code> and the email matches an existing NoteTrace user, link them silently on first SSO sign-in. Recommended ON for any IdP you trust to verify emails.",
+    "provider_active":               "Provider Active",
+    "admin_group_value_ph":          "NoteTraceAdmins",
+    "cancel":                        "Cancel",
+    "allow_password_login":          "Allow Password Login",
+    "env_locked_html":               "<br /><em>Locked by <code>OIDC_ENABLE_EMAIL_PASSWORD_LOGIN</code> environment variable.</em>"
+  },
+  "settings_api_tokens_ct": {
+    "intro_before":    "Personal access tokens for external agents (Claude Desktop, Cursor, Codex",
+    "intro_dev":       "and other Model Context Protocol clients",
+    "intro_middle":    ") that connect to",
+    "intro_see":       "See",
+    "just_created": {
+      "title":   "Token created:",
+      "warn":    "Copy this now. It won't be shown again.",
+      "copy":    "Copy",
+      "saved":   "I've saved it"
+    },
+    "empty": {
+      "title": "No tokens yet",
+      "desc":  "Create one to let NutriTrace pull your recipes (read:recipes), or to let an MCP client (Claude Desktop, Cursor, Codex) read or update your recipes, pantry, shopping list, and cook diary."
+    },
+    "row": {
+      "scopes_label":  "Scopes:",
+      "scopes_none":   "none",
+      "never":         "never",
+      "just_now":      "just now",
+      "min_ago":       "{n}m ago",
+      "hr_ago":        "{n}h ago",
+      "day_ago":       "{n}d ago",
+      "last_used":     "last used {when}",
+      "expires":       "expires {when}",
+      "revoke_title":  "Revoke token"
+    },
+    "form": {
+      "new_token":     "New Token",
+      "name":          "Name",
+      "name_ph":       "e.g. claude-desktop",
+      "scopes":        "Scopes",
+      "expires_label": "Expires After (Days)",
+      "expires_ph":    "never",
+      "cancel":        "Cancel",
+      "create":        "Create",
+      "creating":      "Creating…"
+    },
+    "confirm": {
+      "revoke_title":   "Revoke \"{name}\"?",
+      "revoke_msg":     "Any client using this token will immediately lose access.",
+      "revoke_confirm": "Revoke"
+    },
+    "toast": {
+      "load_failed":     "Could not load tokens",
+      "scope_required":  "Pick at least one scope",
+      "name_required":   "Name is required",
+      "create_failed":   "Could not create token",
+      "revoke_failed":   "Could not revoke token",
+      "revoked":         "Token revoked",
+      "copied":          "Copied to clipboard",
+      "copy_failed":     "Could not copy"
+    }
+  },
+  "settings_webhooks": {
+    "intro": "Outgoing webhooks notify another service the instant something happens in NoteTrace: a recipe is cooked, the shopping list is fully checked off, or a pantry item runs out. Each webhook fires a signed HTTP POST to a URL you provide.",
+    "disabled_notice": "Webhooks are not enabled on this server. A webhook can still be created, but it won't fire until WEBHOOKS_ENABLED=1 is set.",
+    "just_created": {
+      "title": "Webhook created:",
+      "warn": "Copy this secret now. It will not be shown again, and you'll need it to verify the signature on deliveries.",
+      "copy": "Copy",
+      "saved": "I've saved it"
+    },
+    "empty": {
+      "title": "No webhooks yet",
+      "desc": "Create one to notify another service when something happens."
+    },
+    "row": {
+      "last_delivery": "last delivery {when}",
+      "never": "never",
+      "just_now": "just now",
+      "min_ago": "{n}m ago",
+      "hr_ago": "{n}h ago",
+      "day_ago": "{n}d ago",
+      "status_success": "delivered",
+      "status_failed": "failed",
+      "test_title": "Send a test event",
+      "enabled_title": "Enabled",
+      "delete_title": "Delete webhook"
+    },
+    "form": {
+      "new_webhook": "New Webhook",
+      "url": "Target URL *",
+      "url_ph": "https://example.com/webhook",
+      "events": "Events *",
+      "secret_label": "Secret (Optional)",
+      "secret_ph": "Leave empty to generate one",
+      "cancel": "Cancel",
+      "create": "Create Webhook",
+      "creating": "Creating…"
+    },
+    "confirm": {
+      "delete_title": "Delete this webhook?",
+      "delete_msg": "This cannot be undone. The target will stop receiving events immediately.",
+      "delete_confirm": "Delete"
+    },
+    "toast": {
+      "load_failed": "Could not load webhooks",
+      "url_required": "Enter a target URL",
+      "event_required": "Select at least one event",
+      "create_failed": "Could not create webhook",
+      "update_failed": "Could not update webhook",
+      "delete_failed": "Could not delete webhook",
+      "deleted": "Webhook deleted",
+      "test_failed": "Test delivery failed",
+      "test_delivered": "Test event delivered",
+      "copied": "Copied to clipboard",
+      "copy_failed": "Could not copy, select the text manually"
+    }
+  },
+  "settings_server_conn": {
+    "toast": {
+      "enter_url":               "Enter your server URL",
+      "enter_credentials":       "Enter your credentials",
+      "sync_failed":             "Sync failed: {reason}",
+      "sync_unknown":            "Unknown error",
+      "connected_reloading":     "Connected, reloading",
+      "synced":                  "Synced",
+      "pushed_all":              "Pushed all data",
+      "logged_out_reloading":    "Logged out, reloading",
+      "disconnected_reloading":  "Disconnected, reloading"
+    },
+    "state_connected":           "Connected",
+    "last_synced":               "Last Synced",
+    "state_local":               "Local Mode",
+    "server_url":                "Server URL",
+    "username":                  "Username",
+    "username_ph":               "Your username",
+    "password":                  "Password",
+    "password_ph":               "Your password",
+    "sync_options":              "Sync Options",
+    "upload_phone_to_server":    "Upload Phone to Server",
+    "download_server_to_phone":  "Download Server to Phone",
+    "merge_both":                "Merge Both",
+    "cancel":                    "Cancel",
+    "continue":                  "Continue"
+  },
+  "settings_notifications": {
+    "toast": {
+      "test_sent":                 "Test sent, check your push service.",
+      "not_supported":             "This browser does not support notifications.",
+      "permission_granted":        "Notification permission granted.",
+      "permission_denied":         "Permission denied. Enable it in browser settings."
+    },
+    "device_notifications":        "Device Notifications",
+    "enable_on_device":            "Enable on This Device",
+    "browser_permission":          "Browser Permission",
+    "push_service":                "Push Service",
+    "service":                     "Service",
+    "svc_none":                    "None",
+    "svc_apprise":                 "Apprise",
+    "svc_gotify":                  "Gotify",
+    "apprise_url":                 "Apprise URL",
+    "gotify_url":                  "Gotify URL",
+    "app_token":                   "App Token",
+    "topic":                       "Topic",
+    "send_test":                   "Send Test",
+    "reminders":                   "Reminders",
+    "note_reminders":              "Note Reminders",
+    "note_reminders_desc":         "Get a notification when a note's reminder time comes due."
+  },
+  "time_picker_ct": {
+    "hour":                      "Hour",
+    "minute":                    "Minute",
+    "cancel":                    "Cancel",
+    "set_time":                  "Set Time"
+  },
+  "image_picker_ct": {
+    "toast": {
+      "camera_denied":           "Camera access denied or unavailable."
+    },
+    "title":                     "Take Photo"
+  },
+  "icon_picker_ct": {
+    "summary":                   "Use a different Material Symbol",
+    "clear":                     "Clear"
+  },
+  "sidebar_ct": {
+    "brand":                     "NoteTrace"
+  },
+  "trace_ai_ct": {
+    "toast": {
+      "voice_unsupported":       "Voice input not supported in this browser",
+      "configure_ai":            "Configure Trace AI in Settings to use hold-to-talk",
+      "enable_smart_log":        "Enable Smart Log in Settings, Trace AI, to use hold-to-talk",
+      "voice_needs_https":       "Voice needs HTTPS. Plain HTTP blocks the mic, set up TLS or use the public domain.",
+      "voice_cancelled":         "Voice cancelled",
+      "trace_disabled":          "Trace is disabled. Enable it in Settings, Trace.",
+      "voice_unsupported_full":  "Voice input not supported in this browser. Try Chrome on desktop or mobile Safari/Chrome.",
+      "voice_needs_https_smart": "Voice needs HTTPS. Smart Log won't work over plain HTTP, set up TLS or use the public domain.",
+      "mic_denied":              "Microphone permission denied",
+      "pick_image":              "Pick an image file."
+    }
+  },
+  "profile_ct": {
+    "toast": {
+      "biometric_cancelled":     "Biometric verification was canceled or failed."
+    },
+    "biometric_signin":          "Sign In with Biometric"
+  },
+  "wizard_ct": {
+    "welcome":                   "Welcome to NoteTrace",
+    "get_started":               "Get Started",
+    "name_ph":                   "Your name",
+    "back":                      "Back",
+    "next":                      "Next",
+    "create_admin":              "Create Your Admin Account",
+    "enable_user_accounts":      "Enable User Accounts",
+    "admin_account":             "Admin Account",
+    "nickname":                  "Nickname",
+    "optional_ph":               "Optional",
+    "full_name":                 "Full Name",
+    "email":                     "Email",
+    "continue":                  "Continue",
+    "cooking_preferences":       "Cooking Preferences",
+    "measurement_system":        "Measurement System",
+    "default_servings":          "Default Servings",
+    "dietary_preferences":       "Dietary Preferences",
+    "open_notetrace":            "Open NoteTrace"
+  },
+  "native_setup_ct": {
+    "toast": {
+      "enter_url":               "Enter your server URL",
+      "enter_credentials":       "Enter your credentials",
+      "connected_to_server":     "Connected to server",
+      "cant_open_signin":        "Could not open sign-in browser"
+    },
+    "app_name":                  "NoteTrace",
+    "tagline":                   "Trace Every Bite",
+    "use_locally":               "Use Locally",
+    "connect_to_server":         "Connect to Server",
+    "server_url":                "Server URL",
+    "username":                  "Username",
+    "username_ph":               "Your username",
+    "password":                  "Password",
+    "password_ph":               "Your password"
+  },
+  "login_ct": {
+    "toast": {
+      "no_saved":                "No saved sign-in. Please use your password once first.",
+      "saved_expired":           "Your saved sign-in expired. Use your password to sign in.",
+      "biometric_failed":        "Biometric sign-in failed. Use your password instead."
+    },
+    "app_name":                  "NoteTrace",
+    "biometric_signin":          "Sign In with Biometric"
+  },
+  "updates": {
+    "current_version":       "Current Version",
+    "channel": {
+      "label":  "Update Channel",
+      "stable": "Stable",
+      "dev":    "Dev",
+      "help":   "Stable tracks tagged releases. Dev is the rolling development build; expect bugs."
+    },
+    "auto_check":            "Automatically Check for Updates",
+    "auto_check_desc":       "Check for new releases in the background.",
+    "interval": {
+      "label":       "Check Frequency",
+      "desc":        "How often the app checks for a new release when open. Manual only turns off all auto-checks.",
+      "hourly":      "Every Hour",
+      "every_4h":    "Every 4 Hours",
+      "every_12h":   "Every 12 Hours",
+      "daily":       "Once a Day",
+      "manual":      "Manual Only"
+    },
+    "available_generic": "A New Version Is Available",
+    "banner_reload":     "Reload",
+    "last_checked":          "Last Checked",
+    "last_checked_never":    "Never",
+    "check_now":             "Check Now",
+    "checking":              "Checking…",
+    "check_failed":          "Update check failed. Try again in a moment.",
+    "up_to_date":            "You're on the Latest Version",
+    "available_headline":    "{version} Is Available",
+    "released":              "Released {when}",
+    "release_notes_heading": "What's New",
+    "no_release_notes":      "No release notes were published for this build.",
+    "view_on_github":        "View on GitHub",
+    "download_install":      "Download & Install",
+    "downloading":           "Downloading… {percent}%",
+    "install_starting":      "Opening installer…",
+    "install_failed":        "Install failed. Try again.",
+    "skip_this_version":     "Skip This Version",
+    "no_apk_asset":          "This release has no APK asset attached.",
+    "banner_cta":            "Tap to view what's new and install.",
+    "banner_view":           "View",
+    "storage": {
+      "heading":     "Cached Update APKs",
+      "empty":       "No cached APKs. Cleanup passes ran successfully.",
+      "clear_now":   "Clear Now",
+      "clearing":    "Clearing…",
+      "cleared":     "Cache cleared."
+    },
+    "server": {
+      "heading":          "Server",
+      "headline":         "Server update {latest} available",
+      "behind_desc":      "Update available: {latest}",
+      "current_desc":     "You're on the latest release",
+      "versions":         "Server is on {current}. Latest release: {latest}.",
+      "available_chip":   "Update Available",
+      "instructions":     "To update the server, run on the host machine:",
+      "copy_command":     "Copy Command",
+      "copied":           "Copied to clipboard.",
+      "copy_failed":      "Copy failed. Copy the command manually.",
+      "view_notes":       "View Release Notes",
+      "channel_note":     "To switch server channels, change your docker-compose.yml image tag (:latest, :1.0, :1, :dev) and re-run docker-compose pull && docker-compose up -d."
+    }
+  }
+}

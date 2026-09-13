@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">NoteTrace</string>
+    <string name="title_activity_main">NoteTrace</string>
+    <string name="package_name">com.notetrace.app</string>
+    <string name="custom_url_scheme">com.notetrace.app</string>
+</resources>
