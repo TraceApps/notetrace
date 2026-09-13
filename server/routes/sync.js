@@ -60,7 +60,7 @@ const TABLES = {
   notes: {
     cols: [
       'title', 'body_md', 'kind', 'color', 'pinned', 'archived',
-      'trashed_at', 'reminder_at', 'reminder_rrule',
+      'trashed_at', 'reminder_at', 'reminder_rrule', 'reminder_tz',
     ],
     parents: {},
     softDelete: true,

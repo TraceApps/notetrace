@@ -47,6 +47,7 @@ const SCHEMA = `
     trashed_at     TEXT,
     reminder_at    TEXT,
     reminder_rrule TEXT,
+    reminder_tz    TEXT,
     created_at     TEXT DEFAULT (datetime('now')),
     updated_at     TEXT DEFAULT (datetime('now')),
     deleted_at     TEXT DEFAULT NULL,

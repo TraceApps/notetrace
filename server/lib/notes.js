@@ -18,6 +18,7 @@ import { dispatchWebhookEvent } from './webhooks.js';
 export const NOTE_KINDS = new Set(['text', 'checklist']);
 export const NOTE_COLORS = new Set(['plum', 'moss', 'clay', 'tide', 'sand', 'rose']);
 export const TRASH_RETENTION_DAYS = 30;
+export const REMINDER_REPEATS = new Set(['daily', 'weekly', 'monthly', 'yearly']);
 
 // A new version is only written when the previous one is older than
 // this, so one editing session produces one restore point instead of
@@ -94,6 +95,7 @@ function _hydrate(rows) {
     trashed_at: r.trashed_at,
     reminder_at: r.reminder_at,
     reminder_rrule: r.reminder_rrule,
+    reminder_tz: r.reminder_tz,
     created_at: r.created_at,
     updated_at: r.updated_at,
     labels: labels.get(r.id) || [],
@@ -109,7 +111,7 @@ export function ftsQuery(q) {
 
 /**
  * List notes for a view.
- *   view: 'notes' (default) | 'archive' | 'trash'
+ *   view: 'notes' (default) | 'archive' | 'trash' | 'reminders'
  *   labelId: only notes carrying this label
  *   q: full-text search across title, body and checklist items
  */
@@ -117,7 +119,9 @@ export function listNotes(u, { view = 'notes', labelId = null, q = '' } = {}) {
   const where = [userClause(u, 'n.user_id'), 'n.deleted_at IS NULL'];
   const args = [...userArgs(u)];
   if (view === 'trash') where.push('n.trashed_at IS NOT NULL');
-  else {
+  else if (view === 'reminders') {
+    where.push('n.trashed_at IS NULL', 'n.reminder_at IS NOT NULL');
+  } else {
     where.push('n.trashed_at IS NULL');
     where.push(view === 'archive' ? 'n.archived = 1' : 'n.archived = 0');
   }
@@ -132,7 +136,9 @@ export function listNotes(u, { view = 'notes', labelId = null, q = '' } = {}) {
     where.push('notes_fts MATCH ?');
     args.push(match);
   }
-  const order = view === 'notes' ? 'n.pinned DESC, n.updated_at DESC' : 'n.updated_at DESC';
+  const order = view === 'notes' ? 'n.pinned DESC, n.updated_at DESC'
+    : view === 'reminders' ? 'n.reminder_at ASC'
+    : 'n.updated_at DESC';
   const rows = db.prepare(
     `SELECT n.* FROM notes n${join} WHERE ${where.join(' AND ')} ORDER BY ${order}`
   ).all(...args);
@@ -225,6 +231,16 @@ export const restoreVersion = db.transaction((u, noteId, versionId) => {
 function _cleanTitle(v) { return String(v ?? '').slice(0, 1000); }
 function _cleanBody(v)  { return String(v ?? '').slice(0, 1_000_000); }
 function _cleanColor(v) { return NOTE_COLORS.has(v) ? v : null; }
+function _cleanReminderAt(v) {
+  if (v == null || v === '') return null;
+  const ms = tsMs(v);
+  return Number.isFinite(ms) ? new Date(ms).toISOString().replace('T', ' ').slice(0, 19) : null;
+}
+function _cleanRepeat(v) { return REMINDER_REPEATS.has(v) ? v : null; }
+function _cleanTz(v) {
+  if (typeof v !== 'string' || !v || v.length > 64) return null;
+  try { new Intl.DateTimeFormat('en-US', { timeZone: v }); return v; } catch { return null; }
+}
 
 function _upsertItem(u, noteId, it, ts) {
   const uuid = typeof it.uuid === 'string' && it.uuid ? it.uuid : randomUUID();
@@ -244,10 +260,12 @@ export const createNote = db.transaction((u, data = {}) => {
   const ts = now();
   const kind = NOTE_KINDS.has(data.kind) ? data.kind : 'text';
   const info = db.prepare(
-    `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived,
+                        reminder_at, reminder_rrule, reminder_tz, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(u, _cleanTitle(data.title), kind === 'text' ? _cleanBody(data.body_md) : '',
-        kind, _cleanColor(data.color), data.pinned ? 1 : 0, data.archived ? 1 : 0, ts, ts);
+        kind, _cleanColor(data.color), data.pinned ? 1 : 0, data.archived ? 1 : 0,
+        _cleanReminderAt(data.reminder_at), _cleanRepeat(data.reminder_rrule), _cleanTz(data.reminder_tz), ts, ts);
   const id = Number(info.lastInsertRowid);
   if (kind === 'checklist' && Array.isArray(data.items)) {
     data.items.forEach((it, i) => _upsertItem(u, id, { ...it, position: it.position ?? i + 1 }, ts));
@@ -276,6 +294,16 @@ export const updateNote = db.transaction((u, id, patch = {}) => {
     sets.push('archived = ?'); args.push(patch.archived ? 1 : 0);
     if (patch.archived) { sets.push('pinned = 0'); }
   }
+  if ('reminder_at' in patch) {
+    const at = _cleanReminderAt(patch.reminder_at);
+    sets.push('reminder_at = ?'); args.push(at);
+    if (!at) sets.push('reminder_rrule = NULL', 'reminder_tz = NULL');
+  }
+  const nextReminderAt = 'reminder_at' in patch ? _cleanReminderAt(patch.reminder_at) : row.reminder_at;
+  if ('reminder_rrule' in patch && nextReminderAt) {
+    sets.push('reminder_rrule = ?'); args.push(_cleanRepeat(patch.reminder_rrule));
+  }
+  if ('reminder_tz' in patch && nextReminderAt) { sets.push('reminder_tz = ?'); args.push(_cleanTz(patch.reminder_tz)); }
   const ts = now();
   if (sets.length) {
     db.prepare(`UPDATE notes SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).run(...args, ts, id);

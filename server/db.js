@@ -167,6 +167,7 @@ db.exec(`
     trashed_at     TEXT,
     reminder_at    TEXT,
     reminder_rrule TEXT,
+    reminder_tz    TEXT,
     created_at     TEXT DEFAULT (datetime('now')),
     updated_at     TEXT DEFAULT (datetime('now')),
     deleted_at     TEXT
@@ -274,6 +275,10 @@ db.exec(`
 function columnExists(table, col) {
   return db.prepare(`PRAGMA table_info(${table})`).all().some(r => r.name === col);
 }
+
+// Reminder repeats are evaluated in the timezone the reminder was set in,
+// so "daily at 8:00" stays at 8:00 across daylight-saving changes.
+if (!columnExists('notes', 'reminder_tz')) db.exec(`ALTER TABLE notes ADD COLUMN reminder_tz TEXT`);
 
 // /api/sync/pull SELECTs updated_at on every synced table, including
 // ai_chat_history. SQLite refuses non-constant DEFAULTs on ALTER ADD

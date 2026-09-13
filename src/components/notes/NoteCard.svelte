@@ -5,6 +5,7 @@
   import { markdownToPreview } from '../../lib/note-preview.js';
   import { noteColorStyle, colorDot } from '../../lib/note-colors.js';
   import { longpress } from '../../lib/long-press.js';
+  import ReminderChip from './ReminderChip.svelte';
 
   export let note;
   /** 'notes' | 'archive' | 'trash' controls which quick actions show. */
@@ -48,7 +49,7 @@
   use:longpress
   on:longpress={(e) => dispatch('menu', { note, x: e.detail.x, y: e.detail.y })}
 >
-  {#if view === 'notes'}
+  {#if view === 'notes' || view === 'reminders'}
     <button
       class="card-pin"
       class:pinned={note.pinned}
@@ -90,8 +91,9 @@
     <p class="card-body card-placeholder">{$_('notes.empty_note')}</p>
   {/if}
 
-  {#if noteLabels.length}
+  {#if noteLabels.length || note.reminder_at}
     <div class="card-chips">
+      {#if note.reminder_at}<ReminderChip {note} />{/if}
       {#each noteLabels as l (l.id)}
         <span class="chip"><span class="chip-dot" style="background:{colorDot(l.color)}"></span>{l.name}</span>
       {/each}
@@ -107,6 +109,9 @@
         <span class="material-symbols-rounded">delete_forever</span>
       </button>
     {:else}
+      <button class="card-act" title={$_('reminders.remind_me')} aria-label={$_('reminders.remind_me')} on:click={(e) => act(e, 'reminder')}>
+        <span class="material-symbols-rounded">notification_add</span>
+      </button>
       <button class="card-act" title={$_('notes.color')} aria-label={$_('notes.color')} on:click={(e) => act(e, 'color')}>
         <span class="material-symbols-rounded">palette</span>
       </button>

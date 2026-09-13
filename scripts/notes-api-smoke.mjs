@@ -139,6 +139,22 @@ ok(versions.some(v => v.reason === 'conflict' && v.title === 'Stale from phone')
 const pull = (await api('GET', '/api/sync/pull?since=1970-01-01')).json;
 ok(['notes', 'labels', 'checklist_items', 'note_labels'].every(k => Array.isArray(pull.tables[k])), 'pull returns all synced tables');
 
+console.log('reminders');
+let rn = (await api('POST', '/api/notes', { title: 'Call dentist', body_md: 'x' })).json;
+let r = (await api('PATCH', `/api/notes/${rn.id}`, { reminder_at: '2030-05-01T14:00:00.000Z', reminder_rrule: 'weekly', reminder_tz: 'America/New_York' })).json;
+ok(r.reminder_at === '2030-05-01 14:00:00' && r.reminder_rrule === 'weekly' && r.reminder_tz === 'America/New_York', 'reminder saved as UTC with repeat and zone');
+r = (await api('PATCH', `/api/notes/${rn.id}`, { reminder_rrule: 'hourly', reminder_tz: 'Not/AZone' })).json;
+ok(r.reminder_rrule === null && r.reminder_tz === null, 'unknown repeat and zone are dropped');
+const rnoAt = (await api('POST', '/api/notes', { title: 'No time' })).json;
+r = (await api('PATCH', `/api/notes/${rnoAt.id}`, { reminder_rrule: 'daily' })).json;
+ok(r.reminder_rrule === null, 'repeat without a reminder time is ignored');
+let rl = (await api('GET', '/api/notes?view=reminders')).json;
+ok(rl.some(x => x.id === rn.id) && !rl.some(x => x.id === rnoAt.id), 'reminders view lists only notes with a reminder');
+r = (await api('PATCH', `/api/notes/${rn.id}`, { reminder_at: null })).json;
+ok(r.reminder_at === null && r.reminder_rrule === null && r.reminder_tz === null, 'clearing the time clears repeat and zone');
+const sh = await fetch(`${B}/share-target?title=Hi&text=Some%20text&url=https%3A%2F%2Fexample.com`, { redirect: 'manual' });
+ok(sh.status === 303 && /#\/\?share=1&title=Hi&text=Some\+text&url=https/.test(sh.headers.get('location') || ''), 'share target redirects into the app');
+
 console.log('backup + export');
 const bk = (await api('POST', '/api/full-backup')).json;
 const rs = (await api('POST', `/api/full-backup/${bk.filename}/restore`)).json;

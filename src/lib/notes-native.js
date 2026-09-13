@@ -9,6 +9,7 @@
 import { getDb, LOCAL_USER_ID } from './db-native.js';
 
 export const NOTE_COLORS = ['plum', 'moss', 'clay', 'tide', 'sand', 'rose'];
+const REPEATS = ['daily', 'weekly', 'monthly', 'yearly'];
 const VERSION_SESSION_MS = 10 * 60 * 1000;
 const VERSION_KEEP_PER_NOTE = 50;
 
@@ -26,6 +27,11 @@ function _uuid() {
     const r = Math.random() * 16 | 0;
     return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
   });
+}
+
+function _reminderAt(v) {
+  const ms = _ms(v);
+  return Number.isFinite(ms) ? new Date(ms).toISOString().replace('T', ' ').slice(0, 19) : null;
 }
 
 async function _q(sql, params = []) {
@@ -75,6 +81,7 @@ async function _hydrate(rows) {
     trashed_at: r.trashed_at,
     reminder_at: r.reminder_at,
     reminder_rrule: r.reminder_rrule,
+    reminder_tz: r.reminder_tz,
     created_at: r.created_at,
     updated_at: r.updated_at,
     labels: labelMap.get(r.id) || [],
@@ -193,6 +200,7 @@ export const NotesNative = {
     const where = ['n.user_id = ?', 'n.deleted_at IS NULL'];
     const args = [LOCAL_USER_ID];
     if (view === 'trash') where.push('n.trashed_at IS NOT NULL');
+    else if (view === 'reminders') where.push('n.trashed_at IS NULL', 'n.reminder_at IS NOT NULL');
     else {
       where.push('n.trashed_at IS NULL');
       where.push(view === 'archive' ? 'n.archived = 1' : 'n.archived = 0');
@@ -202,7 +210,9 @@ export const NotesNative = {
       args.push(Number(label));
     }
     const search = _searchClause(q);
-    const order = view === 'notes' ? 'n.pinned DESC, n.updated_at DESC' : 'n.updated_at DESC';
+    const order = view === 'notes' ? 'n.pinned DESC, n.updated_at DESC'
+      : view === 'reminders' ? 'n.reminder_at ASC'
+      : 'n.updated_at DESC';
     const rows = await _q(
       `SELECT n.* FROM notes n WHERE ${where.join(' AND ')}${search.sql} ORDER BY ${order}`,
       [...args, ...search.args]);
@@ -217,10 +227,13 @@ export const NotesNative = {
     const ts = _now();
     const kind = data.kind === 'checklist' ? 'checklist' : 'text';
     const id = await _insert(
-      `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived, created_at, updated_at, sync_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+      `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived,
+                          reminder_at, reminder_rrule, reminder_tz, created_at, updated_at, sync_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
       [LOCAL_USER_ID, String(data.title ?? ''), kind === 'text' ? String(data.body_md ?? '') : '', kind,
-       NOTE_COLORS.includes(data.color) ? data.color : null, data.pinned ? 1 : 0, data.archived ? 1 : 0, ts, ts]);
+       NOTE_COLORS.includes(data.color) ? data.color : null, data.pinned ? 1 : 0, data.archived ? 1 : 0,
+       _reminderAt(data.reminder_at), REPEATS.includes(data.reminder_rrule) ? data.reminder_rrule : null,
+       data.reminder_at ? (data.reminder_tz || null) : null, ts, ts]);
     if (kind === 'checklist' && Array.isArray(data.items)) {
       for (let i = 0; i < data.items.length; i++) {
         await _upsertItem(id, { ...data.items[i], position: data.items[i].position ?? i + 1 }, ts);
@@ -247,6 +260,16 @@ export const NotesNative = {
       sets.push('archived = ?'); args.push(patch.archived ? 1 : 0);
       if (patch.archived) sets.push('pinned = 0');
     }
+    if ('reminder_at' in patch) {
+      const at = _reminderAt(patch.reminder_at);
+      sets.push('reminder_at = ?'); args.push(at);
+      if (!at) sets.push('reminder_rrule = NULL', 'reminder_tz = NULL');
+    }
+    const nextAt = 'reminder_at' in patch ? _reminderAt(patch.reminder_at) : row.reminder_at;
+    if ('reminder_rrule' in patch && nextAt) {
+      sets.push('reminder_rrule = ?'); args.push(REPEATS.includes(patch.reminder_rrule) ? patch.reminder_rrule : null);
+    }
+    if ('reminder_tz' in patch && nextAt) { sets.push('reminder_tz = ?'); args.push(patch.reminder_tz || null); }
     const ts = _now();
     if (sets.length) {
       await _run(`UPDATE notes SET ${sets.join(', ')}, updated_at = ?, sync_status = 'pending' WHERE id = ?`, [...args, ts, id]);

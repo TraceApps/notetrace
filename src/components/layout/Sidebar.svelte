@@ -36,6 +36,7 @@
 
   $: navItems = [
     { path: '/notes',    icon: 'sticky_note_2', label: $_('nav.notes')    },
+    { path: '/reminders', icon: 'notifications', label: $_('nav.reminders') },
     { path: '/archive',  icon: 'archive',       label: $_('nav.archive')  },
     { path: '/trash',    icon: 'delete',        label: $_('nav.trash')    },
   ];
