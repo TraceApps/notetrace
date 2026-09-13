@@ -86,6 +86,9 @@ async function _hydrate(rows) {
     updated_at: r.updated_at,
     labels: labelMap.get(r.id) || [],
     items: itemMap.get(r.id) || [],
+    share_role: r.share_role || 'owner',
+    share_owner: r.share_owner || null,
+    share_count: Number(r.share_count) || 0,
   }));
 }
 

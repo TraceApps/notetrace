@@ -467,6 +467,7 @@ async function pullChanges() {
   for (const arr of Object.values(body.tables || {})) {
     if (Array.isArray(arr)) pulled += arr.length;
   }
+  if (Array.isArray(body.revoked_notes)) pulled += body.revoked_notes.length;
   return { pulled };
 }
 

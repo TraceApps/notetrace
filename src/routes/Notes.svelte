@@ -24,6 +24,7 @@
   import ReminderPicker from '../components/notes/ReminderPicker.svelte';
   import { nextOccurrence, isPast } from '../lib/reminders.js';
   import { ensureReminderPermission, rescheduleReminders } from '../lib/note-reminders.js';
+  import { isOwner, canEdit } from '../lib/note-sharing.js';
   import { pendingShare, shareToNote } from '../lib/share-intent.js';
 
   export let params = {};
@@ -251,13 +252,13 @@
       ]
     : [
         ...(view === 'notes' ? [{ value: 'pin', label: menuNote.pinned ? $_('notes.unpin') : $_('notes.pin'), icon: 'keep' }] : []),
-        { value: 'reminder', label: $_('reminders.remind_me'), icon: 'notification_add' },
-        { value: 'color', label: $_('notes.color'), icon: 'palette' },
+        ...(isOwner(menuNote) ? [{ value: 'reminder', label: $_('reminders.remind_me'), icon: 'notification_add' }] : []),
+        ...(canEdit(menuNote) ? [{ value: 'color', label: $_('notes.color'), icon: 'palette' }] : []),
         { value: 'labels', label: $_('notes.labels'), icon: 'label' },
         view === 'archive'
           ? { value: 'unarchive', label: $_('notes.unarchive'), icon: 'unarchive' }
           : { value: 'archive', label: $_('notes.archive'), icon: 'archive' },
-        { value: 'trash', label: $_('notes.move_to_trash'), icon: 'delete', danger: true },
+        ...(isOwner(menuNote) ? [{ value: 'trash', label: $_('notes.move_to_trash'), icon: 'delete', danger: true }] : []),
       ];
 
   function onMenuSelect(e) {

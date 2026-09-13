@@ -48,6 +48,9 @@ const SCHEMA = `
     reminder_at    TEXT,
     reminder_rrule TEXT,
     reminder_tz    TEXT,
+    share_role     TEXT DEFAULT 'owner',
+    share_owner    TEXT,
+    share_count    INTEGER DEFAULT 0,
     created_at     TEXT DEFAULT (datetime('now')),
     updated_at     TEXT DEFAULT (datetime('now')),
     deleted_at     TEXT DEFAULT NULL,
@@ -208,6 +211,20 @@ export async function dbInit() {
   if (!isNative) return;
   await getDb();
   await _migrateAiChatUpdatedAt();
+  await _migrateShareColumns();
+}
+
+// Share fields came with note sharing; older installs add them here.
+// Server-managed: filled by pulls, never pushed.
+async function _migrateShareColumns() {
+  try {
+    const db = await getDb();
+    const info = await db.query(`PRAGMA table_info(notes)`);
+    const have = new Set((info?.values || []).map(c => c.name));
+    if (!have.has('share_role')) await db.run(`ALTER TABLE notes ADD COLUMN share_role TEXT DEFAULT 'owner'`);
+    if (!have.has('share_owner')) await db.run(`ALTER TABLE notes ADD COLUMN share_owner TEXT`);
+    if (!have.has('share_count')) await db.run(`ALTER TABLE notes ADD COLUMN share_count INTEGER DEFAULT 0`);
+  } catch { /* best-effort */ }
 }
 
 // Some SQLite versions refuse non-constant DEFAULTs on ALTER ADD
@@ -519,6 +536,19 @@ export async function dbApplyPull(payload) {
           [row.id, LOCAL_USER_ID, ...values]
         );
       }
+    }
+  }
+
+  // Shared notes this account can no longer see (removed, left, or the
+  // owner trashed or deleted them): drop the local copy and its rows.
+  if (Array.isArray(payload.revoked_notes)) {
+    for (const serverId of payload.revoked_notes) {
+      const local = (await db.query(`SELECT id FROM notes WHERE server_id = ?`, [serverId]))?.values?.[0];
+      if (!local) continue;
+      await db.run(`DELETE FROM checklist_items WHERE note_id = ?`, [local.id]);
+      await db.run(`DELETE FROM note_labels WHERE note_id = ?`, [local.id]);
+      await db.run(`DELETE FROM note_versions WHERE note_id = ?`, [local.id]);
+      await db.run(`DELETE FROM notes WHERE id = ?`, [local.id]);
     }
   }
 

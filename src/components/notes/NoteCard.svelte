@@ -6,6 +6,7 @@
   import { noteColorStyle, colorDot } from '../../lib/note-colors.js';
   import { longpress } from '../../lib/long-press.js';
   import ReminderChip from './ReminderChip.svelte';
+  import { isOwner, canEdit, isShared } from '../../lib/note-sharing.js';
 
   export let note;
   /** 'notes' | 'archive' | 'trash' controls which quick actions show. */
@@ -21,6 +22,9 @@
   $: hiddenOpen = openItems.length - shownItems.length;
   $: noteLabels = (note.labels || []).map(id => $labelsById.get(id)).filter(Boolean);
   $: empty = !note.title && !preview && !(note.items || []).length;
+  $: owner = isOwner(note);
+  $: editable = canEdit(note);
+  $: shared = isShared(note);
 
   function open() { dispatch('open', note); }
   function onKey(e) {
@@ -32,7 +36,7 @@
   }
   function toggleItem(e, item) {
     e.stopPropagation();
-    if (view === 'trash') return;
+    if (view === 'trash' || !editable) return;
     dispatch('toggleItem', { note, item });
   }
 </script>
@@ -71,7 +75,7 @@
     <ul class="card-items">
       {#each shownItems as item (item.uuid)}
         <li>
-          <button class="card-check" aria-label={$_('notes.check_item')} on:click={(e) => toggleItem(e, item)}></button>
+          <button class="card-check" aria-label={$_('notes.check_item')} disabled={!editable} on:click={(e) => toggleItem(e, item)}></button>
           <span class="card-item-text">{item.text}</span>
         </li>
       {/each}
@@ -91,8 +95,13 @@
     <p class="card-body card-placeholder">{$_('notes.empty_note')}</p>
   {/if}
 
-  {#if noteLabels.length || note.reminder_at}
+  {#if noteLabels.length || note.reminder_at || shared}
     <div class="card-chips">
+      {#if shared}
+        <span class="chip" title={owner ? $_('sharing.shared_with', { values: { count: note.share_count } }) : $_('sharing.shared_by', { values: { name: note.share_owner || '' } })}>
+          <span class="material-symbols-rounded chip-icon">group</span>{owner ? note.share_count : (note.share_owner || '')}
+        </span>
+      {/if}
       {#if note.reminder_at}<ReminderChip {note} />{/if}
       {#each noteLabels as l (l.id)}
         <span class="chip"><span class="chip-dot" style="background:{colorDot(l.color)}"></span>{l.name}</span>
@@ -109,20 +118,26 @@
         <span class="material-symbols-rounded">delete_forever</span>
       </button>
     {:else}
-      <button class="card-act" title={$_('reminders.remind_me')} aria-label={$_('reminders.remind_me')} on:click={(e) => act(e, 'reminder')}>
-        <span class="material-symbols-rounded">notification_add</span>
-      </button>
-      <button class="card-act" title={$_('notes.color')} aria-label={$_('notes.color')} on:click={(e) => act(e, 'color')}>
-        <span class="material-symbols-rounded">palette</span>
-      </button>
+      {#if owner}
+        <button class="card-act" title={$_('reminders.remind_me')} aria-label={$_('reminders.remind_me')} on:click={(e) => act(e, 'reminder')}>
+          <span class="material-symbols-rounded">notification_add</span>
+        </button>
+      {/if}
+      {#if editable}
+        <button class="card-act" title={$_('notes.color')} aria-label={$_('notes.color')} on:click={(e) => act(e, 'color')}>
+          <span class="material-symbols-rounded">palette</span>
+        </button>
+      {/if}
       <button class="card-act" title={view === 'archive' ? $_('notes.unarchive') : $_('notes.archive')}
         aria-label={view === 'archive' ? $_('notes.unarchive') : $_('notes.archive')}
         on:click={(e) => act(e, view === 'archive' ? 'unarchive' : 'archive')}>
         <span class="material-symbols-rounded">{view === 'archive' ? 'unarchive' : 'archive'}</span>
       </button>
-      <button class="card-act" title={$_('notes.move_to_trash')} aria-label={$_('notes.move_to_trash')} on:click={(e) => act(e, 'trash')}>
-        <span class="material-symbols-rounded">delete</span>
-      </button>
+      {#if owner}
+        <button class="card-act" title={$_('notes.move_to_trash')} aria-label={$_('notes.move_to_trash')} on:click={(e) => act(e, 'trash')}>
+          <span class="material-symbols-rounded">delete</span>
+        </button>
+      {/if}
     {/if}
   </div>
 </div>
@@ -194,6 +209,8 @@
     max-width: 100%;
   }
   .chip-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .chip-icon { font-size: 14px; margin-left: -2px; }
+  .card-check:disabled { opacity: 0.5; cursor: default; }
 
   .card-pin, .card-act {
     display: flex; align-items: center; justify-content: center;

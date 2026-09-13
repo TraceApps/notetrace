@@ -8,6 +8,8 @@
   import { showError, showSuccess } from '../../stores/toast.js';
 
   export let noteId;
+  /** False for view-only members of a shared note. */
+  export let canRestore = true;
   const dispatch = createEventDispatcher();
 
   let versions = [];
@@ -95,10 +97,12 @@
           {:else}
             <p class="h-text">{markdownToPreview(selected.body_md, 4000)}</p>
           {/if}
-          <button class="btn btn-primary h-restore" on:click={restore} disabled={busy}>
-            <span class="material-symbols-rounded">restore</span>
-            {$_('notes.version_restore_this')}
-          </button>
+          {#if canRestore}
+            <button class="btn btn-primary h-restore" on:click={restore} disabled={busy}>
+              <span class="material-symbols-rounded">restore</span>
+              {$_('notes.version_restore_this')}
+            </button>
+          {/if}
         </article>
       {/if}
     </div>

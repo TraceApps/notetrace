@@ -31,6 +31,8 @@
   import ReminderPicker from './ReminderPicker.svelte';
   import ReminderChip from './ReminderChip.svelte';
   import { ensureReminderPermission, rescheduleReminders } from '../../lib/note-reminders.js';
+  import ShareDialog from './ShareDialog.svelte';
+  import { sharingAvailable } from '../../lib/note-sharing.js';
 
   /** Existing note, or null to create one. */
   export let note = null;
@@ -58,6 +60,9 @@
   let reminderAt = note?.reminder_at ?? null;
   let reminderRepeat = note?.reminder_rrule ?? null;
   let reminderTz = note?.reminder_tz ?? null;
+  let shareRole = note?.share_role ?? 'owner';
+  let shareOwner = note?.share_owner ?? null;
+  let shareCount = note?.share_count ?? 0;
   let editorKey = 0;
   let touched = false;
 
@@ -68,11 +73,16 @@
   let queue = Promise.resolve();
   let saving = false;
   let showHistory = false;
-  let colorOpen = false, labelsOpen = false, reminderOpen = false;
-  let colorAnchor = null, labelsAnchor = null, reminderAnchor = null;
+  let colorOpen = false, labelsOpen = false, reminderOpen = false, shareOpen = false;
+  let colorAnchor = null, labelsAnchor = null, reminderAnchor = null, shareAnchor = null;
   let narrow = typeof window !== 'undefined' && window.innerWidth < 600;
 
   $: readOnly = trashed;
+  // Shared notes: 'view' members can't change content; reminders and
+  // trash belong to the owner.
+  $: isOwner = shareRole === 'owner';
+  $: contentLocked = readOnly || shareRole === 'view';
+  $: shared = shareRole !== 'owner' || shareCount > 0;
   $: chips = noteLabels.map(id => $labelsById.get(id)).filter(Boolean);
   $: reminderNote = { reminder_at: reminderAt, reminder_rrule: reminderRepeat, reminder_tz: reminderTz };
 
@@ -95,6 +105,9 @@
     reminderAt = n.reminder_at ?? null;
     reminderRepeat = n.reminder_rrule ?? null;
     reminderTz = n.reminder_tz ?? null;
+    shareRole = n.share_role ?? shareRole;
+    shareOwner = n.share_owner ?? null;
+    shareCount = n.share_count ?? shareCount;
   }
 
   /** Create the note on first content. Resolves to its id. */
@@ -298,7 +311,7 @@
   }
 
   function onKey(e) {
-    if (e.key === 'Escape' && !colorOpen && !labelsOpen && !reminderOpen) {
+    if (e.key === 'Escape' && !colorOpen && !labelsOpen && !reminderOpen && !shareOpen) {
       e.preventDefault();
       if (showHistory) showHistory = false;
       else close();
@@ -323,6 +336,20 @@
 
   function openColor(e) { colorAnchor = e.currentTarget.getBoundingClientRect(); colorOpen = true; }
   function openLabels(e) { labelsAnchor = e.currentTarget.getBoundingClientRect(); labelsOpen = true; }
+  async function openShare(e) {
+    shareAnchor = e.currentTarget.getBoundingClientRect();
+    await flushAll();
+    if (!noteId) {
+      if (isEmptyNote({ title, body_md: body, items })) { showInfo($_('sharing.empty_note')); return; }
+      await enqueue(ensureNote);
+    }
+    shareOpen = true;
+  }
+  function onLeft() {
+    shareOpen = false;
+    signalNotesChanged();
+    dispatch('close', { id: null });
+  }
 </script>
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
@@ -334,7 +361,7 @@
 
     {#if showHistory && noteId}
       <div class="editor-scroll">
-        <VersionHistory {noteId} on:close={() => showHistory = false} on:restored={onRestoredVersion} />
+        <VersionHistory {noteId} canRestore={!contentLocked} on:close={() => showHistory = false} on:restored={onRestoredVersion} />
       </div>
     {:else}
       <header class="editor-top">
@@ -349,7 +376,7 @@
           bind:this={titleEl}
           bind:value={title}
           placeholder={$_('notes.title_placeholder')}
-          readonly={readOnly}
+          readonly={contentLocked}
           maxlength="1000"
           on:input={scheduleText}
           on:keydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); kind === 'text' ? bodyRef?.focus() : null; } }}
@@ -365,18 +392,27 @@
       <div class="editor-scroll">
         {#key editorKey}
           {#if kind === 'text'}
-            <TipTapEditor bind:this={bodyRef} bind:value={body} editable={!readOnly}
+            <TipTapEditor bind:this={bodyRef} bind:value={body} editable={!contentLocked}
               placeholder={$_('notes.body_placeholder')} on:change={scheduleText} />
           {:else}
-            <ChecklistEditor bind:this={checklistRef} {items} editable={!readOnly}
+            <ChecklistEditor bind:this={checklistRef} {items} editable={!contentLocked}
               on:add={onItemAdd} on:update={onItemUpdate} on:delete={onItemDelete} on:reorder={onItemReorder} />
           {/if}
         {/key}
 
-        {#if chips.length || reminderAt}
+        {#if chips.length || reminderAt || shared}
           <div class="editor-chips">
+            {#if shared}
+              <button class="chip chip-share" on:click={openShare} disabled={!$sharingAvailable}>
+                <span class="material-symbols-rounded">group</span>
+                {shareRole === 'owner'
+                  ? $_('sharing.shared_with', { values: { count: shareCount } })
+                  : $_('sharing.shared_by', { values: { name: shareOwner || '' } })}
+                {#if shareRole === 'view'}<span class="chip-sub">{$_('sharing.can_view')}</span>{/if}
+              </button>
+            {/if}
             {#if reminderAt}
-              <ReminderChip note={reminderNote} size="md" clickable={!readOnly} removable={!readOnly}
+              <ReminderChip note={reminderNote} size="md" clickable={!readOnly && isOwner} removable={!readOnly && isOwner}
                 on:edit={openReminder} on:clear={clearReminder} />
             {/if}
             {#each chips as l (l.id)}
@@ -404,27 +440,40 @@
           <button class="btn btn-danger" on:click={deleteForever}>{$_('notes.delete_forever')}</button>
         {:else}
           <div class="bar-actions">
-            <button class="icon-btn" on:click={openReminder} title={$_('reminders.remind_me')} aria-label={$_('reminders.remind_me')}>
-              <span class="material-symbols-rounded">notification_add</span>
-            </button>
-            <button class="icon-btn" on:click={openColor} title={$_('notes.color')} aria-label={$_('notes.color')}>
-              <span class="material-symbols-rounded">palette</span>
-            </button>
+            {#if isOwner}
+              <button class="icon-btn" on:click={openReminder} title={$_('reminders.remind_me')} aria-label={$_('reminders.remind_me')}>
+                <span class="material-symbols-rounded">notification_add</span>
+              </button>
+            {/if}
+            {#if $sharingAvailable}
+              <button class="icon-btn" on:click={openShare} title={$_('sharing.share')} aria-label={$_('sharing.share')}>
+                <span class="material-symbols-rounded">person_add</span>
+              </button>
+            {/if}
+            {#if !contentLocked}
+              <button class="icon-btn" on:click={openColor} title={$_('notes.color')} aria-label={$_('notes.color')}>
+                <span class="material-symbols-rounded">palette</span>
+              </button>
+            {/if}
             <button class="icon-btn" on:click={openLabels} title={$_('notes.labels')} aria-label={$_('notes.labels')}>
               <span class="material-symbols-rounded">label</span>
             </button>
-            <button class="icon-btn" on:click={convert}
-              title={kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}
-              aria-label={kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}>
-              <span class="material-symbols-rounded">{kind === 'text' ? 'checklist' : 'notes'}</span>
-            </button>
+            {#if !contentLocked}
+              <button class="icon-btn" on:click={convert}
+                title={kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}
+                aria-label={kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}>
+                <span class="material-symbols-rounded">{kind === 'text' ? 'checklist' : 'notes'}</span>
+              </button>
+            {/if}
             <button class="icon-btn" on:click={archive}
               title={archived ? $_('notes.unarchive') : $_('notes.archive')} aria-label={archived ? $_('notes.unarchive') : $_('notes.archive')}>
               <span class="material-symbols-rounded">{archived ? 'unarchive' : 'archive'}</span>
             </button>
-            <button class="icon-btn" on:click={trash} title={$_('notes.move_to_trash')} aria-label={$_('notes.move_to_trash')}>
-              <span class="material-symbols-rounded">delete</span>
-            </button>
+            {#if isOwner}
+              <button class="icon-btn" on:click={trash} title={$_('notes.move_to_trash')} aria-label={$_('notes.move_to_trash')}>
+                <span class="material-symbols-rounded">delete</span>
+              </button>
+            {/if}
             {#if noteId}
               <button class="icon-btn" on:click={async () => { await flushAll(); showHistory = true; }}
                 title={$_('notes.version_history')} aria-label={$_('notes.version_history')}>
@@ -451,6 +500,11 @@
 <Popover bind:open={reminderOpen} anchor={reminderAnchor}>
   <ReminderPicker reminderAt={reminderAt} repeat={reminderRepeat} tz={reminderTz}
     on:set={(e) => setReminder(e.detail)} on:clear={clearReminder} />
+</Popover>
+<Popover bind:open={shareOpen} anchor={shareAnchor}>
+  {#if shareOpen && noteId}
+    <ShareDialog {noteId} on:changed={(e) => { shareCount = e.detail.count; touched = true; }} on:left={onLeft} />
+  {/if}
 </Popover>
 <Popover bind:open={labelsOpen} anchor={labelsAnchor}>
   <LabelPicker selected={noteLabels} on:change={(e) => setLabels(e.detail)} />
@@ -505,6 +559,11 @@
     font-size: 13px; font-weight: 500; color: var(--text-2);
   }
   .chip-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .chip-share { padding: 0 12px 0 9px; cursor: pointer; }
+  .chip-share:hover:not(:disabled) { background: color-mix(in srgb, var(--text-1) 11%, transparent); color: var(--text-1); }
+  .chip-share:disabled { cursor: default; }
+  .chip-share .material-symbols-rounded { font-size: 17px; }
+  .chip-sub { color: var(--text-3); font-weight: 400; }
   .chip-x { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
   .chip-x:hover { background: color-mix(in srgb, var(--text-1) 10%, transparent); color: var(--text-1); }
   .chip-x .material-symbols-rounded { font-size: 15px; }

@@ -190,6 +190,12 @@ const _NoteApiHttp = {
   deleteLabel(id)                { return this.del(`/api/labels/${id}`); },
   reorderLabels(ids)             { return this.put('/api/labels/order', { ids }); },
 
+  // Sharing
+  getMembers(noteId)             { return this.get(`/api/notes/${noteId}/members`); },
+  addMember(noteId, data)        { return this.post(`/api/notes/${noteId}/members`, data); },
+  updateMember(noteId, uid, data){ return this.patch(`/api/notes/${noteId}/members/${uid}`, data); },
+  removeMember(noteId, uid)      { return this.del(`/api/notes/${noteId}/members/${uid}`); },
+
   // Users (sharing picker)
   getUsersList()                 { return this.get('/api/auth/users/list'); },
 
@@ -216,6 +222,7 @@ import { NoteApiCached } from './api-cached.js';
 // views reflect the server.
 const SERVER_ONLY_METHODS = new Set([
   'getUsersList', 'getAppConfig',
+  'getMembers', 'addMember', 'updateMember', 'removeMember',
   // Low-level HTTP primitives, used by components that don't have a
   // dedicated NoteApi wrapper (invite list, session config, admin OIDC
   // CRUD, etc.). NoteApiNative stubs these to throw in pure local mode;
