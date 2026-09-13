@@ -33,6 +33,8 @@ import { Router } from 'express';
 import db from '../db.js';
 import { wrap } from '../logger.js';
 import { requireAuth, userMgmtActive } from '../middleware/auth.js';
+import { snapshotVersion, tsMs } from '../lib/notes.js';
+import { dispatchWebhookEvent } from '../lib/webhooks.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -42,14 +44,18 @@ const userClause = (u) => u == null ? 'user_id IS NULL' : 'user_id = ?';
 const userArgs   = (u) => u == null ? [] : [u];
 
 // ── Table specs ──────────────────────────────────────────────────────
-// `cols` — columns the client may WRITE via push. id / user_id /
+// `cols` - columns the client may WRITE via push. id / user_id /
 //          created_at / sync_status / server_id are server-managed on
-//          push. NOTE: the pull endpoint below still emits created_at
-//          separately so the client can preserve the original creation
-//          timestamp when it INSERTs the pulled row into its local DB.
-// `parents` — FK columns + the table they reference, used to rewrite
-//             client-local ids into server ids during a push.
-// `softDelete` — uses deleted_at instead of hard delete.
+//          push. The pull endpoint still emits created_at so the client
+//          can preserve the original creation timestamp locally.
+// `parents` - FK columns + the table they reference. The client sends
+//             FKs as server ids, except for parents created in the same
+//             push, which it lists in the row's `_local_fks` array so the
+//             server maps them through this push's client_id map.
+// `uniqueKey` - natural key used to find an existing row when the client
+//               has no server_id yet (two devices creating the same
+//               checklist item uuid or the same note/label link).
+// `softDelete` - uses deleted_at instead of hard delete.
 const TABLES = {
   notes: {
     cols: [
@@ -57,6 +63,23 @@ const TABLES = {
       'trashed_at', 'reminder_at', 'reminder_rrule',
     ],
     parents: {},
+    softDelete: true,
+  },
+  labels: {
+    cols: ['name', 'color', 'position'],
+    parents: {},
+    softDelete: true,
+  },
+  checklist_items: {
+    cols: ['uuid', 'note_id', 'text', 'checked', 'position'],
+    parents: { note_id: 'notes' },
+    uniqueKey: ['uuid'],
+    softDelete: true,
+  },
+  note_labels: {
+    cols: ['note_id', 'label_id'],
+    parents: { note_id: 'notes', label_id: 'labels' },
+    uniqueKey: ['note_id', 'label_id'],
     softDelete: true,
   },
   ai_chat_history: {
@@ -68,7 +91,7 @@ const TABLES = {
 
 // Process tables in dependency order so parents land first within a
 // single push and child FKs can resolve against the freshly-minted ids.
-const PUSH_ORDER = ['notes', 'ai_chat_history'];
+const PUSH_ORDER = ['notes', 'labels', 'checklist_items', 'note_labels', 'ai_chat_history'];
 
 // ── POST /push ────────────────────────────────────────────────────────
 router.post('/push', wrap((req, res) => {
@@ -85,28 +108,44 @@ router.post('/push', wrap((req, res) => {
     idMaps[name] = idMaps[name] || {};
     results[name] = [];
 
-    const updateSql = _buildUpdateSql(name, spec);
-
     const txn = db.transaction(() => {
       for (const row of rows) {
-        const translated = _translateParents(row, spec, idMaps);
-        const values = spec.cols.map(c => _coerce(translated[c]));
+        const translated = _translateParents(row, spec, idMaps, u);
+        if (!translated) continue; // unresolvable or foreign parent; client retries next sync
 
+        let existing = null;
         if (row.server_id) {
-          // Fetch the existing row to authorize the write.
-          const existing = db.prepare(
-            `SELECT * FROM ${name} WHERE id = ?`
-          ).get(row.server_id);
+          existing = db.prepare(`SELECT * FROM ${name} WHERE id = ?`).get(row.server_id);
           if (!existing) continue;
+        } else if (spec.uniqueKey) {
+          const where = spec.uniqueKey.map(k => `${k} = ?`).join(' AND ');
+          existing = db.prepare(`SELECT * FROM ${name} WHERE ${where}`).get(...spec.uniqueKey.map(k => translated[k])) || null;
+        }
+
+        if (existing) {
           if ((u == null && existing.user_id != null) || (u != null && existing.user_id !== u)) continue;
-          db.prepare(updateSql).run(
-            ...values,
-            translated.updated_at || _now(),
-            spec.softDelete ? (translated.deleted_at ?? null) : null,
-            row.server_id
-          );
-          results[name].push({ client_id: row.client_id, server_id: row.server_id });
-          idMaps[name][row.client_id] = row.server_id;
+          const incomingMs = tsMs(translated.updated_at);
+          const serverMs = tsMs(existing.updated_at);
+          const serverIsNewer = Number.isFinite(incomingMs) && Number.isFinite(serverMs) && serverMs > incomingMs;
+          if (name === 'notes') _noteVersioning(existing, translated, serverIsNewer);
+          if (serverIsNewer) {
+            // Re-stamp the winning row so this device's next pull sends it
+            // back down and replaces the stale local copy.
+            db.prepare(`UPDATE ${name} SET synced_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?`).run(existing.id);
+          } else {
+            // Columns the client didn't send keep their server value.
+            const present = spec.cols.filter(c => translated[c] !== undefined);
+            db.prepare(_buildUpdateSql(name, spec, present)).run(
+              ...present.map(c => _coerce(translated[c])),
+              translated.updated_at || _now(),
+              spec.softDelete ? (translated.deleted_at ?? null) : null,
+              existing.id
+            );
+          }
+          // Acked either way: when the server copy is newer the client
+          // marks its row synced and the pull brings the newer copy down.
+          results[name].push({ client_id: row.client_id, server_id: existing.id });
+          idMaps[name][row.client_id] = existing.id;
         } else {
           // Only bind columns the client actually sent, so omitted
           // columns fall back to their schema DEFAULTs instead of
@@ -118,9 +157,13 @@ router.post('/push', wrap((req, res) => {
             translated.updated_at || _now(),
             spec.softDelete ? (translated.deleted_at ?? null) : null
           );
-          const serverId = info.lastInsertRowid;
+          const serverId = Number(info.lastInsertRowid);
           results[name].push({ client_id: row.client_id, server_id: serverId });
           idMaps[name][row.client_id] = serverId;
+          if (name === 'notes' && !translated.deleted_at && u != null) {
+            try { dispatchWebhookEvent(u, 'note.created', { note_id: serverId, title: translated.title || '', kind: translated.kind || 'text' }); }
+            catch { /* never let a webhook failure block the sync */ }
+          }
         }
       }
     });
@@ -152,7 +195,9 @@ router.post('/push', wrap((req, res) => {
 router.get('/pull', wrap((req, res) => {
   const u = uid(req);
   const since = (typeof req.query.since === 'string' && req.query.since) || '1970-01-01T00:00:00';
-  const now = _now();
+  // Taken before the queries so a write racing this pull is picked up
+  // by the next one (>= below makes an overlap harmless: pulls are upserts).
+  const now = new Date().toISOString().replace('T', ' ').replace('Z', '');
 
   const out = {};
   for (const [name, spec] of Object.entries(TABLES)) {
@@ -177,14 +222,14 @@ router.get('/pull', wrap((req, res) => {
     const orderBy = selfRef ? ` ORDER BY ${selfRef[0]} ASC, id ASC` : '';
     out[name] = db.prepare(
       `SELECT ${cols.join(', ')} FROM ${name}
-        WHERE ${userClause(u)} AND updated_at > ?${orderBy}`
+        WHERE ${userClause(u)} AND synced_at >= ?${orderBy}`
     ).all(...userArgs(u), since);
   }
 
   // Settings: only the keys that changed since the last pull.
   out.settings = db.prepare(
     `SELECT key, value, updated_at FROM user_settings
-      WHERE ${userClause(u)} AND updated_at > ?`
+      WHERE ${userClause(u)} AND synced_at >= ?`
   ).all(...userArgs(u), since);
 
   res.json({ now, tables: out });
@@ -200,20 +245,44 @@ function _coerce(v) {
   return v;
 }
 
-function _translateParents(row, spec, idMaps) {
-  if (!spec.parents) return row;
+function _translateParents(row, spec, idMaps, u) {
+  if (!spec.parents || !Object.keys(spec.parents).length) return row;
   const out = { ...row };
+  const localFks = new Set(Array.isArray(row._local_fks) ? row._local_fks : []);
   for (const [fk, parentTable] of Object.entries(spec.parents)) {
     const raw = out[fk];
     if (raw == null) continue;
-    const map = idMaps[parentTable];
-    if (map && map[raw]) out[fk] = map[raw];
-    // else: leave as-is. If the FK matches an existing server row it'll
-    // resolve; otherwise the column either accepts NULL via ON DELETE
-    // SET NULL semantics or surfaces a constraint error the client
-    // retries on next sync.
+    if (localFks.has(fk)) {
+      const mapped = idMaps[parentTable]?.[raw];
+      if (!mapped) return null; // parent failed to push in this batch
+      out[fk] = mapped;
+      continue;
+    }
+    // A server id: the parent must exist and belong to the same owner,
+    // or a client could attach rows to someone else's note.
+    const parent = db.prepare(`SELECT user_id FROM ${parentTable} WHERE id = ?`).get(raw);
+    if (!parent) return null;
+    if ((u == null && parent.user_id != null) || (u != null && parent.user_id !== u)) return null;
   }
   return out;
+}
+
+// Notes never lose an edit to sync. When the server copy is newer, the
+// incoming content is kept as a 'conflict' version; when the incoming
+// copy wins, the server's previous content is snapshotted first.
+function _noteVersioning(existing, incoming, serverIsNewer) {
+  const changed = (incoming.title !== undefined && incoming.title !== existing.title)
+    || (incoming.body_md !== undefined && incoming.body_md !== existing.body_md);
+  if (!changed) return;
+  if (serverIsNewer) {
+    snapshotVersion(existing, 'conflict', {
+      title: incoming.title ?? existing.title,
+      body_md: incoming.body_md ?? existing.body_md,
+      kind: incoming.kind ?? existing.kind,
+    });
+  } else {
+    snapshotVersion(existing, 'edit');
+  }
 }
 
 function _buildInsertSql(table, spec, present = spec.cols) {
@@ -223,7 +292,7 @@ function _buildInsertSql(table, spec, present = spec.cols) {
   return `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${ph})`;
 }
 
-function _buildUpdateSql(table, spec) {
+function _buildUpdateSql(table, spec, present = spec.cols) {
   // FK columns keep the server's value when the client pushes NULL.
   // The client always sends its full row (SELECT * on pending rows),
   // so a mobile push whose local row hasn't yet picked up a PWA-side
@@ -233,7 +302,7 @@ function _buildUpdateSql(table, spec) {
   // routes, which use body.X !== undefined
   // semantics and correctly writes NULL when asked.
   const fkCols = new Set(Object.keys(spec.parents || {}));
-  const setCols = spec.cols.map(c => (
+  const setCols = present.map(c => (
     fkCols.has(c) ? `${c} = COALESCE(?, ${c})` : `${c} = ?`
   ));
   setCols.push('updated_at = ?');

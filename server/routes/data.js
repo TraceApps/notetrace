@@ -13,6 +13,10 @@ const uid = req => userMgmtActive() ? req.user.id : null;
 // they can still see in the UI.
 const TABLES = ['notes'];
 
+// Everything that hangs off notes, exported with them. Not touched by
+// DELETE / directly: trashing the notes is what the user asked for.
+const TABLES_NOTE_CHILDREN = ['labels', 'checklist_items', 'note_labels'];
+
 // User-owned tables that also carry deleted_at (soft-delete). Same
 // filter as TABLES on export; not touched by DELETE, which is scoped to
 // the primary content set only.
@@ -43,6 +47,16 @@ router.get('/export', wrap((req, res) => {
       ? db.prepare(`SELECT * FROM ${t} WHERE deleted_at IS NULL`).all()
       : db.prepare(`SELECT * FROM ${t} WHERE user_id = ? AND deleted_at IS NULL`).all(u);
   }
+
+  for (const t of TABLES_NOTE_CHILDREN) {
+    out[t] = u == null
+      ? db.prepare(`SELECT * FROM ${t} WHERE deleted_at IS NULL`).all()
+      : db.prepare(`SELECT * FROM ${t} WHERE user_id = ? AND deleted_at IS NULL`).all(u);
+  }
+  out.note_versions = db.prepare(
+    `SELECT v.* FROM note_versions v JOIN notes n ON n.id = v.note_id
+      WHERE ${u == null ? 'n.user_id IS NULL' : 'n.user_id = ?'} AND n.deleted_at IS NULL`
+  ).all(...(u == null ? [] : [u]));
 
   for (const t of TABLES_HARD) {
     out[t] = u == null

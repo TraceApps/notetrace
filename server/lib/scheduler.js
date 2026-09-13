@@ -2,7 +2,8 @@
  * scheduler.js — Server-side scheduled tasks for NoteTrace.
  *
  * Single setInterval that ticks every 15 min. Each tick runs
- * housekeeping (expired invite tokens) and the scheduled full backup.
+ * housekeeping (expired invite tokens, trash older than 30 days) and the
+ * scheduled full backup.
  * Note reminders (reminder_at / reminder_rrule, deduped through
  * notification_log) plug in here with the notes data layer.
  *
@@ -12,6 +13,7 @@
  */
 import db from '../db.js';
 import { logger } from '../logger.js';
+import { purgeExpiredTrash } from './notes.js';
 
 const TICK_MS = 15 * 60 * 1000; // 15 minutes
 let _interval = null;
@@ -46,6 +48,15 @@ async function runTick() {
     if (r.changes > 0) logger.debug?.(`[scheduler] purged ${r.changes} expired/used invite tokens`);
   } catch (e) {
     logger.debug?.(`[scheduler] invite cleanup error: ${e.message}`);
+  }
+
+  // Trash retention: notes trashed more than 30 days ago are deleted
+  // for good (tombstoned so the deletion syncs to every device).
+  try {
+    const n = purgeExpiredTrash();
+    if (n > 0) logger.info?.(`[scheduler] permanently deleted ${n} note(s) from trash`);
+  } catch (e) {
+    logger.debug?.(`[scheduler] trash purge error: ${e.message}`);
   }
 
   // Scheduled full backup (admin-global). Off by default; mirrors NT's

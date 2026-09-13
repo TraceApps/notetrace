@@ -13,7 +13,7 @@ import db from '../db.js';
 // There are two ways to become the first account (password registration and
 // OIDC first-login bootstrap), so this lives here rather than in either
 // route and both call it.
-export const CLAIM_NULL = ['notes', 'ai_chat_history', 'notification_log'];
+export const CLAIM_NULL = ['notes', 'labels', 'checklist_items', 'note_labels', 'ai_chat_history', 'notification_log'];
 
 const ORPHAN_EXTRA_COUNTS = [];
 

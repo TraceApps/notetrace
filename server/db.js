@@ -151,10 +151,6 @@ db.exec(`
 `);
 
 // ── Notes ──────────────────────────────────────────────────────────────────
-// Phase 0 shape: enough for sync, backup, and single-user claim to have a
-// real domain table to work against. Checklist items, labels, members,
-// versions, attachments and links arrive with the notes data layer.
-//
 // body_md is the source of truth (the editor stores Markdown). kind is
 // 'text' or 'checklist'. trashed_at marks a user-visible trash entry
 // (purged after 30 days); deleted_at is the sync tombstone.
@@ -178,7 +174,100 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_notes_user    ON notes(user_id);
   CREATE INDEX IF NOT EXISTS idx_notes_updated ON notes(updated_at);
   CREATE INDEX IF NOT EXISTS idx_notes_deleted ON notes(deleted_at);
+
+  -- One row per checklist item. uuid is client-generated and stable
+  -- across devices. Items are never replaced as a list: every add,
+  -- edit, check, reorder and delete touches only its own row, and a
+  -- delete is a deleted_at tombstone, so a device holding a stale copy
+  -- of the list can't wipe items another device added.
+  CREATE TABLE IF NOT EXISTS checklist_items (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid       TEXT NOT NULL UNIQUE,
+    user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    note_id    INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    text       TEXT NOT NULL DEFAULT '',
+    checked    INTEGER NOT NULL DEFAULT 0,
+    position   REAL NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    deleted_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_items_note    ON checklist_items(note_id);
+  CREATE INDEX IF NOT EXISTS idx_items_user    ON checklist_items(user_id);
+  CREATE INDEX IF NOT EXISTS idx_items_updated ON checklist_items(updated_at);
+
+  CREATE TABLE IF NOT EXISTS labels (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    name       TEXT NOT NULL,
+    color      TEXT,
+    position   INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    deleted_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_labels_user    ON labels(user_id);
+  CREATE INDEX IF NOT EXISTS idx_labels_updated ON labels(updated_at);
+
+  -- Removing a label from a note soft-deletes the link row so the
+  -- removal syncs; re-adding it revives the same row.
+  CREATE TABLE IF NOT EXISTS note_labels (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    note_id    INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    label_id   INTEGER NOT NULL REFERENCES labels(id) ON DELETE CASCADE,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    deleted_at TEXT,
+    UNIQUE (note_id, label_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_note_labels_label   ON note_labels(label_id);
+  CREATE INDEX IF NOT EXISTS idx_note_labels_updated ON note_labels(updated_at);
+
+  -- Snapshots of a note's earlier content. Written at edit-session
+  -- boundaries and whenever sync resolves a conflict, so no edit is ever
+  -- silently lost. Server-side only; not part of the sync payload.
+  CREATE TABLE IF NOT EXISTS note_versions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    note_id    INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    title      TEXT NOT NULL DEFAULT '',
+    body_md    TEXT NOT NULL DEFAULT '',
+    kind       TEXT NOT NULL DEFAULT 'text',
+    items_json TEXT,
+    reason     TEXT NOT NULL DEFAULT 'edit',
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_note_versions_note ON note_versions(note_id, created_at);
 `);
+
+// ── Full-text search ───────────────────────────────────────────────────────
+// Contentless-style FTS5 index keyed by note rowid, rebuilt per note by
+// triggers on notes and checklist_items. Triggers (not route code) keep
+// the index right for every write path: REST routes, sync push, restore.
+db.exec(`
+  CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+    title, body, items, tokenize = 'unicode61 remove_diacritics 2'
+  );
+`);
+{
+  const refresh = (noteIdExpr) => `
+    DELETE FROM notes_fts WHERE rowid = ${noteIdExpr};
+    INSERT INTO notes_fts (rowid, title, body, items)
+      SELECT n.id, n.title, n.body_md,
+             COALESCE((SELECT group_concat(ci.text, ' ') FROM checklist_items ci
+                        WHERE ci.note_id = n.id AND ci.deleted_at IS NULL), '')
+        FROM notes n WHERE n.id = ${noteIdExpr} AND n.deleted_at IS NULL;`;
+  db.exec(`
+    DROP TRIGGER IF EXISTS trg_notes_fts_upd;
+    DROP TRIGGER IF EXISTS trg_items_fts_upd;
+    CREATE TRIGGER IF NOT EXISTS trg_notes_fts_ins AFTER INSERT ON notes BEGIN ${refresh('NEW.id')} END;
+    CREATE TRIGGER IF NOT EXISTS trg_notes_fts_upd AFTER UPDATE OF title, body_md, deleted_at ON notes BEGIN ${refresh('NEW.id')} END;
+    CREATE TRIGGER IF NOT EXISTS trg_notes_fts_del AFTER DELETE ON notes BEGIN DELETE FROM notes_fts WHERE rowid = OLD.id; END;
+    CREATE TRIGGER IF NOT EXISTS trg_items_fts_ins AFTER INSERT ON checklist_items BEGIN ${refresh('NEW.note_id')} END;
+    CREATE TRIGGER IF NOT EXISTS trg_items_fts_upd AFTER UPDATE OF text, note_id, deleted_at ON checklist_items BEGIN ${refresh('NEW.note_id')} END;
+    CREATE TRIGGER IF NOT EXISTS trg_items_fts_del AFTER DELETE ON checklist_items BEGIN ${refresh('OLD.note_id')} END;
+  `);
+}
 
 // ── Migrations ─────────────────────────────────────────────────────────────
 // Idempotent: each block adds a column only if it doesn't already exist.
@@ -210,6 +299,34 @@ db.exec(`
     UPDATE ai_chat_history SET updated_at = datetime('now') WHERE id = NEW.id;
   END;
 `);
+
+// ── Sync cursor ────────────────────────────────────────────────────────────
+// synced_at is the SERVER's clock time of the last write to a row, stamped
+// by triggers so every write path (REST routes, sync push, restore) is
+// covered. /api/sync/pull filters on it. updated_at can't serve as the
+// pull cursor: a device stamps updated_at when the user edits, which may
+// be long before the edit reaches the server, so an offline edit could
+// land behind another device's last pull and never be sent to it.
+{
+  const STAMP = `strftime('%Y-%m-%d %H:%M:%f', 'now')`;
+  for (const t of ['notes', 'labels', 'checklist_items', 'note_labels', 'ai_chat_history']) {
+    if (!columnExists(t, 'synced_at')) db.exec(`ALTER TABLE ${t} ADD COLUMN synced_at TEXT`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_${t}_synced ON ${t}(synced_at)`);
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS trg_${t}_synced_ins AFTER INSERT ON ${t}
+      BEGIN UPDATE ${t} SET synced_at = ${STAMP} WHERE id = NEW.id; END;
+      CREATE TRIGGER IF NOT EXISTS trg_${t}_synced_upd AFTER UPDATE ON ${t}
+      BEGIN UPDATE ${t} SET synced_at = ${STAMP} WHERE id = NEW.id; END;
+    `);
+  }
+  if (!columnExists('user_settings', 'synced_at')) db.exec(`ALTER TABLE user_settings ADD COLUMN synced_at TEXT`);
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_user_settings_synced_ins AFTER INSERT ON user_settings
+    BEGIN UPDATE user_settings SET synced_at = ${STAMP} WHERE user_id IS NEW.user_id AND key = NEW.key; END;
+    CREATE TRIGGER IF NOT EXISTS trg_user_settings_synced_upd AFTER UPDATE ON user_settings
+    BEGIN UPDATE user_settings SET synced_at = ${STAMP} WHERE user_id IS NEW.user_id AND key = NEW.key; END;
+  `);
+}
 
 // ── Notification de-dupe log ───────────────────────────────────────────────
 // Records every notification the scheduler has fired so the next tick

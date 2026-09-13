@@ -1,7 +1,7 @@
 /**
  * full-backup.js — full DB + uploads ZIP. Mirrors NutriTrace's
- * implementation, scoped to NoteTrace's schema (notes / users /
- * settings / OIDC).
+ * implementation, scoped to NoteTrace's schema (notes, checklist items,
+ * labels, versions, users, settings, OIDC).
  *
  * Endpoints (admin-only):
  *   GET    /api/full-backup           — list backups on disk
@@ -190,6 +190,10 @@ function dumpDatabase() {
     app_config:      db.prepare('SELECT * FROM app_config').all(),
     ai_chat_history: db.prepare('SELECT * FROM ai_chat_history').all(),
     notes:           db.prepare('SELECT * FROM notes').all(),
+    labels:          _selectIfExists('labels'),
+    checklist_items: _selectIfExists('checklist_items'),
+    note_labels:     _selectIfExists('note_labels'),
+    note_versions:   _selectIfExists('note_versions'),
     oidc_providers:        _selectIfExists('oidc_providers'),
     user_oidc_links:       _selectIfExists('user_oidc_links'),
     // Admin-created invitations that have not been consumed yet.
@@ -218,6 +222,10 @@ function restoreFromZip(zip) {
     // tree restores.
     db.pragma('defer_foreign_keys = ON');
     // Wipe in dependency order, children before parents.
+    db.prepare('DELETE FROM note_labels').run();
+    db.prepare('DELETE FROM checklist_items').run();
+    db.prepare('DELETE FROM note_versions').run();
+    db.prepare('DELETE FROM labels').run();
     db.prepare('DELETE FROM notes').run();
     db.prepare('DELETE FROM ai_chat_history').run();
     db.prepare('DELETE FROM user_settings').run();
@@ -263,6 +271,10 @@ function restoreFromZip(zip) {
     }
     _bulkRestoreSchemaDriven('ai_chat_history', data.ai_chat_history);
     _bulkRestoreSchemaDriven('notes',           data.notes);
+    _bulkRestoreSchemaDriven('labels',          data.labels);
+    _bulkRestoreSchemaDriven('checklist_items', data.checklist_items);
+    _bulkRestoreSchemaDriven('note_labels',     data.note_labels);
+    _bulkRestoreSchemaDriven('note_versions',   data.note_versions);
 
     // Side tables. Schema-driven INSERTs (column list pulled from PRAGMA)
     // so a backup made on a slightly different schema version still
