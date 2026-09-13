@@ -1,0 +1,109 @@
+<script>
+  import { createEventDispatcher } from 'svelte';
+  import { _ } from 'svelte-i18n';
+  import { NoteApi } from '../../lib/api.js';
+  import { labels, refreshLabels } from '../../stores/notes.js';
+  import { colorDot } from '../../lib/note-colors.js';
+  import { showError } from '../../stores/toast.js';
+
+  /** Label ids currently on the note. */
+  export let selected = [];
+  const dispatch = createEventDispatcher();
+
+  let query = '';
+  let busy = false;
+
+  $: q = query.trim().toLowerCase();
+  $: filtered = $labels.filter(l => !q || l.name.toLowerCase().includes(q));
+  $: exact = $labels.some(l => l.name.toLowerCase() === q);
+
+  function toggle(id) {
+    const next = selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id];
+    dispatch('change', next);
+  }
+
+  async function create() {
+    const name = query.trim();
+    if (!name || exact || busy) return;
+    busy = true;
+    try {
+      const label = await NoteApi.createLabel({ name });
+      await refreshLabels();
+      query = '';
+      if (label?.id) dispatch('change', [...selected, label.id]);
+    } catch (e) {
+      showError(e.message || $_('notes.label_create_failed'));
+    } finally {
+      busy = false;
+    }
+  }
+
+  function onKey(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (!exact && q) create();
+      else if (filtered.length === 1) toggle(filtered[0].id);
+    }
+  }
+</script>
+
+<div class="label-picker">
+  <p class="lp-title">{$_('notes.label_note')}</p>
+  <div class="lp-search">
+    <span class="material-symbols-rounded">search</span>
+    <!-- svelte-ignore a11y-autofocus -->
+    <input autofocus placeholder={$_('notes.label_search')} bind:value={query} on:keydown={onKey} />
+  </div>
+  <ul class="lp-list">
+    {#each filtered as l (l.id)}
+      <li>
+        <label class="lp-row">
+          <input type="checkbox" checked={selected.includes(l.id)} on:change={() => toggle(l.id)} />
+          <span class="lp-dot" style="background:{colorDot(l.color)}"></span>
+          <span class="lp-name">{l.name}</span>
+        </label>
+      </li>
+    {/each}
+  </ul>
+  {#if q && !exact}
+    <button type="button" class="lp-create" on:click={create} disabled={busy}>
+      <span class="material-symbols-rounded">add</span>
+      {$_('notes.label_create', { values: { name: query.trim() } })}
+    </button>
+  {:else if !$labels.length}
+    <p class="lp-empty">{$_('notes.label_none_yet')}</p>
+  {/if}
+</div>
+
+<style>
+  .label-picker { display: flex; flex-direction: column; gap: 8px; width: 260px; max-width: 100%; }
+  .lp-title { font-size: 13px; font-weight: 600; color: var(--text-2); }
+  .lp-search {
+    display: flex; align-items: center; gap: 8px;
+    height: 38px; padding: 0 10px;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text-3);
+  }
+  .lp-search .material-symbols-rounded { font-size: 18px; }
+  .lp-search input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text-1); font-size: 14px; }
+  .lp-list { list-style: none; max-height: 240px; overflow-y: auto; margin: 0 -6px; }
+  .lp-row {
+    display: flex; align-items: center; gap: 10px;
+    min-height: 40px; padding: 0 6px;
+    border-radius: 8px; cursor: pointer;
+    font-size: 14px;
+  }
+  .lp-row:hover { background: color-mix(in srgb, var(--text-1) 6%, transparent); }
+  .lp-row input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .lp-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .lp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lp-create {
+    display: flex; align-items: center; gap: 8px;
+    min-height: 40px; padding: 0 6px;
+    border-radius: 8px;
+    color: var(--accent); font-size: 14px; font-weight: 500; text-align: left;
+  }
+  .lp-create:hover { background: var(--accent-dim); }
+  .lp-create .material-symbols-rounded { font-size: 19px; }
+  .lp-empty { font-size: 13px; color: var(--text-3); padding: 4px 0; }
+</style>

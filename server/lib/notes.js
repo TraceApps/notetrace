@@ -295,9 +295,11 @@ export const convertNote = db.transaction((u, id, kind) => {
       .map(l => l.trim())
       .filter(Boolean)
       .map(l => {
-        const m = l.match(/^[-*+]\s+\[([ xX])\]\s+(.*)$/);
-        if (m) return { text: m[2], checked: m[1].toLowerCase() === 'x' };
-        return { text: l.replace(/^([-*+]|\d+[.)])\s+/, ''), checked: false };
+        const task = l.match(/^[-*+]\s+\[([ xX])\]\s+(.*)$/);
+        if (task) return { text: task[2], checked: task[1].toLowerCase() === 'x' };
+        const bare = l.replace(/^([-*+]|\d+[.)])\s+/, '');
+        const struck = bare.match(/^~~(.+)~~$/);
+        return struck ? { text: struck[1], checked: true } : { text: bare, checked: false };
       });
     lines.forEach((it, i) => _upsertItem(u, id, { ...it, position: i + 1 }, ts));
     db.prepare(`UPDATE notes SET kind = 'checklist', body_md = '', updated_at = ? WHERE id = ?`).run(ts, id);
@@ -305,7 +307,7 @@ export const convertNote = db.transaction((u, id, kind) => {
     const items = db.prepare(
       `SELECT text, checked FROM checklist_items WHERE note_id = ? AND deleted_at IS NULL ORDER BY position, id`
     ).all(id);
-    const body = items.map(it => `- [${it.checked ? 'x' : ' '}] ${it.text}`).join('\n');
+    const body = items.map(it => it.checked ? `~~${it.text}~~` : it.text).join('\n\n');
     db.prepare(`UPDATE checklist_items SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND deleted_at IS NULL`)
       .run(ts, ts, id);
     db.prepare(`UPDATE notes SET kind = 'text', body_md = ?, updated_at = ? WHERE id = ?`).run(body, ts, id);

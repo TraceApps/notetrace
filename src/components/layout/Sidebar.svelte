@@ -9,6 +9,10 @@
   import { APP_VERSION } from '../../lib/version.js';
   import { updateAvailable } from '../../lib/updates.js';
   import { pwaUpdateReady } from '../../lib/pwa-update.js';
+  import { onMount } from 'svelte';
+  import { labels, refreshLabels } from '../../stores/notes.js';
+  import { colorDot } from '../../lib/note-colors.js';
+  import LabelManager from '../notes/LabelManager.svelte';
 
   export let open = false;
   export let persistent = false;
@@ -32,8 +36,13 @@
 
   $: navItems = [
     { path: '/notes',    icon: 'sticky_note_2', label: $_('nav.notes')    },
-    { path: '/settings', icon: 'settings',      label: $_('nav.settings') },
+    { path: '/archive',  icon: 'archive',       label: $_('nav.archive')  },
+    { path: '/trash',    icon: 'delete',        label: $_('nav.trash')    },
   ];
+  $: settingsItem = { path: '/settings', icon: 'settings', label: $_('nav.settings') };
+
+  let labelManagerOpen = false;
+  onMount(() => { refreshLabels(); });
 
   function go(path) {
     push(path);
@@ -113,6 +122,40 @@
           {/if}
         </button>
       {/each}
+
+      <div class="sidebar-group">
+        <span class="sidebar-group-label">{$_('nav.labels')}</span>
+        <button class="sidebar-group-action" on:click={() => labelManagerOpen = true}
+          title={$_('labels.edit_labels')} aria-label={$_('labels.edit_labels')}>
+          <span class="material-symbols-rounded">edit</span>
+        </button>
+      </div>
+      {#each $labels as l (l.id)}
+        <button class="sidebar-item sidebar-label-item" class:active={activePath === `/label/${l.id}`} on:click={() => go(`/label/${l.id}`)}>
+          <span class="label-dot-wrap"><span class="label-dot" style="background:{colorDot(l.color)}"></span></span>
+          <span class="sidebar-label">{l.name}</span>
+          {#if l.note_count}<span class="label-count">{l.note_count}</span>{/if}
+          {#if activePath === `/label/${l.id}`}<div class="active-indicator"></div>{/if}
+        </button>
+      {/each}
+      {#if !$labels.length}
+        <button class="sidebar-item sidebar-label-item muted" on:click={() => labelManagerOpen = true}>
+          <span class="material-symbols-rounded sidebar-icon">new_label</span>
+          <span class="sidebar-label">{$_('labels.create')}</span>
+        </button>
+      {/if}
+
+      <div class="sidebar-divider nav-divider"></div>
+      <button class="sidebar-item" class:active={isTabActive(settingsItem.path)} on:click={() => go(settingsItem.path)}>
+        <span class="material-symbols-rounded sidebar-icon">
+          {settingsItem.icon}
+          {#if $updateAvailable.available || $pwaUpdateReady}
+            <span class="nav-update-dot" aria-label="Update available"></span>
+          {/if}
+        </span>
+        <span class="sidebar-label">{settingsItem.label}</span>
+        {#if isTabActive(settingsItem.path)}<div class="active-indicator"></div>{/if}
+      </button>
     </nav>
 
     <div class="sidebar-footer">
@@ -139,6 +182,8 @@
     </div>
   </aside>
 {/if}
+
+<LabelManager bind:open={labelManagerOpen} />
 
 <style>
   .sidebar-backdrop {
@@ -207,6 +252,20 @@
     overflow-y: auto;
   }
 
+  .sidebar-group {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 4px 4px 14px;
+  }
+  .sidebar-group-label { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
+  .sidebar-group-action { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
+  .sidebar-group-action:hover { background: var(--surface-2); color: var(--text-1); }
+  .sidebar-group-action .material-symbols-rounded { font-size: 16px; }
+  .sidebar-label-item { padding-top: 9px !important; padding-bottom: 9px !important; font-size: 14px !important; }
+  .sidebar-label-item.muted { color: var(--text-3); }
+  .label-dot-wrap { width: 22px; display: flex; justify-content: center; flex-shrink: 0; }
+  .label-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .label-count { font-size: 12px; color: var(--text-3); }
+  .nav-divider { margin: 10px 6px; }
   .sidebar-item {
     display: flex;
     align-items: center;

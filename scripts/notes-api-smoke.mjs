@@ -80,7 +80,7 @@ ok(versions.length === 1, 'edits within a session do not add versions');
 n = (await api('POST', `/api/notes/${t.id}/versions/${versions[0].id}/restore`)).json;
 ok(n.body_md.includes('Arc card'), 'restore version');
 n = (await api('POST', `/api/notes/${c.id}/convert`, { kind: 'text' })).json;
-ok(n.kind === 'text' && n.body_md.includes('- [x] Limes') && n.items.length === 0, 'checklist to text keeps checked state');
+ok(n.kind === 'text' && n.body_md.includes('~~Limes~~') && n.items.length === 0, 'checklist to text keeps checked state as strikethrough');
 n = (await api('POST', `/api/notes/${c.id}/convert`, { kind: 'checklist' })).json;
 ok(n.kind === 'checklist' && n.items.length === 2 && n.items[0].checked, 'text to checklist round-trips');
 n = (await api('PATCH', `/api/notes/${t.id}`, { archived: true })).json;

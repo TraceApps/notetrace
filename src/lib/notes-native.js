@@ -264,15 +264,17 @@ export const NotesNative = {
     const ts = _now();
     if (kind === 'checklist') {
       const lines = String(row.body_md || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => {
-        const m = l.match(/^[-*+]\s+\[([ xX])\]\s+(.*)$/);
-        if (m) return { text: m[2], checked: m[1].toLowerCase() === 'x' };
-        return { text: l.replace(/^([-*+]|\d+[.)])\s+/, ''), checked: false };
+        const task = l.match(/^[-*+]\s+\[([ xX])\]\s+(.*)$/);
+        if (task) return { text: task[2], checked: task[1].toLowerCase() === 'x' };
+        const bare = l.replace(/^([-*+]|\d+[.)])\s+/, '');
+        const struck = bare.match(/^~~(.+)~~$/);
+        return struck ? { text: struck[1], checked: true } : { text: bare, checked: false };
       });
       for (let i = 0; i < lines.length; i++) await _upsertItem(id, { ...lines[i], position: i + 1 }, ts);
       await _run(`UPDATE notes SET kind = 'checklist', body_md = '', updated_at = ?, sync_status = 'pending' WHERE id = ?`, [ts, id]);
     } else {
       const items = await _q(`SELECT text, checked FROM checklist_items WHERE note_id = ? AND deleted_at IS NULL ORDER BY position, id`, [id]);
-      const body = items.map(it => `- [${it.checked ? 'x' : ' '}] ${it.text}`).join('\n');
+      const body = items.map(it => it.checked ? `~~${it.text}~~` : it.text).join('\n\n');
       await _tombstoneItems(id, ts);
       await _run(`UPDATE notes SET kind = 'text', body_md = ?, updated_at = ?, sync_status = 'pending' WHERE id = ?`, [body, ts, id]);
     }

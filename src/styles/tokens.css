@@ -46,6 +46,15 @@
 
   /* Theme-color for PWA chrome */
   --theme-chrome:  #0A0B0F;
+
+  /* Note colors: muted surfaces tuned so body text stays readable. */
+  --note-default-bg: var(--surface-1);  --note-default-border: var(--border);
+  --note-plum-bg:    #1B1524;           --note-plum-border:    rgba(190,150,255,0.16);
+  --note-moss-bg:    #131C17;           --note-moss-border:    rgba(120,220,160,0.14);
+  --note-clay-bg:    #1F1714;           --note-clay-border:    rgba(255,150,110,0.15);
+  --note-tide-bg:    #121A24;           --note-tide-border:    rgba(120,170,255,0.15);
+  --note-sand-bg:    #1D1B14;           --note-sand-border:    rgba(240,210,120,0.14);
+  --note-rose-bg:    #221419;           --note-rose-border:    rgba(255,130,170,0.15);
 }
 
 /* --- Light theme --- */
@@ -82,6 +91,14 @@
   --glass-surface: rgba(255, 255, 255, 0.88);
 
   --theme-chrome:  #F5F7FA;
+
+  --note-default-bg: var(--surface-1);  --note-default-border: var(--border);
+  --note-plum-bg:    #F1EAFB;           --note-plum-border:    rgba(124,92,224,0.22);
+  --note-moss-bg:    #E6F4EC;           --note-moss-border:    rgba(40,140,90,0.22);
+  --note-clay-bg:    #FBEBE3;           --note-clay-border:    rgba(200,100,60,0.22);
+  --note-tide-bg:    #E5EEFA;           --note-tide-border:    rgba(60,110,200,0.22);
+  --note-sand-bg:    #FAF3DD;           --note-sand-border:    rgba(180,140,40,0.24);
+  --note-rose-bg:    #FBE6EE;           --note-rose-border:    rgba(200,70,120,0.22);
 }
 
 /* --- Spacing & Shape --- */

@@ -8,6 +8,8 @@
   // active locale without needing to re-mount when Language changes.
   $: tabs = [
     { path: '/notes',    icon: 'sticky_note_2', label: $_('nav.notes')    },
+    { path: '/archive',  icon: 'archive',       label: $_('nav.archive')  },
+    { path: '/trash',    icon: 'delete',        label: $_('nav.trash')    },
     { path: '/settings', icon: 'settings',      label: $_('nav.settings') },
   ];
   $: activeIdx = (() => {

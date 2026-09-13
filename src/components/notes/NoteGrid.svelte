@@ -1,0 +1,53 @@
+<script>
+  import { onMount, onDestroy } from 'svelte';
+  import NoteCard from './NoteCard.svelte';
+
+  export let notes = [];
+  export let view = 'notes';
+
+  // Column count follows the grid's own width (not the viewport), so it
+  // stays right beside a pinned sidebar. Cards are dealt out row by row,
+  // which keeps reading order left to right like the source list.
+  let el;
+  let width = 0;
+  let ro;
+  const GAP = 16;
+
+  $: minCard = width < 560 ? 150 : 236;
+  $: gap = width < 560 ? 10 : GAP;
+  $: columns = Math.max(1, Math.min(6, Math.floor((width + gap) / (minCard + gap)) || 1));
+  $: cols = deal(notes, columns);
+
+  function deal(list, n) {
+    const out = Array.from({ length: n }, () => []);
+    list.forEach((note, i) => out[i % n].push(note));
+    return out;
+  }
+
+  onMount(() => {
+    width = el?.clientWidth || 0;
+    ro = new ResizeObserver(entries => { width = entries[0].contentRect.width; });
+    ro.observe(el);
+  });
+  onDestroy(() => ro?.disconnect());
+</script>
+
+<div class="note-grid" bind:this={el} style="--cols:{columns}; --gap:{gap}px">
+  {#each cols as col, ci (ci)}
+    <div class="note-col">
+      {#each col as note (note.id)}
+        <NoteCard {note} {view} on:open on:action on:toggleItem on:menu />
+      {/each}
+    </div>
+  {/each}
+</div>
+
+<style>
+  .note-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+    gap: var(--gap);
+    align-items: start;
+  }
+  .note-col { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
+</style>

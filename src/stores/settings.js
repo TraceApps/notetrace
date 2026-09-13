@@ -242,7 +242,7 @@ function createSettingStore(key, defaultValue) {
 // ── Device prefs (local-only) ──────────────────────────────────────────────
 export const appearance        = createSettingStore('appearance',        'system');
 export const navStyle          = createSettingStore('navStyle',          'both');
-export const sidebarPersistent = createSettingStore('sidebarPersistent', false);
+export const sidebarPersistent = createSettingStore('sidebarPersistent', true);
 export const disableAnimations = createSettingStore('disableAnimations', false);
 export const biometricLoginEnabled = createSettingStore('biometricLoginEnabled', false);
 // Force-mobile layout: keep the mobile single-column pattern even on

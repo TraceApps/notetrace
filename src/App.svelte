@@ -165,6 +165,9 @@
   const routes = {
     '/':                   Notes,
     '/notes':              Notes,
+    '/archive':            Notes,
+    '/trash':              Notes,
+    '/label/:id':          Notes,
     '/settings':           Settings,
     '/settings/:section':  Settings,
     '/wizard':             Wizard,
@@ -584,7 +587,8 @@
   </div>
 {/key}
 
-{#if showNav && ($navStyle === 'bottom' || $navStyle === 'both')}
+<!-- With the sidebar pinned on a wide screen, the tab bar would duplicate it. -->
+{#if showNav && ($navStyle === 'bottom' || ($navStyle === 'both' && !sidebarPinned))}
   <BottomNav />
 {/if}
 
