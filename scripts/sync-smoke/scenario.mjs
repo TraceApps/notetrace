@@ -1,5 +1,6 @@
 import * as A from './.build/devA/device.mjs';
 import * as B from './.build/devB/device.mjs';
+import * as C from './.build/devC/device.mjs';
 const B_URL = process.env.NOTETRACE_URL || 'http://localhost:3004';
 let f = 0; const ok = (c, m) => { console.log(c ? '  ok  ' : '  FAIL', m); if (!c) f++; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -64,5 +65,36 @@ await sleep(1100);
 await B.N.emptyTrash();
 await sync(B); await sync(A);
 ok((await A.N.getNotes({ view: 'trash' })).length === 0 && (await get('/api/notes?view=trash', tok)).length === 0, 'permanent delete syncs everywhere');
+
+// 6. Sharing: a second account's device receives, edits, and loses a shared note.
+const req = async (method, p, body, t) => (await fetch(B_URL + p, { method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + t }, body: body ? JSON.stringify(body) : undefined })).json();
+const inv = await req('POST', '/api/auth/invite', { role: 'user' }, tok);
+await post('/api/auth/accept-invite', { token: new URL(inv.inviteUrl.replace('/#/', '/')).searchParams.get('token'), username: 'sam', password: 'Share!Sync7', full_name: 'Sam' });
+const samTok = (await post('/api/auth/login', { username: 'sam', password: 'Share!Sync7' })).token;
+C.setToken(samTok); await C.dbInit();
+await sync(C);
+ok((await C.N.getNotes()).length === 0, 'C: second account starts with no notes');
+
+let shared = await A.N.createNote({ title: 'Camping list', kind: 'checklist', items: [{ text: 'Tent' }] });
+await sync(A);
+const sharedServer = (await get('/api/notes', tok)).find(n => n.title === 'Camping list');
+await req('POST', `/api/notes/${sharedServer.id}/members`, { username: 'sam', role: 'edit' }, tok);
+await sync(C);
+let nc = (await C.N.getNotes()).find(n => n.title === 'Camping list');
+ok(nc && nc.share_role === 'edit' && nc.share_owner === 'Sync' && nc.items.length === 1, `C: shared note arrives with role and items (${nc?.share_role}, owner ${nc?.share_owner})`);
+
+await sleep(1100);
+await C.N.addItem(nc.id, { text: 'Lantern' });
+await C.N.updateNote(nc.id, { pinned: true });
+await sync(C); await sync(A);
+shared = await A.N.getNote(shared.id);
+ok(shared.items.map(i => i.text).sort().join(',') === 'Lantern,Tent', 'A: owner device gets the item the member added offline');
+ok(!shared.pinned && shared.share_count === 1, 'A: member pin stays personal; owner sees it is shared with one person');
+
+await req('DELETE', `/api/notes/${sharedServer.id}/members/${(await req('GET', `/api/notes/${sharedServer.id}/members`, null, tok)).members[0].user_id}`, null, tok);
+await sync(C);
+ok(!(await C.N.getNotes()).some(n => n.title === 'Camping list'), 'C: removed member device drops the note');
+await sync(A);
+ok((await A.N.getNote(shared.id)).share_count === 0, 'A: owner device sees the note is no longer shared');
 
 console.log(f ? `${f} FAILED` : 'all passed'); process.exit(f ? 1 : 0);

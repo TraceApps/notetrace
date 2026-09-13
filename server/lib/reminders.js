@@ -106,3 +106,18 @@ export function isPast(reminderAt, repeat, from = new Date()) {
   const d = parseUtc(reminderAt);
   return !!d && d <= from;
 }
+
+// A server that was down when a reminder came due still delivers it if
+// it's back within this window; older ones are skipped as stale.
+export const LATE_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * The occurrence of a note's reminder that is due at `now` (passed, but
+ * within LATE_WINDOW_MS), or null.
+ */
+export function dueOccurrence(note, now = new Date()) {
+  const occ = nextOccurrence(note.reminder_at, note.reminder_rrule, note.reminder_tz, new Date(now.getTime() - LATE_WINDOW_MS));
+  if (!occ) return null;
+  const age = now.getTime() - occ.getTime();
+  return age >= 0 && age <= LATE_WINDOW_MS ? occ : null;
+}

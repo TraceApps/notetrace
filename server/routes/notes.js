@@ -92,6 +92,29 @@ router.delete('/:id/items/:uuid', wrap((req, res) => {
   return note ? res.json(note) : notFound(res);
 }));
 
+// ── Sharing ──────────────────────────────────────────────────────────
+// Needs user accounts (multi-user mode). The owner adds, changes, and
+// removes members; a member can remove themselves (leave).
+
+const sendResult = (res, r) => r.error ? res.status(r.status || 400).json({ error: r.error }) : res.json(r);
+
+router.get('/:id/members', wrap((req, res) => {
+  const r = Notes.listMembers(uid(req), idParam(req));
+  return r ? res.json(r) : notFound(res);
+}));
+
+router.post('/:id/members', wrap((req, res) => {
+  sendResult(res, Notes.addMember(uid(req), idParam(req), req.body || {}));
+}));
+
+router.patch('/:id/members/:userId', wrap((req, res) => {
+  sendResult(res, Notes.updateMember(uid(req), idParam(req), parseInt(req.params.userId, 10), req.body || {}));
+}));
+
+router.delete('/:id/members/:userId', wrap((req, res) => {
+  sendResult(res, Notes.removeMember(uid(req), idParam(req), parseInt(req.params.userId, 10)));
+}));
+
 // ── Versions ─────────────────────────────────────────────────────────
 
 router.get('/:id/versions', wrap((req, res) => {

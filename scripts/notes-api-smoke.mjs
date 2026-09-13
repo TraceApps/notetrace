@@ -155,6 +155,73 @@ ok(r.reminder_at === null && r.reminder_rrule === null && r.reminder_tz === null
 const sh = await fetch(`${B}/share-target?title=Hi&text=Some%20text&url=https%3A%2F%2Fexample.com`, { redirect: 'manual' });
 ok(sh.status === 303 && /#\/\?share=1&title=Hi&text=Some\+text&url=https/.test(sh.headers.get('location') || ''), 'share target redirects into the app');
 
+console.log('sharing');
+const inv = (await api('POST', '/api/auth/invite', { role: 'user' })).json;
+const invToken = new URL(inv.inviteUrl.replace('/#/', '/')).searchParams.get('token');
+await api('POST', '/api/auth/accept-invite', { token: invToken, username: 'sam', password: 'Share!Test9', full_name: 'Sam' });
+const ownerToken = token;
+const samToken = (await api('POST', '/api/auth/login', { username: 'sam', password: 'Share!Test9' })).json.token;
+const as = async (tok, ...a) => { const prev = token; token = tok; try { return await api(...a); } finally { token = prev; } };
+ok(!!samToken, 'second account signs in');
+
+const shared = (await api('POST', '/api/notes', { title: 'Trip packing', kind: 'checklist', items: [{ text: 'Passport' }] })).json;
+await api('PATCH', `/api/notes/${shared.id}`, { reminder_at: '2031-01-01T10:00:00Z' });
+let pullSince = (await as(samToken, 'GET', '/api/sync/pull?since=1970-01-01')).json.now;
+ok((await as(samToken, 'GET', `/api/notes/${shared.id}`)).status === 404, 'unshared note is private');
+let addRes = await api('POST', `/api/notes/${shared.id}/members`, { username: 'nobody' });
+ok(addRes.status === 404, 'sharing with an unknown username fails');
+addRes = await api('POST', `/api/notes/${shared.id}/members`, { username: 'SAM', role: 'edit' });
+ok(addRes.status === 200 && addRes.json.members.length === 1 && addRes.json.members[0].role === 'edit', 'owner shares with edit access');
+
+let samView = (await as(samToken, 'GET', `/api/notes/${shared.id}`)).json;
+ok(samView.share_role === 'edit' && samView.share_owner === 'Admin' && samView.reminder_at === null, 'member sees note with role and owner, no reminder');
+ok((await as(samToken, 'GET', '/api/notes')).json.some(x => x.id === shared.id), 'shared note is in the member list');
+const pull1 = (await as(samToken, 'GET', `/api/sync/pull?since=${encodeURIComponent(pullSince)}`)).json;
+ok(pull1.tables.notes.some(x => x.id === shared.id && x.share_role === 'edit') && pull1.tables.checklist_items.some(i => i.note_id === shared.id), 'member device pulls the shared note and its items');
+
+await as(samToken, 'POST', `/api/notes/${shared.id}/items`, { text: 'Charger' });
+await as(samToken, 'PATCH', `/api/notes/${shared.id}`, { pinned: true, title: 'Trip packing list', reminder_at: '2035-01-01T00:00:00Z' });
+let ownerView = (await api('GET', `/api/notes/${shared.id}`)).json;
+ok(ownerView.items.length === 2 && ownerView.title === 'Trip packing list', 'edit member changes title and items');
+ok(ownerView.pinned === false && ownerView.reminder_at === '2031-01-01 10:00:00' && ownerView.share_count === 1, 'member pin is personal and cannot change the reminder');
+ok((await as(samToken, 'GET', `/api/notes/${shared.id}`)).json.pinned === true, 'member sees their own pin');
+ok((await as(samToken, 'DELETE', `/api/notes/${shared.id}`)).status === 404, 'member cannot trash the note');
+
+const samLabel = (await as(samToken, 'POST', '/api/labels', { name: 'Travel' })).json;
+await as(samToken, 'PATCH', `/api/notes/${shared.id}`, { labels: [samLabel.id] });
+ok((await api('GET', `/api/notes/${shared.id}`)).json.labels.length === 0 && (await as(samToken, 'GET', `/api/notes/${shared.id}`)).json.labels.length === 1, 'labels on a shared note are personal');
+
+await api('PATCH', `/api/notes/${shared.id}/members/${addRes.json.members[0].user_id}`, { role: 'view' });
+const viewPatch = (await as(samToken, 'PATCH', `/api/notes/${shared.id}`, { title: 'Hijacked' })).json;
+ok(viewPatch.title === 'Trip packing list' && (await as(samToken, 'POST', `/api/notes/${shared.id}/items`, { text: 'x' })).status === 404, 'view member cannot edit');
+
+// Member device pushes: view role content is rejected, pin still applies.
+let push2 = (await as(samToken, 'POST', '/api/sync/push', { tables: { notes: [{ client_id: 9, server_id: shared.id, title: 'Pushed title', pinned: 0, updated_at: '2099-01-01 00:00:00' }] } })).json;
+ok(push2.tables.notes[0]?.server_id === shared.id && (await api('GET', `/api/notes/${shared.id}`)).json.title === 'Trip packing list', 'view member push is acked but content ignored');
+await api('PATCH', `/api/notes/${shared.id}/members/${addRes.json.members[0].user_id}`, { role: 'edit' });
+push2 = (await as(samToken, 'POST', '/api/sync/push', { tables: {
+  notes: [{ client_id: 9, server_id: shared.id, title: 'Packing (synced)', updated_at: '2099-01-01 00:00:00' }],
+  checklist_items: [{ client_id: 3, uuid: 'shared-item-uuid-1', note_id: shared.id, text: 'Socks', checked: 0, position: 9, updated_at: '2099-01-01 00:00:00' }],
+} })).json;
+ownerView = (await api('GET', `/api/notes/${shared.id}`)).json;
+ok(ownerView.title === 'Packing (synced)' && ownerView.items.some(i => i.text === 'Socks'), 'edit member push updates content and adds items');
+const ownerPull = (await api('GET', '/api/sync/pull?since=1970-01-01')).json;
+ok(ownerPull.tables.checklist_items.some(i => i.uuid === 'shared-item-uuid-1'), 'owner device pulls items a member added');
+
+pullSince = (await as(samToken, 'GET', '/api/sync/pull?since=1970-01-01')).json.now;
+const left = await as(samToken, 'DELETE', `/api/notes/${shared.id}/members/${addRes.json.members[0].user_id}`);
+const pull2 = (await as(samToken, 'GET', `/api/sync/pull?since=${encodeURIComponent(pullSince)}`)).json;
+ok(left.status === 200 && pull2.revoked_notes.includes(shared.id), 'leaving revokes the note on member devices');
+ok((await as(samToken, 'GET', `/api/notes/${shared.id}`)).status === 404 && (await api('GET', `/api/notes/${shared.id}`)).json.share_count === 0, 'after leaving, member has no access');
+
+await api('POST', `/api/notes/${shared.id}/members`, { username: 'sam' });
+pullSince = (await as(samToken, 'GET', '/api/sync/pull?since=1970-01-01')).json.now;
+await api('DELETE', `/api/notes/${shared.id}`);
+const pull3 = (await as(samToken, 'GET', `/api/sync/pull?since=${encodeURIComponent(pullSince)}`)).json;
+ok(pull3.revoked_notes.includes(shared.id) && (await as(samToken, 'GET', '/api/notes')).json.every(x => x.id !== shared.id), 'owner trashing hides it from members');
+await api('POST', `/api/notes/${shared.id}/restore`);
+ok((await as(samToken, 'GET', `/api/notes/${shared.id}`)).status === 200, 'restoring brings it back for members');
+
 console.log('backup + export');
 const bk = (await api('POST', '/api/full-backup')).json;
 const rs = (await api('POST', `/api/full-backup/${bk.filename}/restore`)).json;

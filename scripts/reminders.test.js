@@ -49,3 +49,18 @@ for (const [name, R] of [['client', client], ['server', server]]) {
     assert.equal(d.toISOString(), '2027-09-13T14:00:00.000Z');
   });
 }
+
+test('server: due occurrence is found once passed, within the late window', () => {
+  const note = { reminder_at: '2026-03-10 14:00:00', reminder_rrule: null, reminder_tz: NY };
+  assert.equal(server.dueOccurrence(note, new Date('2026-03-10T13:59:00Z')), null);
+  assert.equal(server.dueOccurrence(note, new Date('2026-03-10T14:00:30Z')).toISOString(), '2026-03-10T14:00:00.000Z');
+  assert.equal(server.dueOccurrence(note, new Date('2026-03-10T17:00:00Z')), null); // 3h late: stale
+});
+
+test('server: repeating reminder is due on each occurrence, not only the first', () => {
+  const anchor = server.toUtcString(server.zonedToUtc(2026, 1, 5, 8, 0, NY));
+  const note = { reminder_at: anchor, reminder_rrule: 'daily', reminder_tz: NY };
+  const due = server.dueOccurrence(note, new Date('2026-03-21T12:05:00Z')); // 8:05 AM EDT
+  assert.equal(due.toISOString(), '2026-03-21T12:00:00.000Z');
+  assert.equal(server.dueOccurrence(note, new Date('2026-03-21T18:00:00Z')), null);
+});

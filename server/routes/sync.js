@@ -16,7 +16,15 @@
  *     response: { tables: { [name]: [{ client_id, server_id }] } }
  *
  *   GET /api/sync/pull?since=<ISO>
- *     response: { now: 'ISO', tables: { [name]: [{ id, ...cols, updated_at, deleted_at }] } }
+ *     response: { now: 'ISO', tables: { [name]: [{ id, ...cols, updated_at, deleted_at }] },
+ *                 revoked_notes: [serverNoteId, ...] }
+ *
+ * Shared notes: a member's devices pull the notes shared with them (with
+ * the member's own pin/archive, no reminder) plus share_role / share_owner
+ * / share_count. revoked_notes lists shared notes to drop locally (member
+ * removed, left, or the owner trashed or deleted the note). A member's
+ * push may change content only with 'edit'; pin and archive go to their
+ * membership; trash and reminders from a member are ignored.
  *
  * Tables handled: notes, ai_chat_history (structural) plus user_settings
  * (key-value). Checklist items will use a per-item uuid merge with
@@ -33,7 +41,7 @@ import { Router } from 'express';
 import db from '../db.js';
 import { wrap } from '../logger.js';
 import { requireAuth, userMgmtActive } from '../middleware/auth.js';
-import { snapshotVersion, tsMs } from '../lib/notes.js';
+import { snapshotVersion, tsMs, noteAccess, restampNote, revokedNoteIds } from '../lib/notes.js';
 import { dispatchWebhookEvent } from '../lib/webhooks.js';
 
 const router = Router();
@@ -122,8 +130,24 @@ router.post('/push', wrap((req, res) => {
           existing = db.prepare(`SELECT * FROM ${name} WHERE ${where}`).get(...spec.uniqueKey.map(k => translated[k])) || null;
         }
 
-        if (existing) {
+        if (existing && name === 'notes' && u != null && existing.user_id !== u) {
+          _pushSharedNote(u, existing, translated);
+          results[name].push({ client_id: row.client_id, server_id: existing.id });
+          idMaps[name][row.client_id] = existing.id;
+          continue;
+        }
+        if (existing && name === 'checklist_items') {
+          // Items follow their note: anyone who can edit the note can edit them.
+          const access = noteAccess(u, existing.note_id);
+          if (!access || access.role === 'view') {
+            db.prepare(`UPDATE checklist_items SET synced_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?`).run(existing.id);
+            results[name].push({ client_id: row.client_id, server_id: existing.id });
+            continue;
+          }
+        } else if (existing) {
           if ((u == null && existing.user_id != null) || (u != null && existing.user_id !== u)) continue;
+        }
+        if (existing) {
           const incomingMs = tsMs(translated.updated_at);
           const serverMs = tsMs(existing.updated_at);
           const serverIsNewer = Number.isFinite(incomingMs) && Number.isFinite(serverMs) && serverMs > incomingMs;
@@ -151,8 +175,12 @@ router.post('/push', wrap((req, res) => {
           // columns fall back to their schema DEFAULTs instead of
           // tripping NOT NULL constraints.
           const present = spec.cols.filter(c => translated[c] !== undefined);
+          // Items carry the note owner's id, whoever adds them.
+          const rowOwner = name === 'checklist_items'
+            ? db.prepare(`SELECT user_id FROM notes WHERE id = ?`).get(translated.note_id)?.user_id ?? u
+            : u;
           const info = db.prepare(_buildInsertSql(name, spec, present)).run(
-            u,
+            rowOwner,
             ...present.map(c => _coerce(translated[c])),
             translated.updated_at || _now(),
             spec.softDelete ? (translated.deleted_at ?? null) : null
@@ -217,6 +245,16 @@ router.get('/pull', wrap((req, res) => {
     // the relationship silently disappears on the first sync after
     // it was attached (SQLite orders NULLs first in ASC by default,
     // so top-level parents naturally lead).
+    if (name === 'notes') { out.notes = _pullNotes(u, since); continue; }
+    if (name === 'checklist_items' && u != null) {
+      out.checklist_items = db.prepare(
+        `SELECT ${cols.join(', ')} FROM checklist_items
+          WHERE synced_at >= ? AND note_id IN (
+            SELECT id FROM notes WHERE user_id = ?
+            UNION SELECT note_id FROM note_members WHERE user_id = ? AND deleted_at IS NULL)`
+      ).all(since, u, u);
+      continue;
+    }
     const selfRef = Object.entries(spec.parents || {})
       .find(([, parentTable]) => parentTable === name);
     const orderBy = selfRef ? ` ORDER BY ${selfRef[0]} ASC, id ASC` : '';
@@ -232,7 +270,7 @@ router.get('/pull', wrap((req, res) => {
       WHERE ${userClause(u)} AND synced_at >= ?`
   ).all(...userArgs(u), since);
 
-  res.json({ now, tables: out });
+  res.json({ now, tables: out, revoked_notes: revokedNoteIds(u, since) });
 }));
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -259,12 +297,86 @@ function _translateParents(row, spec, idMaps, u) {
       continue;
     }
     // A server id: the parent must exist and belong to the same owner,
-    // or a client could attach rows to someone else's note.
+    // or a client could attach rows to someone else's note. Shared notes
+    // accept items from 'edit' members and labels from any member.
+    if (parentTable === 'notes' && u != null) {
+      const access = noteAccess(u, raw);
+      if (!access) return null;
+      if (fk === 'note_id' && spec === TABLES.checklist_items && access.role === 'view') return null;
+      continue;
+    }
     const parent = db.prepare(`SELECT user_id FROM ${parentTable} WHERE id = ?`).get(raw);
     if (!parent) return null;
     if ((u == null && parent.user_id != null) || (u != null && parent.user_id !== u)) return null;
   }
   return out;
+}
+
+// Notes as a member's device sees them: the member's own pin and archive,
+// no reminder (reminders belong to the owner), plus the share fields.
+function _pullNotes(u, since) {
+  if (u == null) {
+    return db.prepare(
+      `SELECT id, ${TABLES.notes.cols.join(', ')}, created_at, updated_at, deleted_at,
+              'owner' AS share_role, NULL AS share_owner, 0 AS share_count
+         FROM notes WHERE user_id IS NULL AND synced_at >= ?`
+    ).all(since);
+  }
+  return db.prepare(
+    `SELECT n.id, n.title, n.body_md, n.kind, n.color,
+            CASE WHEN m.id IS NULL THEN n.pinned ELSE m.pinned END AS pinned,
+            CASE WHEN m.id IS NULL THEN n.archived ELSE m.archived END AS archived,
+            n.trashed_at,
+            CASE WHEN m.id IS NULL THEN n.reminder_at END AS reminder_at,
+            CASE WHEN m.id IS NULL THEN n.reminder_rrule END AS reminder_rrule,
+            CASE WHEN m.id IS NULL THEN n.reminder_tz END AS reminder_tz,
+            n.created_at, n.updated_at, n.deleted_at,
+            COALESCE(m.role, 'owner') AS share_role,
+            CASE WHEN m.id IS NULL THEN NULL ELSE COALESCE(o.full_name, o.username) END AS share_owner,
+            (SELECT COUNT(*) FROM note_members c WHERE c.note_id = n.id AND c.deleted_at IS NULL) AS share_count
+       FROM notes n
+       LEFT JOIN note_members m ON m.note_id = n.id AND m.user_id = ? AND m.deleted_at IS NULL
+       LEFT JOIN users o ON o.id = n.user_id
+      WHERE n.synced_at >= ? AND (n.user_id = ? OR (m.id IS NOT NULL AND n.trashed_at IS NULL))`
+  ).all(u, since, u);
+}
+
+// A member pushing a shared note. Anything they may not change is
+// dropped, and the note is re-stamped so their next pull restores the
+// server copy over their local one.
+function _pushSharedNote(u, existing, incoming) {
+  const access = noteAccess(u, existing.id);
+  if (!access || access.role === 'owner') return; // revoked: the pull's revoked_notes cleans up
+  let rejected = !!(incoming.trashed_at || incoming.deleted_at);
+
+  const mine = [];
+  const mineArgs = [];
+  for (const col of ['pinned', 'archived']) {
+    if (incoming[col] === undefined) continue;
+    const v = incoming[col] ? 1 : 0;
+    if (v !== access.member[col]) { mine.push(`${col} = ?`); mineArgs.push(v); }
+  }
+  if (mine.length) {
+    db.prepare(`UPDATE note_members SET ${mine.join(', ')}, updated_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?`)
+      .run(...mineArgs, access.member.id);
+  }
+
+  const contentCols = ['title', 'body_md', 'kind', 'color'].filter(c => incoming[c] !== undefined && incoming[c] !== existing[c]);
+  if (contentCols.length) {
+    if (access.role !== 'edit') rejected = true;
+    else {
+      const incomingMs = tsMs(incoming.updated_at);
+      const serverMs = tsMs(existing.updated_at);
+      const serverIsNewer = Number.isFinite(incomingMs) && Number.isFinite(serverMs) && serverMs > incomingMs;
+      _noteVersioning(existing, incoming, serverIsNewer);
+      if (serverIsNewer) rejected = true;
+      else {
+        db.prepare(`UPDATE notes SET ${contentCols.map(c => `${c} = ?`).join(', ')}, updated_at = ? WHERE id = ?`)
+          .run(...contentCols.map(c => _coerce(incoming[c])), incoming.updated_at || _now(), existing.id);
+      }
+    }
+  }
+  if (rejected || mine.length) restampNote(existing.id);
 }
 
 // Notes never lose an edit to sync. When the server copy is newer, the

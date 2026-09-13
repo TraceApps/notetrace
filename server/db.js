@@ -239,6 +239,26 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now'))
   );
   CREATE INDEX IF NOT EXISTS idx_note_versions_note ON note_versions(note_id, created_at);
+
+  -- People a note is shared with. The note row stays with its owner;
+  -- members get 'view' or 'edit' on its content and checklist. Pin and
+  -- archive are personal, so they live here for members. A removed
+  -- member keeps a tombstone (deleted_at) so their devices learn to drop
+  -- the note on the next sync. updated_at is always server-stamped.
+  CREATE TABLE IF NOT EXISTS note_members (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    note_id    INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role       TEXT NOT NULL DEFAULT 'edit',
+    pinned     INTEGER NOT NULL DEFAULT 0,
+    archived   INTEGER NOT NULL DEFAULT 0,
+    added_by   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (strftime('%Y-%m-%d %H:%M:%f', 'now')),
+    deleted_at TEXT,
+    UNIQUE (note_id, user_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_note_members_user ON note_members(user_id, deleted_at);
 `);
 
 // ── Full-text search ───────────────────────────────────────────────────────

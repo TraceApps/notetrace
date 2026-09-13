@@ -1,5 +1,6 @@
 /**
- * Builds two simulated Android devices from the REAL client sync code
+ * Builds three simulated Android devices (two for one account, one for a
+ * second account that notes get shared with) from the REAL client sync code
  * (src/lib/sync.js, db-native.js, notes-native.js) with the Capacitor
  * SQLite plugin swapped for better-sqlite3, so scenario.mjs can exercise
  * device-to-server-to-device sync without a phone.
@@ -19,7 +20,7 @@ const serverUrl = process.env.NOTETRACE_URL || 'http://localhost:3004';
 const sqliteFrom = process.env.SQLITE_REQUIRE_FROM || '/app/package.json';
 
 rmSync(new URL('.build/', import.meta.url), { recursive: true, force: true });
-for (const dev of ['devA', 'devB']) {
+for (const dev of ['devA', 'devB', 'devC']) {
   const dir = new URL(`.build/${dev}/`, import.meta.url);
   mkdirSync(dir, { recursive: true });
   const put = (name, text) => writeFileSync(new URL(name, dir), text);

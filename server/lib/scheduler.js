@@ -1,11 +1,10 @@
 /**
  * scheduler.js — Server-side scheduled tasks for NoteTrace.
  *
- * Single setInterval that ticks every 15 min. Each tick runs
- * housekeeping (expired invite tokens, trash older than 30 days) and the
- * scheduled full backup.
- * Note reminders (reminder_at / reminder_rrule, deduped through
- * notification_log) plug in here with the notes data layer.
+ * A 15-minute tick runs housekeeping (expired invite tokens, trash older
+ * than 30 days, old reminder dedupe rows) and the scheduled full backup.
+ * A separate 1-minute tick delivers note reminders on time
+ * (reminder-delivery.js, deduped through notification_log).
  *
  * Skipped silently when no users exist (single-user fresh install).
  * Cron-style is fine because we only need to-the-day accuracy; the
@@ -14,14 +13,33 @@
 import db from '../db.js';
 import { logger } from '../logger.js';
 import { purgeExpiredTrash } from './notes.js';
+import { deliverDueReminders, pruneReminderLog } from './reminder-delivery.js';
 
 const TICK_MS = 15 * 60 * 1000; // 15 minutes
+const REMINDER_TICK_MS = 60 * 1000;
 let _interval = null;
+let _reminderInterval = null;
+let _delivering = false;
+
+async function _reminderTick() {
+  if (_delivering) return; // a slow push service must not stack ticks
+  _delivering = true;
+  try {
+    const n = await deliverDueReminders();
+    if (n > 0) logger.info?.(`[scheduler] delivered ${n} reminder(s)`);
+  } catch (e) {
+    logger.warn(`[scheduler] reminder tick error: ${e.message}`);
+  } finally {
+    _delivering = false;
+  }
+}
 
 export function startScheduler() {
   // Run once at boot so a freshly-restarted server doesn't wait 15 min
   // to deliver today's reminders.
   setTimeout(() => runTick().catch(e => logger.warn(`[scheduler] tick error: ${e.message}`)), 5_000);
+  setTimeout(_reminderTick, 8_000);
+  _reminderInterval = setInterval(_reminderTick, REMINDER_TICK_MS);
   _interval = setInterval(() => {
     runTick().catch(e => logger.warn(`[scheduler] tick error: ${e.message}`));
   }, TICK_MS);
@@ -32,6 +50,10 @@ export function stopScheduler() {
   if (_interval) {
     clearInterval(_interval);
     _interval = null;
+  }
+  if (_reminderInterval) {
+    clearInterval(_reminderInterval);
+    _reminderInterval = null;
   }
 }
 
@@ -58,6 +80,9 @@ async function runTick() {
   } catch (e) {
     logger.debug?.(`[scheduler] trash purge error: ${e.message}`);
   }
+
+  try { pruneReminderLog(); }
+  catch (e) { logger.debug?.(`[scheduler] reminder log prune error: ${e.message}`); }
 
   // Scheduled full backup (admin-global). Off by default; mirrors NT's
   // scheduled-backup feature for TraceApps parity. See
@@ -89,33 +114,4 @@ async function _checkBackupSchedule() {
   }
   logger.info?.(`[backup] auto-backup due (schedule=${cfg.schedule}, time=${cfg.time}, retention=${cfg.retention}, last=${cfg.lastAutoRun || 'never'})`);
   try { await runScheduledBackup(); } catch {}
-}
-
-function _todayUtc() {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function _userSetting(userId, key) {
-  const r = db.prepare(`SELECT value FROM user_settings WHERE user_id = ? AND key = ?`).get(userId, key);
-  if (!r) return null;
-  try { return JSON.parse(r.value); } catch { return r.value; }
-}
-
-function _alreadyFired(userId, kind, refId, today) {
-  const r = db.prepare(
-    `SELECT 1 FROM notification_log
-      WHERE user_id = ? AND kind = ? AND ref_id IS ? AND fired_date = ? LIMIT 1`
-  ).get(userId, kind, refId == null ? null : refId, today);
-  return !!r;
-}
-
-function _markFired(userId, kind, refId, today) {
-  try {
-    db.prepare(
-      `INSERT INTO notification_log (user_id, kind, ref_id, fired_date)
-       VALUES (?, ?, ?, ?)`
-    ).run(userId, kind, refId == null ? null : refId, today);
-  } catch (e) {
-    // UNIQUE conflict means another process beat us to it. Safe.
-  }
 }

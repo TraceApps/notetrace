@@ -30,7 +30,8 @@ try {
 }
 
 function _getUserSetting(userId, key) {
-  const row = db.prepare('SELECT value FROM user_settings WHERE user_id = ? AND key = ?').get(userId, key);
+  // IS so single-user mode (user_id NULL) finds its settings too.
+  const row = db.prepare('SELECT value FROM user_settings WHERE user_id IS ? AND key = ?').get(userId ?? null, key);
   if (!row?.value) return '';
   try { return JSON.parse(row.value); } catch { return row.value; }
 }

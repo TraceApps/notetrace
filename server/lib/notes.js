@@ -8,8 +8,13 @@
  *   - checklist items as independent rows keyed by a stable uuid
  *   - label links as soft-deletable rows
  *
- * Every function takes the owner id `u` (null in single-user mode) and
- * scopes every query on it.
+ * Every function takes the signed-in user id `u` (null in single-user
+ * mode). A note belongs to its owner (notes.user_id) and can be shared
+ * with other accounts through note_members:
+ *   - 'edit' members change the title, body, color, and checklist
+ *   - 'view' members only read it
+ *   - pin, archive, and labels are personal to each person
+ *   - reminders, trash, and permanent delete stay with the owner
  */
 import { randomUUID } from 'crypto';
 import db from '../db.js';
@@ -19,6 +24,7 @@ export const NOTE_KINDS = new Set(['text', 'checklist']);
 export const NOTE_COLORS = new Set(['plum', 'moss', 'clay', 'tide', 'sand', 'rose']);
 export const TRASH_RETENTION_DAYS = 30;
 export const REMINDER_REPEATS = new Set(['daily', 'weekly', 'monthly', 'yearly']);
+export const MEMBER_ROLES = new Set(['view', 'edit']);
 
 // A new version is only written when the previous one is older than
 // this, so one editing session produces one restore point instead of
@@ -28,6 +34,11 @@ const VERSION_KEEP_PER_NOTE = 50;
 
 const userClause = (u, col = 'user_id') => u == null ? `${col} IS NULL` : `${col} = ?`;
 const userArgs   = (u) => u == null ? [] : [u];
+
+/** Server-stamped time with milliseconds, same shape as the sync cursor. */
+export function stampNow() {
+  return new Date().toISOString().replace('T', ' ').replace('Z', '');
+}
 
 export function now() {
   return new Date().toISOString().replace('T', ' ').slice(0, 19);
@@ -64,14 +75,15 @@ function _itemsFor(noteIds) {
   return map;
 }
 
-function _labelsFor(noteIds) {
+function _labelsFor(noteIds, u) {
   if (!noteIds.length) return new Map();
   const ph = noteIds.map(() => '?').join(',');
+  // Labels are personal: each person only sees their own on a shared note.
   const rows = db.prepare(
     `SELECT nl.note_id, nl.label_id FROM note_labels nl
        JOIN labels l ON l.id = nl.label_id AND l.deleted_at IS NULL
-      WHERE nl.note_id IN (${ph}) AND nl.deleted_at IS NULL`
-  ).all(...noteIds);
+      WHERE nl.note_id IN (${ph}) AND nl.deleted_at IS NULL AND ${userClause(u, 'nl.user_id')}`
+  ).all(...noteIds, ...userArgs(u));
   const map = new Map();
   for (const r of rows) {
     if (!map.has(r.note_id)) map.set(r.note_id, []);
@@ -80,28 +92,93 @@ function _labelsFor(noteIds) {
   return map;
 }
 
-function _hydrate(rows) {
+function _memberCounts(noteIds) {
+  if (!noteIds.length) return new Map();
+  const ph = noteIds.map(() => '?').join(',');
+  const rows = db.prepare(
+    `SELECT note_id, COUNT(*) AS n FROM note_members
+      WHERE note_id IN (${ph}) AND deleted_at IS NULL GROUP BY note_id`
+  ).all(...noteIds);
+  return new Map(rows.map(r => [r.note_id, r.n]));
+}
+
+function _ownerNames(userIds) {
+  const ids = [...new Set(userIds.filter(x => x != null))];
+  if (!ids.length) return new Map();
+  const ph = ids.map(() => '?').join(',');
+  const rows = db.prepare(`SELECT id, username, full_name FROM users WHERE id IN (${ph})`).all(...ids);
+  return new Map(rows.map(r => [r.id, r.full_name || r.username]));
+}
+
+/**
+ * Share fields for a note row selected through _selectNotes (which joins
+ * the caller's membership as m_role / m_pinned / m_archived).
+ *   share_role:  'owner' | 'edit' | 'view'
+ *   share_owner: the owner's display name when the caller isn't the owner
+ *   share_count: people the note is shared with (owner not counted)
+ */
+function _shareFields(r, counts, owners) {
+  const role = r.m_role || 'owner';
+  return {
+    share_role: role,
+    share_owner: role === 'owner' ? null : (owners.get(r.user_id) || null),
+    share_count: counts.get(r.id) || 0,
+  };
+}
+
+function _hydrate(rows, u) {
   const ids = rows.map(r => r.id);
   const items = _itemsFor(ids);
-  const labels = _labelsFor(ids);
-  return rows.map(r => ({
-    id: r.id,
-    title: r.title,
-    body_md: r.body_md,
-    kind: r.kind,
-    color: r.color,
-    pinned: !!r.pinned,
-    archived: !!r.archived,
-    trashed_at: r.trashed_at,
-    reminder_at: r.reminder_at,
-    reminder_rrule: r.reminder_rrule,
-    reminder_tz: r.reminder_tz,
-    created_at: r.created_at,
-    updated_at: r.updated_at,
-    labels: labels.get(r.id) || [],
-    items: items.get(r.id) || [],
-  }));
+  const labels = _labelsFor(ids, u);
+  const counts = _memberCounts(ids);
+  const owners = _ownerNames(rows.filter(r => r.m_role).map(r => r.user_id));
+  return rows.map(r => {
+    const member = !!r.m_role;
+    return {
+      id: r.id,
+      title: r.title,
+      body_md: r.body_md,
+      kind: r.kind,
+      color: r.color,
+      pinned: !!(member ? r.m_pinned : r.pinned),
+      archived: !!(member ? r.m_archived : r.archived),
+      trashed_at: r.trashed_at,
+      reminder_at: member ? null : r.reminder_at,
+      reminder_rrule: member ? null : r.reminder_rrule,
+      reminder_tz: member ? null : r.reminder_tz,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+      labels: labels.get(r.id) || [],
+      items: items.get(r.id) || [],
+      ..._shareFields(r, counts, owners),
+    };
+  });
 }
+
+/**
+ * Notes the caller can see, with their membership joined in. Owners see
+ * their own notes; members see shared notes that aren't in the owner's
+ * trash. Single-user mode has no sharing.
+ */
+function _selectNotes(u, { join = '', where = [], args = [], order = 'n.updated_at DESC', joinArgs = [] } = {}) {
+  if (u == null) {
+    return db.prepare(
+      `SELECT n.*, NULL AS m_role, NULL AS m_pinned, NULL AS m_archived FROM notes n${join}
+        WHERE n.user_id IS NULL AND n.deleted_at IS NULL${where.length ? ' AND ' + where.join(' AND ') : ''}
+        ORDER BY ${order}`
+    ).all(...joinArgs, ...args);
+  }
+  return db.prepare(
+    `SELECT n.*, m.role AS m_role, m.pinned AS m_pinned, m.archived AS m_archived
+       FROM notes n
+       LEFT JOIN note_members m ON m.note_id = n.id AND m.user_id = ? AND m.deleted_at IS NULL${join}
+      WHERE n.deleted_at IS NULL
+        AND (n.user_id = ? OR (m.id IS NOT NULL AND n.trashed_at IS NULL))
+        ${where.length ? ' AND ' + where.join(' AND ') : ''}
+      ORDER BY ${order}`
+  ).all(u, ...joinArgs, u, ...args);
+}
+
 
 /** Turn free text into a safe FTS5 prefix query ("foo bar" → "foo"* "bar"*). */
 export function ftsQuery(q) {
@@ -116,19 +193,26 @@ export function ftsQuery(q) {
  *   q: full-text search across title, body and checklist items
  */
 export function listNotes(u, { view = 'notes', labelId = null, q = '' } = {}) {
-  const where = [userClause(u, 'n.user_id'), 'n.deleted_at IS NULL'];
-  const args = [...userArgs(u)];
-  if (view === 'trash') where.push('n.trashed_at IS NOT NULL');
+  const multi = u != null;
+  // Pin and archive as the caller sees them: their own, or their membership's.
+  const pinned = multi ? '(CASE WHEN m.id IS NULL THEN n.pinned ELSE m.pinned END)' : 'n.pinned';
+  const archived = multi ? '(CASE WHEN m.id IS NULL THEN n.archived ELSE m.archived END)' : 'n.archived';
+  const owned = multi ? 'm.id IS NULL' : '1';
+  const where = [];
+  const args = [];
+  const joinArgs = [];
+  if (view === 'trash') where.push('n.trashed_at IS NOT NULL', owned);
   else if (view === 'reminders') {
-    where.push('n.trashed_at IS NULL', 'n.reminder_at IS NOT NULL');
+    // Reminders belong to the owner.
+    where.push('n.trashed_at IS NULL', 'n.reminder_at IS NOT NULL', owned);
   } else {
     where.push('n.trashed_at IS NULL');
-    where.push(view === 'archive' ? 'n.archived = 1' : 'n.archived = 0');
+    where.push(view === 'archive' ? `${archived} = 1` : `${archived} = 0`);
   }
   let join = '';
   if (labelId != null) {
-    join += ' JOIN note_labels nl ON nl.note_id = n.id AND nl.deleted_at IS NULL AND nl.label_id = ?';
-    args.unshift(labelId);
+    join += ` JOIN note_labels nl ON nl.note_id = n.id AND nl.deleted_at IS NULL AND nl.label_id = ? AND ${userClause(u, 'nl.user_id')}`;
+    joinArgs.push(labelId, ...userArgs(u));
   }
   const match = ftsQuery(q);
   if (match) {
@@ -136,24 +220,43 @@ export function listNotes(u, { view = 'notes', labelId = null, q = '' } = {}) {
     where.push('notes_fts MATCH ?');
     args.push(match);
   }
-  const order = view === 'notes' ? 'n.pinned DESC, n.updated_at DESC'
+  const order = view === 'notes' ? `${pinned} DESC, n.updated_at DESC`
     : view === 'reminders' ? 'n.reminder_at ASC'
     : 'n.updated_at DESC';
-  const rows = db.prepare(
-    `SELECT n.* FROM notes n${join} WHERE ${where.join(' AND ')} ORDER BY ${order}`
-  ).all(...args);
-  return _hydrate(rows);
+  return _hydrate(_selectNotes(u, { join, where, args, joinArgs, order }), u);
 }
 
+/** The note row when the caller owns it (reminders, trash, delete, sharing). */
 function _row(u, id) {
   return db.prepare(
     `SELECT * FROM notes WHERE id = ? AND ${userClause(u)} AND deleted_at IS NULL`
   ).get(id, ...userArgs(u));
 }
 
+/**
+ * The caller's access to a note: { row, role, member } where role is
+ * 'owner', 'edit', or 'view'. Null when the note is gone or not theirs.
+ */
+export function noteAccess(u, id) {
+  const row = db.prepare(`SELECT * FROM notes WHERE id = ? AND deleted_at IS NULL`).get(id);
+  if (!row) return null;
+  if (u == null ? row.user_id == null : row.user_id === u) return { row, role: 'owner', member: null };
+  if (u == null || row.trashed_at) return null;
+  const member = db.prepare(
+    `SELECT * FROM note_members WHERE note_id = ? AND user_id = ? AND deleted_at IS NULL`
+  ).get(id, u);
+  return member ? { row, role: member.role, member } : null;
+}
+
+/** The note row when the caller may change its content (owner or edit member). */
+function _editableRow(u, id) {
+  const a = noteAccess(u, id);
+  return a && a.role !== 'view' ? a.row : null;
+}
+
 export function getNote(u, id) {
-  const row = _row(u, id);
-  return row ? _hydrate([row])[0] : null;
+  if (id == null) return null;
+  return _hydrate(_selectNotes(u, { where: ['n.id = ?'], args: [id] }), u)[0] || null;
 }
 
 // ── Versions ─────────────────────────────────────────────────────────
@@ -195,21 +298,15 @@ export function snapshotVersion(noteRow, reason = 'edit', content = null) {
 }
 
 export function listVersions(u, noteId) {
-  if (!_rowAny(u, noteId)) return null;
+  if (!noteAccess(u, noteId)) return null;
   return db.prepare(
     `SELECT id, title, body_md, kind, items_json, reason, created_at
        FROM note_versions WHERE note_id = ? ORDER BY id DESC`
   ).all(noteId).map(v => ({ ...v, items: v.items_json ? JSON.parse(v.items_json) : [], items_json: undefined }));
 }
 
-function _rowAny(u, id) {
-  return db.prepare(
-    `SELECT * FROM notes WHERE id = ? AND ${userClause(u)} AND deleted_at IS NULL`
-  ).get(id, ...userArgs(u));
-}
-
 export const restoreVersion = db.transaction((u, noteId, versionId) => {
-  const row = _rowAny(u, noteId);
+  const row = _editableRow(u, noteId);
   if (!row) return null;
   const v = db.prepare(`SELECT * FROM note_versions WHERE id = ? AND note_id = ?`).get(versionId, noteId);
   if (!v) return null;
@@ -221,7 +318,7 @@ export const restoreVersion = db.transaction((u, noteId, versionId) => {
     const items = v.items_json ? JSON.parse(v.items_json) : [];
     db.prepare(`UPDATE checklist_items SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND deleted_at IS NULL`)
       .run(ts, ts, noteId);
-    items.forEach((it, i) => _upsertItem(u, noteId, { text: it.text, checked: it.checked, position: i + 1 }, ts));
+    items.forEach((it, i) => _upsertItem(row.user_id, noteId, { text: it.text, checked: it.checked, position: i + 1 }, ts));
   }
   return getNote(u, noteId);
 });
@@ -242,6 +339,8 @@ function _cleanTz(v) {
   try { new Intl.DateTimeFormat('en-US', { timeZone: v }); return v; } catch { return null; }
 }
 
+// Items always carry the note owner's user_id, whoever adds them, so the
+// owner's queries and sync see every item on their note.
 function _upsertItem(u, noteId, it, ts) {
   const uuid = typeof it.uuid === 'string' && it.uuid ? it.uuid : randomUUID();
   db.prepare(
@@ -278,8 +377,10 @@ export const createNote = db.transaction((u, data = {}) => {
 
 /** Partial update. Only fields present in `patch` change. */
 export const updateNote = db.transaction((u, id, patch = {}) => {
-  const row = _row(u, id);
-  if (!row) return null;
+  const access = noteAccess(u, id);
+  if (!access) return null;
+  if (access.role !== 'owner') return _updateAsMember(u, access, patch);
+  const row = access.row;
   const sets = [];
   const args = [];
   const contentChanging =
@@ -312,9 +413,52 @@ export const updateNote = db.transaction((u, id, patch = {}) => {
   return getNote(u, id);
 });
 
+// A member's patch: pin, archive, and labels are theirs; content changes
+// need 'edit'; reminders and trash aren't theirs to change.
+function _updateAsMember(u, { row, role, member }, patch) {
+  const id = row.id;
+  const ts = now();
+  const mine = [];
+  const mineArgs = [];
+  if ('pinned' in patch) { mine.push('pinned = ?'); mineArgs.push(patch.pinned ? 1 : 0); }
+  if ('archived' in patch) {
+    mine.push('archived = ?'); mineArgs.push(patch.archived ? 1 : 0);
+    if (patch.archived) mine.push('pinned = 0');
+  }
+  if (mine.length) {
+    db.prepare(`UPDATE note_members SET ${mine.join(', ')}, updated_at = ? WHERE id = ?`).run(...mineArgs, stampNow(), member.id);
+    restampNote(id);
+  }
+  if (role === 'edit') {
+    const sets = [];
+    const args = [];
+    const contentChanging =
+      ('title' in patch && _cleanTitle(patch.title) !== row.title) ||
+      ('body_md' in patch && _cleanBody(patch.body_md) !== row.body_md);
+    if (contentChanging) snapshotVersion(row, 'edit');
+    if ('title' in patch)   { sets.push('title = ?');   args.push(_cleanTitle(patch.title)); }
+    if ('body_md' in patch) { sets.push('body_md = ?'); args.push(_cleanBody(patch.body_md)); }
+    if ('color' in patch)   { sets.push('color = ?');   args.push(_cleanColor(patch.color)); }
+    if (sets.length) db.prepare(`UPDATE notes SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).run(...args, ts, id);
+  }
+  if (Array.isArray(patch.labels)) _setLabels(u, id, patch.labels, ts);
+  return getNote(u, id);
+}
+
+/**
+ * Bump a note's sync cursor (and its items') without changing its
+ * content, so every device that can see it pulls it again: used when
+ * sharing changes who sees it or how.
+ */
+export function restampNote(noteId) {
+  const stamp = stampNow();
+  db.prepare(`UPDATE notes SET synced_at = ? WHERE id = ?`).run(stamp, noteId);
+  db.prepare(`UPDATE checklist_items SET synced_at = ? WHERE note_id = ?`).run(stamp, noteId);
+}
+
 /** Switch a note between text and checklist without losing content. */
 export const convertNote = db.transaction((u, id, kind) => {
-  const row = _row(u, id);
+  const row = _editableRow(u, id);
   if (!row || !NOTE_KINDS.has(kind) || row.kind === kind) return row ? getNote(u, id) : null;
   snapshotVersion(row, 'restore');
   const ts = now();
@@ -329,7 +473,7 @@ export const convertNote = db.transaction((u, id, kind) => {
         const struck = bare.match(/^~~(.+)~~$/);
         return struck ? { text: struck[1], checked: true } : { text: bare, checked: false };
       });
-    lines.forEach((it, i) => _upsertItem(u, id, { ...it, position: i + 1 }, ts));
+    lines.forEach((it, i) => _upsertItem(row.user_id, id, { ...it, position: i + 1 }, ts));
     db.prepare(`UPDATE notes SET kind = 'checklist', body_md = '', updated_at = ? WHERE id = ?`).run(ts, id);
   } else {
     const items = db.prepare(
@@ -366,6 +510,7 @@ export const deleteNoteForever = db.transaction((u, id) => {
   db.prepare(`UPDATE checklist_items SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND deleted_at IS NULL`).run(ts, ts, id);
   db.prepare(`UPDATE note_labels SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND deleted_at IS NULL`).run(ts, ts, id);
   db.prepare(`UPDATE notes SET deleted_at = ?, updated_at = ? WHERE id = ?`).run(ts, ts, id);
+  db.prepare(`UPDATE note_members SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND deleted_at IS NULL`).run(stampNow(), stampNow(), id);
   db.prepare(`DELETE FROM note_versions WHERE note_id = ?`).run(id);
   return true;
 });
@@ -402,7 +547,7 @@ function _touch(noteId, ts) {
 }
 
 export const addItem = db.transaction((u, noteId, data = {}) => {
-  const row = _row(u, noteId);
+  const row = _editableRow(u, noteId);
   if (!row || row.kind !== 'checklist') return null;
   const ts = now();
   let position = Number(data.position);
@@ -410,19 +555,19 @@ export const addItem = db.transaction((u, noteId, data = {}) => {
     const max = db.prepare(`SELECT MAX(position) AS p FROM checklist_items WHERE note_id = ? AND deleted_at IS NULL`).get(noteId);
     position = (max.p || 0) + 1;
   }
-  _upsertItem(u, noteId, { uuid: data.uuid, text: data.text, checked: data.checked, position }, ts);
+  _upsertItem(row.user_id, noteId, { uuid: data.uuid, text: data.text, checked: data.checked, position }, ts);
   _touch(noteId, ts);
   return getNote(u, noteId);
 });
 
 export const updateItem = db.transaction((u, noteId, uuid, patch = {}) => {
-  const row = _row(u, noteId);
+  const row = _editableRow(u, noteId);
   if (!row) return null;
   const item = db.prepare(`SELECT * FROM checklist_items WHERE uuid = ? AND note_id = ? AND deleted_at IS NULL`).get(uuid, noteId);
   if (!item) return null;
   const wasComplete = _checklistCompleted(noteId);
   const ts = now();
-  _upsertItem(u, noteId, {
+  _upsertItem(row.user_id, noteId, {
     uuid,
     text: 'text' in patch ? patch.text : item.text,
     checked: 'checked' in patch ? patch.checked : item.checked,
@@ -430,13 +575,13 @@ export const updateItem = db.transaction((u, noteId, uuid, patch = {}) => {
   }, ts);
   _touch(noteId, ts);
   if (!wasComplete && _checklistCompleted(noteId)) {
-    _emit(u, 'checklist.completed', { note_id: noteId, title: row.title });
+    _emit(row.user_id, 'checklist.completed', { note_id: noteId, title: row.title });
   }
   return getNote(u, noteId);
 });
 
 export const deleteItem = db.transaction((u, noteId, uuid) => {
-  const row = _row(u, noteId);
+  const row = _editableRow(u, noteId);
   if (!row) return null;
   const ts = now();
   db.prepare(`UPDATE checklist_items SET deleted_at = ?, updated_at = ? WHERE uuid = ? AND note_id = ?`).run(ts, ts, uuid, noteId);
@@ -446,7 +591,7 @@ export const deleteItem = db.transaction((u, noteId, uuid) => {
 
 /** Set item order from a list of uuids. Items not listed keep their position. */
 export const reorderItems = db.transaction((u, noteId, uuids = []) => {
-  const row = _row(u, noteId);
+  const row = _editableRow(u, noteId);
   if (!row) return null;
   const ts = now();
   const upd = db.prepare(`UPDATE checklist_items SET position = ?, updated_at = ? WHERE uuid = ? AND note_id = ? AND deleted_at IS NULL`);
@@ -462,7 +607,9 @@ function _setLabels(u, noteId, labelIds, ts) {
   const owned = new Set(db.prepare(
     `SELECT id FROM labels WHERE ${userClause(u)} AND deleted_at IS NULL`
   ).all(...userArgs(u)).map(r => r.id));
-  const existing = db.prepare(`SELECT label_id, deleted_at FROM note_labels WHERE note_id = ?`).all(noteId);
+  const existing = db.prepare(
+    `SELECT label_id, deleted_at FROM note_labels WHERE note_id = ? AND ${userClause(u)}`
+  ).all(noteId, ...userArgs(u));
   const current = new Set(existing.filter(r => !r.deleted_at).map(r => r.label_id));
   for (const lid of wanted) {
     if (!owned.has(lid) || current.has(lid)) continue;
@@ -473,7 +620,8 @@ function _setLabels(u, noteId, labelIds, ts) {
   }
   for (const lid of current) {
     if (wanted.has(lid)) continue;
-    db.prepare(`UPDATE note_labels SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND label_id = ?`).run(ts, ts, noteId, lid);
+    db.prepare(`UPDATE note_labels SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND label_id = ? AND ${userClause(u)}`)
+      .run(ts, ts, noteId, lid, ...userArgs(u));
   }
 }
 
@@ -482,7 +630,9 @@ export function listLabels(u) {
     `SELECT l.id, l.name, l.color, l.position, l.created_at, l.updated_at,
             (SELECT COUNT(*) FROM note_labels nl JOIN notes n ON n.id = nl.note_id
               WHERE nl.label_id = l.id AND nl.deleted_at IS NULL
-                AND n.deleted_at IS NULL AND n.trashed_at IS NULL) AS note_count
+                AND n.deleted_at IS NULL AND n.trashed_at IS NULL
+                AND (n.user_id IS l.user_id OR EXISTS (
+                  SELECT 1 FROM note_members m WHERE m.note_id = n.id AND m.user_id = l.user_id AND m.deleted_at IS NULL))) AS note_count
        FROM labels l WHERE ${userClause(u, 'l.user_id')} AND l.deleted_at IS NULL
       ORDER BY l.position ASC, l.name COLLATE NOCASE ASC`
   ).all(...userArgs(u));
@@ -532,3 +682,100 @@ export const reorderLabels = db.transaction((u, ids = []) => {
   ids.map(Number).filter(Number.isFinite).forEach((id, i) => upd.run(i + 1, ts, id, ...userArgs(u)));
   return listLabels(u);
 });
+
+// ── Sharing ──────────────────────────────────────────────────────────
+
+/**
+ * Owner and members of a note, for anyone who can see it.
+ * Returns null when the caller has no access.
+ */
+export function listMembers(u, noteId) {
+  const access = noteAccess(u, noteId);
+  if (!access || u == null) return null;
+  const owner = db.prepare(`SELECT id, username, full_name FROM users WHERE id = ?`).get(access.row.user_id);
+  const members = db.prepare(
+    `SELECT m.user_id, m.role, m.created_at, u.username, u.full_name
+       FROM note_members m JOIN users u ON u.id = m.user_id
+      WHERE m.note_id = ? AND m.deleted_at IS NULL
+      ORDER BY m.created_at ASC, m.id ASC`
+  ).all(noteId);
+  return {
+    role: access.role,
+    owner: owner ? { user_id: owner.id, username: owner.username, full_name: owner.full_name } : null,
+    members,
+  };
+}
+
+/** Owner shares a note with another account by username or email. */
+export const addMember = db.transaction((u, noteId, { username, role = 'edit' } = {}) => {
+  if (u == null) return { status: 400, error: 'Sharing needs user accounts' };
+  const row = _row(u, noteId);
+  if (!row) return { status: 404, error: 'Note not found' };
+  if (row.trashed_at) return { status: 400, error: 'Restore the note before sharing it' };
+  const who = String(username || '').trim();
+  if (!who) return { status: 400, error: 'Username required' };
+  const target = db.prepare(
+    `SELECT id FROM users WHERE username = ? COLLATE NOCASE OR (email IS NOT NULL AND email = ? COLLATE NOCASE)`
+  ).get(who, who);
+  if (!target) return { status: 404, error: 'No account with that username or email' };
+  if (target.id === u) return { status: 400, error: 'You already own this note' };
+  const cleanRole = MEMBER_ROLES.has(role) ? role : 'edit';
+  const stamp = stampNow();
+  db.prepare(
+    `INSERT INTO note_members (note_id, user_id, role, added_by, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(note_id, user_id) DO UPDATE SET
+       role = excluded.role, updated_at = excluded.updated_at, deleted_at = NULL,
+       pinned = CASE WHEN note_members.deleted_at IS NULL THEN note_members.pinned ELSE 0 END,
+       archived = CASE WHEN note_members.deleted_at IS NULL THEN note_members.archived ELSE 0 END`
+  ).run(noteId, target.id, cleanRole, u, now(), stamp);
+  restampNote(noteId);
+  return { ok: true, ...listMembers(u, noteId) };
+});
+
+export function updateMember(u, noteId, memberUserId, { role } = {}) {
+  if (u == null || !_row(u, noteId)) return { status: 404, error: 'Note not found' };
+  if (!MEMBER_ROLES.has(role)) return { status: 400, error: 'role must be view or edit' };
+  const r = db.prepare(
+    `UPDATE note_members SET role = ?, updated_at = ? WHERE note_id = ? AND user_id = ? AND deleted_at IS NULL`
+  ).run(role, stampNow(), noteId, memberUserId);
+  if (!r.changes) return { status: 404, error: 'Not shared with that person' };
+  restampNote(noteId);
+  return { ok: true, ...listMembers(u, noteId) };
+}
+
+/**
+ * The owner removes a member, or a member leaves. Their labels on the
+ * note are removed with them.
+ */
+export const removeMember = db.transaction((u, noteId, memberUserId) => {
+  if (u == null) return { status: 404, error: 'Note not found' };
+  const access = noteAccess(u, noteId);
+  const isOwner = access?.role === 'owner';
+  if (!access || (!isOwner && memberUserId !== u)) return { status: 404, error: 'Note not found' };
+  const stamp = stampNow();
+  const r = db.prepare(
+    `UPDATE note_members SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND user_id = ? AND deleted_at IS NULL`
+  ).run(stamp, stamp, noteId, memberUserId);
+  if (!r.changes) return { status: 404, error: 'Not shared with that person' };
+  const ts = now();
+  db.prepare(`UPDATE note_labels SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND user_id = ? AND deleted_at IS NULL`)
+    .run(ts, ts, noteId, memberUserId);
+  restampNote(noteId);
+  return isOwner ? { ok: true, ...listMembers(u, noteId) } : { ok: true };
+});
+
+/**
+ * Server ids of shared notes this user should drop from their devices:
+ * memberships removed, or the owner moved the note to trash, since the
+ * given sync cursor.
+ */
+export function revokedNoteIds(u, since) {
+  if (u == null) return [];
+  return db.prepare(
+    `SELECT DISTINCT m.note_id AS id FROM note_members m JOIN notes n ON n.id = m.note_id
+      WHERE m.user_id = ?
+        AND ((m.deleted_at IS NOT NULL AND m.updated_at >= ?)
+          OR (m.deleted_at IS NULL AND n.trashed_at IS NOT NULL AND n.synced_at >= ?))`
+  ).all(u, since, since).map(r => r.id);
+}
