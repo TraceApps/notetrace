@@ -43,6 +43,19 @@
 
         </activity>
 
+        <!-- Note reminders: exact alarms fire here; Done and Snooze buttons too. -->
+        <receiver android:name=".NoteReminderReceiver" android:exported="false" />
+
+        <!-- Re-arm reminder alarms after a reboot, an app update, or a clock or time zone change. -->
+        <receiver android:name=".BootReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

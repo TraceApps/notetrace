@@ -9,8 +9,10 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(ShareIntentPlugin.class);
+        registerPlugin(NoteRemindersPlugin.class);
         super.onCreate(savedInstanceState);
         ShareIntentPlugin.handleIntent(getIntent());
+        NoteRemindersPlugin.handleIntent(getIntent());
     }
 
     @Override
@@ -18,5 +20,6 @@ public class MainActivity extends BridgeActivity {
         super.onNewIntent(intent);
         setIntent(intent);
         ShareIntentPlugin.handleIntent(intent);
+        NoteRemindersPlugin.handleIntent(intent);
     }
 }

@@ -79,3 +79,18 @@ test('pulls use the server-stamped synced_at cursor, never device updated_at', (
 test('a rejected stale push re-stamps the winning row so the device pulls it back', () => {
   assert.match(syncJs, /if \(serverIsNewer\) \{[\s\S]{0,300}SET synced_at = /);
 });
+
+test('Android reminders are native exact alarms, re-armed after reboot', () => {
+  const manifest = read('../android/app/src/main/AndroidManifest.xml');
+  const main = read('../android/app/src/main/java/com/notetrace/app/MainActivity.java');
+  const sched = read('../android/app/src/main/java/com/notetrace/app/NoteReminderScheduler.java');
+  const js = read('../src/lib/note-reminders.js');
+  assert.match(manifest, /android:name="\.NoteReminderReceiver"/);
+  assert.match(manifest, /android:name="\.BootReceiver"[\s\S]*BOOT_COMPLETED[\s\S]*TIMEZONE_CHANGED/);
+  assert.match(main, /registerPlugin\(NoteRemindersPlugin\.class\)/);
+  assert.match(sched, /setExactAndAllowWhileIdle/);
+  // The database file the native side reads must match the JS connection name.
+  assert.match(read('../src/lib/db-native.js'), /const DB_NAME = 'notetrace_local'/);
+  assert.match(sched, /"notetrace_localSQLite\.db"/);
+  assert.doesNotMatch(js, /LocalNotifications\.schedule\(/, 'JS must not schedule reminders alongside the native alarms');
+});

@@ -16,7 +16,8 @@
   import { currentUser, userMgmtActive, setupRequired, loadAuthState, handleOidcCallback } from './stores/auth.js';
   import { needsNativeSetup, isNative, getNativeMode, getServerUrl, apiUrl } from './lib/platform.js';
   import { writable } from 'svelte/store';
-  import { notesChanged } from './stores/notes.js';
+  import { notesChanged, signalNotesChanged } from './stores/notes.js';
+  import { notifLocalEnabled } from './stores/settings.js';
   import { appLocked } from './lib/app-lock.js';
   import LockScreen from './components/LockScreen.svelte';
   import { describeConnectionIssue } from './lib/connection-message.js';
@@ -145,12 +146,16 @@
   // Rebuild scheduled reminder notifications after any note change or sync,
   // with notification action labels in the active language.
   $: if (isNative && $notesChanged >= 0) {
-    import('./lib/note-reminders.js').then(({ setReminderLabels, rescheduleReminders }) => {
-      setReminderLabels({
-        done: $_('reminders.action_done'),
-        snooze: $_('reminders.action_snooze'),
-        reminder: $_('reminders.reminder'),
-        channel: $_('reminders.channel_name'),
+    const enabled = $notifLocalEnabled !== false;
+    import('./lib/note-reminders.js').then(async ({ configureReminders, rescheduleReminders }) => {
+      await configureReminders({
+        enabled,
+        labels: {
+          done: $_('reminders.action_done'),
+          snooze: $_('reminders.action_snooze'),
+          reminder: $_('reminders.reminder'),
+          channel: $_('reminders.channel_name'),
+        },
       });
       rescheduleReminders();
     }).catch(() => {});
@@ -327,9 +332,10 @@
       // Note reminders: route notification taps to the note and keep the
       // scheduled set in step with the notes.
       import('./lib/note-reminders.js').then(({ registerReminderActions, rescheduleReminders }) => {
-        registerReminderActions((id) => {
-          import('svelte-spa-router').then(({ push }) => push(`/?note=${id}`));
-        });
+        registerReminderActions(
+          (id) => push(`/?note=${id}`),
+          () => signalNotesChanged(),
+        );
         rescheduleReminders();
       }).catch(() => { /* ignore */ });
     } else {

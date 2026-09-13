@@ -2,13 +2,15 @@
   // SettingsNotifications — device + push-service reminders.
   //
   // Two delivery channels (NT parity):
-  //   - Device notifications: Web Notification API on PWA, Capacitor
-  //     LocalNotifications on Android.
+  //   - Device notifications: the browser while NoteTrace is open
+  //     (web-reminders.js), native exact alarms on Android
+  //     (note-reminders.js).
   //   - Push service: Apprise / Gotify / ntfy. Server-side. Secrets stay
   //     on the server.
   //
   // Per-reminder switches gate which NoteTrace events fire on push:
   //   - Note reminders (a note's reminder time comes due)
+  import { onMount } from 'svelte';
   import { _ } from 'svelte-i18n';
   import { showSuccess, showError } from '../../stores/toast.js';
   import { isNative, getServerUrl, getAuthToken, apiUrl } from '../../lib/platform.js';
@@ -31,6 +33,25 @@
   }
   let notifNoteReminders   = getBool('notifNoteReminders', true);
   let browserPermission = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
+
+  // Android: reminders fire at the exact minute only with the exact-alarm
+  // permission (granted automatically on most phones).
+  let exactAlarms = true;
+  async function refreshExact() {
+    if (!isNative) return;
+    const { exactAlarmStatus } = await import('../../lib/note-reminders.js');
+    exactAlarms = (await exactAlarmStatus()).exact !== false;
+  }
+  async function allowExact() {
+    const { openExactAlarmSettings } = await import('../../lib/note-reminders.js');
+    await openExactAlarmSettings();
+  }
+  onMount(() => {
+    refreshExact();
+    const onVis = () => { if (!document.hidden) refreshExact(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  });
 
   function toggleReminder(key, value) {
     setS(key, value);
@@ -101,6 +122,16 @@
       <input type="checkbox" class="toggle-cb" checked={$notifLocalEnabled}
         on:change={e => notifLocalEnabled.set(e.target.checked)} />
     </div>
+    {#if isNative && !exactAlarms}
+      <div class="setting-divider"></div>
+      <div class="setting-row">
+        <div>
+          <span class="setting-label">{$_('settings_notifications.exact_alarms')}</span>
+          <span class="setting-desc">{$_('settings_notifications.exact_alarms_desc')}</span>
+        </div>
+        <button class="btn btn-secondary" on:click={allowExact}>{$_('settings_notifications.exact_alarms_allow')}</button>
+      </div>
+    {/if}
     {#if !isNative}
       <div class="setting-divider"></div>
       <div class="setting-row">

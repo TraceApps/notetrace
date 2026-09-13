@@ -1,62 +1,38 @@
 /**
- * note-reminders.js: schedules note reminders as Android notifications.
+ * note-reminders.js: note reminders on Android.
  *
- * The notification set is rebuilt from the note list rather than patched
- * one note at a time: after any note change or sync, every pending
- * reminder notification is cancelled and the current set rescheduled.
- * That keeps the device right no matter where the change came from
- * (this device, the web app, another phone via sync).
+ * Scheduling is native (NoteReminderScheduler.java): exact alarms read the
+ * notes from the on-device database, so reminders fire on time with the
+ * app closed, after a reboot, and across daylight saving changes. This
+ * module tells the native side when notes changed, passes the device
+ * setting and translated notification strings, and routes notification
+ * taps and Done actions back into the app.
  *
- * Repeating reminders use the OS repeat, so they keep firing even when
- * the app isn't opened. Web and PWA reminders are delivered by the
- * server's push channels instead; this module is a no-op there.
+ * Web and PWA reminders live in web-reminders.js; this module is a no-op
+ * there.
  */
+import { registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { isNative } from './platform.js';
-import { NoteApi } from './api.js';
-import { nextOccurrence, REPEATS } from './reminders.js';
-import { markdownToPreview } from './note-preview.js';
+import { isNative, getServerUrl } from './platform.js';
 
-const CHANNEL_ID = 'notetrace-reminders';
-const ACTION_TYPE_ID = 'note-reminder';
-const REMINDER_ID_BASE = 1_000_000;
-const SNOOZE_ID_BASE = 2_000_000;
-const SNOOZE_MS = 60 * 60 * 1000;
-const EVERY = { daily: 'day', weekly: 'week', monthly: 'month', yearly: 'year' };
+const NoteReminders = isNative ? registerPlugin('NoteReminders') : null;
 
-let _prepared = false;
-let _listening = false;
+// Range the earlier LocalNotifications-based scheduler used; cleared once so
+// those notifications don't fire alongside the native ones.
+const LEGACY_MIN = 1_000_000;
+const LEGACY_MAX = 3_000_000;
+const LEGACY_CLEARED_KEY = 'note:legacyRemindersCleared';
+
 let _timer = null;
-let _labels = { done: 'Done', snooze: 'Snooze 1 Hour', reminder: 'Reminder', channel: 'Note reminders' };
+let _listening = false;
+let _config = { enabled: true, labels: {} };
 
-/** UI strings for the notification actions, set once i18n is ready. */
-export function setReminderLabels(labels) {
-  _labels = { ..._labels, ...labels };
-  _prepared = false;
-}
-
-async function _prepare() {
-  if (_prepared) return;
-  try {
-    await LocalNotifications.createChannel({
-      id: CHANNEL_ID,
-      name: _labels.channel,
-      importance: 4, // HIGH: sound + heads-up, like an alarm-style reminder
-      visibility: 1,
-    });
-    await LocalNotifications.registerActionTypes({
-      types: [{
-        id: ACTION_TYPE_ID,
-        actions: [
-          { id: 'done', title: _labels.done },
-          { id: 'snooze', title: _labels.snooze },
-        ],
-      }],
-    });
-    _prepared = true;
-  } catch (e) {
-    console.warn('[reminders] notification setup failed:', e?.message || e);
-  }
+/** Device setting and notification strings in the active language. */
+export async function configureReminders({ enabled, labels } = {}) {
+  if (!NoteReminders) return;
+  if (enabled !== undefined) _config.enabled = enabled !== false;
+  if (labels) _config.labels = { ..._config.labels, ...labels };
+  try { await NoteReminders.configure(_config); } catch { /* older build without the plugin */ }
 }
 
 /** Ask for notification permission the first time a reminder is set. */
@@ -70,93 +46,57 @@ export async function ensureReminderPermission() {
   } catch { return false; }
 }
 
-function _content(note) {
-  const title = note.title || _labels.reminder;
-  let body = note.kind === 'checklist'
-    ? (note.items || []).filter(i => !i.checked).slice(0, 4).map(i => `• ${i.text}`).join('\n')
-    : markdownToPreview(note.body_md, 200);
-  if (!note.title && body) {
-    return { title: body.split('\n')[0].slice(0, 80), body: body.split('\n').slice(1).join('\n') };
-  }
-  return { title, body };
+async function _clearLegacy() {
+  try {
+    if (localStorage.getItem(LEGACY_CLEARED_KEY)) return;
+    const pending = await LocalNotifications.getPending();
+    const old = (pending.notifications || []).filter(n => n.id >= LEGACY_MIN && n.id < LEGACY_MAX).map(n => ({ id: n.id }));
+    if (old.length) await LocalNotifications.cancel({ notifications: old });
+    localStorage.setItem(LEGACY_CLEARED_KEY, '1');
+  } catch { /* try again next launch */ }
 }
 
-async function _rebuild() {
-  const perm = await LocalNotifications.checkPermissions().catch(() => null);
-  if (perm?.display !== 'granted') return;
-  await _prepare();
-
-  const pending = await LocalNotifications.getPending().catch(() => ({ notifications: [] }));
-  const stale = (pending.notifications || [])
-    .filter(n => n.id >= REMINDER_ID_BASE && n.id < SNOOZE_ID_BASE)
-    .map(n => ({ id: n.id }));
-  if (stale.length) await LocalNotifications.cancel({ notifications: stale }).catch(() => {});
-
-  const notes = await NoteApi.getNotes({ view: 'reminders' }).catch(() => []);
-  const now = new Date();
-  const notifications = [];
-  for (const note of notes) {
-    const repeating = REPEATS.includes(note.reminder_rrule);
-    const next = nextOccurrence(note.reminder_at, note.reminder_rrule, note.reminder_tz, now);
-    if (!next || (!repeating && next <= now)) continue;
-    const { title, body } = _content(note);
-    notifications.push({
-      id: REMINDER_ID_BASE + note.id,
-      channelId: CHANNEL_ID,
-      actionTypeId: ACTION_TYPE_ID,
-      title,
-      body,
-      extra: { noteId: note.id, repeating },
-      schedule: repeating
-        ? { at: next, repeats: true, every: EVERY[note.reminder_rrule], allowWhileIdle: true }
-        : { at: next, allowWhileIdle: true },
-    });
-  }
-  if (notifications.length) {
-    await LocalNotifications.schedule({ notifications }).catch(e => {
-      console.warn('[reminders] schedule failed:', e?.message || e);
-    });
-  }
-}
-
-/** Rebuild the scheduled reminder set. Debounced; safe to call often. */
+/** Re-arm the native alarms. Debounced; safe to call after every change. */
 export function rescheduleReminders() {
-  if (!isNative) return;
+  if (!NoteReminders) return;
   clearTimeout(_timer);
-  _timer = setTimeout(() => { _rebuild().catch(() => {}); }, 400);
+  // A short delay lets the local database write settle before the native side reads it.
+  _timer = setTimeout(() => {
+    NoteReminders.reschedule().catch(() => {});
+  }, 600);
+}
+
+/** Whether Android lets NoteTrace fire at the exact minute. */
+export async function exactAlarmStatus() {
+  if (!NoteReminders) return { exact: true };
+  try { return await NoteReminders.exactAlarmStatus(); } catch { return { exact: true }; }
+}
+
+export async function openExactAlarmSettings() {
+  try { await NoteReminders?.openExactAlarmSettings(); } catch { /* ignore */ }
 }
 
 /**
- * Handle taps and the Done / Snooze buttons. `openNote(id)` routes to the
- * note. Registered once from App.svelte.
+ * Route notification taps to the note, and refresh after Done cleared a
+ * reminder natively. `openNote(id)` opens a note; `onChanged()` reloads.
+ * Registered once from App.svelte.
  */
-export async function registerReminderActions(openNote) {
-  if (!isNative || _listening) return;
+export async function registerReminderActions(openNote, onChanged) {
+  if (!NoteReminders || _listening) return;
   _listening = true;
-  await LocalNotifications.addListener('localNotificationActionPerformed', async ({ actionId, notification }) => {
-    const noteId = notification?.extra?.noteId;
-    if (!noteId) return;
-    if (actionId === 'done') {
-      // Done clears a one-off reminder. A repeating reminder keeps going.
-      if (!notification.extra.repeating) {
-        try { await NoteApi.updateNote(noteId, { reminder_at: null }); } catch { /* note may be gone */ }
+  await _clearLegacy();
+  try {
+    await NoteReminders.addListener('reminderOpen', ({ noteId }) => { if (noteId) openNote(noteId); });
+    await NoteReminders.addListener('remindersChanged', async () => {
+      onChanged?.();
+      // The native Done wrote a pending change; send it now when connected.
+      if (getServerUrl()) {
+        try { const { fullSync } = await import('./sync.js'); await fullSync(true); } catch { /* next sync loop */ }
       }
-      rescheduleReminders();
-    } else if (actionId === 'snooze') {
-      await _prepare();
-      await LocalNotifications.schedule({
-        notifications: [{
-          id: SNOOZE_ID_BASE + noteId,
-          channelId: CHANNEL_ID,
-          actionTypeId: ACTION_TYPE_ID,
-          title: notification.title,
-          body: notification.body,
-          extra: { noteId, repeating: !!notification.extra.repeating },
-          schedule: { at: new Date(Date.now() + SNOOZE_MS), allowWhileIdle: true },
-        }],
-      }).catch(() => {});
-    } else {
-      openNote(noteId);
-    }
-  });
+    });
+    const { noteId } = await NoteReminders.getPendingOpen();
+    if (noteId) openNote(noteId);
+  } catch (e) {
+    console.warn('[reminders] native bridge unavailable:', e?.message || e);
+  }
 }
