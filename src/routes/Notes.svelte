@@ -2,12 +2,13 @@
   /**
    * Notes: the notes grid and its sibling views.
    *   /            notes (pinned + others, with capture)
+   *   /reminders   notes with a reminder, soonest first
    *   /archive     archived notes
    *   /trash       trashed notes (auto-deleted after 30 days)
    *   /label/:id   notes carrying one label
    */
   import { onMount, onDestroy } from 'svelte';
-  import { location } from 'svelte-spa-router';
+  import { location, querystring, replace as replaceRoute } from 'svelte-spa-router';
   import { _ } from 'svelte-i18n';
   import { bannerStyle } from '../stores/settings.js';
   import { NoteApi } from '../lib/api.js';
@@ -20,14 +21,21 @@
   import LabelPicker from '../components/notes/LabelPicker.svelte';
   import Popover from '../components/notes/Popover.svelte';
   import ActionSheet from '../components/ui/ActionSheet.svelte';
+  import ReminderPicker from '../components/notes/ReminderPicker.svelte';
+  import { nextOccurrence, isPast } from '../lib/reminders.js';
+  import { ensureReminderPermission, rescheduleReminders } from '../lib/note-reminders.js';
+  import { pendingShare, shareToNote } from '../lib/share-intent.js';
 
   export let params = {};
 
   $: path = ($location || '/').split('?')[0];
-  $: view = path.startsWith('/archive') ? 'archive' : path.startsWith('/trash') ? 'trash' : 'notes';
+  $: view = path.startsWith('/archive') ? 'archive'
+    : path.startsWith('/trash') ? 'trash'
+    : path.startsWith('/reminders') ? 'reminders'
+    : 'notes';
   $: labelId = path.startsWith('/label/') ? Number(params?.id) : null;
   $: activeLabel = labelId != null ? $labelsById.get(labelId) : null;
-  $: canCapture = view === 'notes';
+  $: canCapture = view === 'notes' || view === 'reminders';
 
   let notes = [];
   let loading = true;
@@ -38,11 +46,19 @@
   let editing = null;        // { note } | { kind } while the editor is open
   let colorTarget = null, colorAnchor = null, colorOpen = false;
   let labelTarget = null, labelAnchor = null, labelOpen = false;
+  let reminderTarget = null, reminderAnchor = null, reminderOpen = false;
   let menuNote = null, menuOpen = false;
 
   $: pinned = view === 'notes' ? notes.filter(n => n.pinned) : [];
-  $: others = view === 'notes' ? notes.filter(n => !n.pinned) : notes;
+  $: byNextReminder = view === 'reminders'
+    ? [...notes].sort((a, b) =>
+        (nextOccurrence(a.reminder_at, a.reminder_rrule, a.reminder_tz) || 0) - (nextOccurrence(b.reminder_at, b.reminder_rrule, b.reminder_tz) || 0))
+    : [];
+  $: upcoming = byNextReminder.filter(n => !isPast(n.reminder_at, n.reminder_rrule));
+  $: pastReminders = byNextReminder.filter(n => isPast(n.reminder_at, n.reminder_rrule)).reverse();
+  $: others = view === 'notes' ? notes.filter(n => !n.pinned) : view === 'reminders' ? upcoming : notes;
   $: heading = activeLabel ? activeLabel.name
+    : view === 'reminders' ? $_('routes.reminders.title')
     : view === 'archive' ? $_('routes.archive.title')
     : view === 'trash' ? $_('routes.trash.title')
     : $_('routes.notes.title');
@@ -76,7 +92,31 @@
   function newNote(kind = 'text') {
     editing = { kind, labels: labelId != null ? [labelId] : [] };
   }
+
+  // Opened from a reminder notification: /?note=<id>
+  $: openFromQuery($querystring);
+  async function openFromQuery(qs) {
+    const params = new URLSearchParams(qs || '');
+    if (params.get('share') === '1') {
+      editing = { kind: 'text', prefill: shareToNote({ title: params.get('title'), text: params.get('text'), url: params.get('url') }) };
+      replaceRoute(path);
+      return;
+    }
+    const id = Number(params.get('note'));
+    if (!id || editing) return;
+    try {
+      const n = await NoteApi.getNote(id);
+      if (n) editing = { note: n };
+    } catch { /* note gone */ }
+    replaceRoute(path);
+  }
   function closeEditor() { editing = null; load(); }
+
+  // Shared from another Android app.
+  $: if ($pendingShare && !editing) {
+    editing = { kind: 'text', prefill: $pendingShare };
+    pendingShare.set(null);
+  }
 
   // ── Quick actions ──────────────────────────────────────────────────
   function replace(n) {
@@ -128,6 +168,9 @@
         case 'labels':
           labelTarget = note; labelAnchor = anchor; labelOpen = true;
           return;
+        case 'reminder':
+          reminderTarget = note; reminderAnchor = anchor; reminderOpen = true;
+          return;
       }
       refreshLabels();
     } catch (e) {
@@ -175,6 +218,28 @@
     } catch (e) { showError(e.message); }
   }
 
+  async function setReminder(detail) {
+    const note = reminderTarget;
+    reminderOpen = false;
+    if (!note) return;
+    await ensureReminderPermission();
+    try {
+      replace(await NoteApi.updateNote(note.id, detail));
+      rescheduleReminders();
+      if (view === 'reminders') load();
+    } catch (e) { showError(e.message); }
+  }
+  async function clearReminder() {
+    const note = reminderTarget;
+    reminderOpen = false;
+    if (!note) return;
+    try {
+      const n = await NoteApi.updateNote(note.id, { reminder_at: null });
+      if (view === 'reminders') notes = notes.filter(x => x.id !== note.id); else replace(n);
+      rescheduleReminders();
+    } catch (e) { showError(e.message); }
+  }
+
   function onMenu(e) {
     menuNote = e.detail.note;
     menuOpen = true;
@@ -186,6 +251,7 @@
       ]
     : [
         ...(view === 'notes' ? [{ value: 'pin', label: menuNote.pinned ? $_('notes.unpin') : $_('notes.pin'), icon: 'keep' }] : []),
+        { value: 'reminder', label: $_('reminders.remind_me'), icon: 'notification_add' },
         { value: 'color', label: $_('notes.color'), icon: 'palette' },
         { value: 'labels', label: $_('notes.labels'), icon: 'label' },
         view === 'archive'
@@ -260,10 +326,11 @@
     {:else if !notes.length}
       <div class="empty">
         <span class="material-symbols-rounded empty-icon">
-          {query ? 'search_off' : view === 'archive' ? 'archive' : view === 'trash' ? 'delete' : activeLabel ? 'label' : 'sticky_note_2'}
+          {query ? 'search_off' : view === 'reminders' ? 'notifications' : view === 'archive' ? 'archive' : view === 'trash' ? 'delete' : activeLabel ? 'label' : 'sticky_note_2'}
         </span>
         <h2>
           {query ? $_('notes.empty_search_title')
+            : view === 'reminders' ? $_('routes.reminders.empty_title')
             : view === 'archive' ? $_('routes.archive.empty_title')
             : view === 'trash' ? $_('routes.trash.empty_title')
             : activeLabel ? $_('routes.label.empty_title')
@@ -271,6 +338,7 @@
         </h2>
         <p>
           {query ? $_('notes.empty_search_body')
+            : view === 'reminders' ? $_('routes.reminders.empty_body')
             : view === 'archive' ? $_('routes.archive.empty_body')
             : view === 'trash' ? $_('routes.trash.empty_body')
             : activeLabel ? $_('routes.label.empty_body')
@@ -287,7 +355,14 @@
       {#if others.length}
         <section class="notes-section">
           {#if pinned.length}<h2 class="section-label">{$_('notes.others')}</h2>{/if}
+          {#if view === 'reminders' && pastReminders.length}<h2 class="section-label">{$_('reminders.upcoming')}</h2>{/if}
           <NoteGrid notes={others} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} />
+        </section>
+      {/if}
+      {#if view === 'reminders' && pastReminders.length}
+        <section class="notes-section">
+          <h2 class="section-label">{$_('reminders.past')}</h2>
+          <NoteGrid notes={pastReminders} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} />
         </section>
       {/if}
     {/if}
@@ -301,11 +376,16 @@
 </div>
 
 {#if editing}
-  <NoteEditor note={editing.note || null} initialKind={editing.kind || 'text'} initialLabels={editing.labels || []} on:close={closeEditor} />
+  <NoteEditor note={editing.note || null} initialKind={editing.kind || 'text'} initialLabels={editing.labels || []}
+    prefill={editing.prefill || null} on:close={closeEditor} />
 {/if}
 
 <Popover bind:open={colorOpen} anchor={colorAnchor}>
   <ColorPalette value={colorTarget?.color} on:select={(e) => setColor(e.detail)} />
+</Popover>
+<Popover bind:open={reminderOpen} anchor={reminderAnchor}>
+  <ReminderPicker reminderAt={reminderTarget?.reminder_at} repeat={reminderTarget?.reminder_rrule} tz={reminderTarget?.reminder_tz}
+    on:set={(e) => setReminder(e.detail)} on:clear={clearReminder} />
 </Popover>
 <Popover bind:open={labelOpen} anchor={labelAnchor}>
   <LabelPicker selected={labelTarget?.labels || []} on:change={(e) => setLabels(e.detail)} />

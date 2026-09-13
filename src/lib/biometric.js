@@ -79,6 +79,28 @@ export async function authenticate(reason = 'Sign in to NoteTrace') {
   }
 }
 
+/**
+ * Unlock prompt for the app lock. Falls back to the device PIN, pattern, or
+ * password, so a changed fingerprint enrollment can never lock someone out
+ * of their own notes.
+ */
+export async function authenticateUnlock(reason) {
+  const p = _getPlugin();
+  if (!p) return false;
+  try {
+    await p.authenticate({
+      reason,
+      androidTitle: 'NoteTrace',
+      androidSubtitle: reason,
+      androidConfirmationRequired: false,
+      allowDeviceCredential: true,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Save the JWT for the current session so the next launch can unlock with biometric. */
 export async function saveTokenForBiometric(token) {
   if (!isNative || !getServerUrl() || !token) return;

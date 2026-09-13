@@ -1,6 +1,7 @@
 {
   "nav": {
     "notes":    "Notes",
+    "reminders": "Reminders",
     "archive":  "Archive",
     "trash":    "Trash",
     "labels":   "Labels",
@@ -27,6 +28,11 @@
       "title": "Notes",
       "empty_title": "No Notes Yet",
       "empty_body": "Notes you create will show up here."
+    },
+    "reminders": {
+      "title": "Reminders",
+      "empty_title": "No Reminders",
+      "empty_body": "Set a reminder on a note and it will show up here."
     },
     "archive": {
       "title": "Archive",
@@ -199,6 +205,50 @@
     "version_restore_message": "The note will change back to this version. Its current content is saved as a version first, so you can switch back.",
     "version_restored":        "Version restored",
     "version_restore_failed":  "Couldn't restore that version."
+  },
+  "reminders": {
+    "remind_me":        "Remind Me",
+    "edit_reminder":    "Edit reminder",
+    "reminder":         "Reminder",
+    "today":            "Today",
+    "tomorrow":         "Tomorrow",
+    "preset_later_today": "Later Today",
+    "preset_tomorrow":  "Tomorrow",
+    "preset_next_week": "Next Week",
+    "pick_date_time":   "Pick Date & Time",
+    "repeat":           "Repeat",
+    "repeat_none":      "Does not repeat",
+    "repeat_daily":     "Daily",
+    "repeat_weekly":    "Weekly",
+    "repeat_monthly":   "Monthly",
+    "repeat_yearly":    "Yearly",
+    "in_past":          "That time has already passed.",
+    "save":             "Save",
+    "remove":           "Remove Reminder",
+    "upcoming":         "Upcoming",
+    "past":             "Past",
+    "action_done":      "Done",
+    "action_snooze":    "Snooze 1 Hour",
+    "channel_name":     "Note reminders"
+  },
+  "app_lock": {
+    "section":         "App Lock",
+    "enable":          "Lock NoteTrace",
+    "enable_desc":     "Require your fingerprint, face, or device PIN to open NoteTrace on this device.",
+    "timeout":         "Lock After",
+    "timeout_desc":    "How long NoteTrace can be in the background before it locks again.",
+    "timeout_now":     "Immediately",
+    "timeout_1":       "1 minute",
+    "timeout_5":       "5 minutes",
+    "timeout_15":      "15 minutes",
+    "no_biometrics":   "No fingerprint or face unlock is set up on this device. Your device PIN, pattern, or password will be used instead.",
+    "confirm_prompt":  "Confirm to turn on App Lock",
+    "confirm_failed":  "App Lock wasn't turned on because the unlock didn't complete.",
+    "locked":          "NoteTrace Is Locked",
+    "hint":            "Unlock with your fingerprint, face, or device PIN.",
+    "try_again":       "That didn't work. Try again.",
+    "unlock":          "Unlock",
+    "prompt":          "Unlock NoteTrace"
   },
   "labels": {
     "edit_labels":        "Edit Labels",

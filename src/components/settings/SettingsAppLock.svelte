@@ -1,0 +1,66 @@
+<script>
+  // App lock: require fingerprint, face, or the device PIN to open NoteTrace
+  // on this device. Android only; stored per device.
+  import { onMount } from 'svelte';
+  import { _ } from 'svelte-i18n';
+  import { appLockEnabled, appLockTimeoutMin } from '../../stores/settings.js';
+  import { showError } from '../../stores/toast.js';
+  import { setAuthenticating } from '../../lib/app-lock.js';
+
+  let status = null;
+  onMount(async () => {
+    const { getStatus } = await import('../../lib/biometric.js');
+    status = await getStatus();
+  });
+
+  async function onToggle(e) {
+    const next = e.target.checked;
+    if (!next) { appLockEnabled.set(false); return; }
+    // Confirm the unlock works before turning the lock on.
+    const { authenticateUnlock } = await import('../../lib/biometric.js');
+    setAuthenticating(true);
+    const ok = await authenticateUnlock($_('app_lock.confirm_prompt'));
+    setAuthenticating(false);
+    if (ok) appLockEnabled.set(true);
+    else {
+      e.target.checked = false;
+      showError($_('app_lock.confirm_failed'));
+    }
+  }
+</script>
+
+<div class="section-body">
+  <div class="card settings-card">
+    <div class="setting-row">
+      <div>
+        <span class="setting-label">{$_('app_lock.enable')}</span>
+        <span class="setting-desc">{$_('app_lock.enable_desc')}</span>
+      </div>
+      <input type="checkbox" class="toggle-cb" checked={$appLockEnabled} on:change={onToggle} />
+    </div>
+    {#if $appLockEnabled}
+      <div class="setting-divider"></div>
+      <div class="setting-row">
+        <div>
+          <span class="setting-label">{$_('app_lock.timeout')}</span>
+          <span class="setting-desc">{$_('app_lock.timeout_desc')}</span>
+        </div>
+        <select class="select sel-sm" value={String($appLockTimeoutMin)} on:change={(e) => appLockTimeoutMin.set(Number(e.target.value))}>
+          <option value="0">{$_('app_lock.timeout_now')}</option>
+          <option value="1">{$_('app_lock.timeout_1')}</option>
+          <option value="5">{$_('app_lock.timeout_5')}</option>
+          <option value="15">{$_('app_lock.timeout_15')}</option>
+        </select>
+      </div>
+    {/if}
+    {#if status && !status.isAvailable}
+      <div class="setting-divider"></div>
+      <p class="setting-desc note">{$_('app_lock.no_biometrics')}</p>
+    {/if}
+  </div>
+</div>
+
+<style>
+  .note { padding: 12px 16px; }
+  .select { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-1); height: 36px; padding: 0 10px; font-size: 14px; }
+</style>

@@ -28,6 +28,9 @@
   import LabelPicker from './LabelPicker.svelte';
   import Popover from './Popover.svelte';
   import VersionHistory from './VersionHistory.svelte';
+  import ReminderPicker from './ReminderPicker.svelte';
+  import ReminderChip from './ReminderChip.svelte';
+  import { ensureReminderPermission, rescheduleReminders } from '../../lib/note-reminders.js';
 
   /** Existing note, or null to create one. */
   export let note = null;
@@ -35,13 +38,15 @@
   export let initialKind = 'text';
   /** Labels to apply to a new note (e.g. when created from a label view). */
   export let initialLabels = [];
+  /** Content for a new note, e.g. from the share sheet: { title, body_md }. */
+  export let prefill = null;
 
   const dispatch = createEventDispatcher();
   const TEXT_SAVE_MS = 700;
 
   let noteId = note?.id ?? null;
-  let title = note?.title ?? '';
-  let body = note?.body_md ?? '';
+  let title = note?.title ?? prefill?.title ?? '';
+  let body = note?.body_md ?? prefill?.body_md ?? '';
   let kind = note?.kind ?? initialKind;
   let color = note?.color ?? null;
   let pinned = !!note?.pinned;
@@ -50,6 +55,9 @@
   let noteLabels = note?.labels ? [...note.labels] : [...initialLabels];
   let items = note?.items ? note.items.map(i => ({ ...i })) : [];
   let updatedAt = note?.updated_at ?? null;
+  let reminderAt = note?.reminder_at ?? null;
+  let reminderRepeat = note?.reminder_rrule ?? null;
+  let reminderTz = note?.reminder_tz ?? null;
   let editorKey = 0;
   let touched = false;
 
@@ -60,12 +68,13 @@
   let queue = Promise.resolve();
   let saving = false;
   let showHistory = false;
-  let colorOpen = false, labelsOpen = false;
-  let colorAnchor = null, labelsAnchor = null;
+  let colorOpen = false, labelsOpen = false, reminderOpen = false;
+  let colorAnchor = null, labelsAnchor = null, reminderAnchor = null;
   let narrow = typeof window !== 'undefined' && window.innerWidth < 600;
 
   $: readOnly = trashed;
   $: chips = noteLabels.map(id => $labelsById.get(id)).filter(Boolean);
+  $: reminderNote = { reminder_at: reminderAt, reminder_rrule: reminderRepeat, reminder_tz: reminderTz };
 
   function enqueue(fn) {
     saving = true;
@@ -83,6 +92,9 @@
     trashed = !!n.trashed_at;
     color = n.color;
     noteLabels = [...(n.labels || [])];
+    reminderAt = n.reminder_at ?? null;
+    reminderRepeat = n.reminder_rrule ?? null;
+    reminderTz = n.reminder_tz ?? null;
   }
 
   /** Create the note on first content. Resolves to its id. */
@@ -90,6 +102,7 @@
     if (noteId) return noteId;
     const created = await NoteApi.createNote({
       title, body_md: kind === 'text' ? body : '', kind, color, pinned,
+      reminder_at: reminderAt, reminder_rrule: reminderRepeat, reminder_tz: reminderTz,
       labels: noteLabels,
       items: kind === 'checklist' ? items.map((i, idx) => ({ uuid: i.uuid, text: i.text, checked: i.checked, position: i.position ?? idx + 1 })) : [],
     });
@@ -120,7 +133,7 @@
     touched = true;
     return enqueue(async () => {
       if (!noteId) {
-        if (isEmptyNote({ title, body_md: body, items }) && !p.labels && !p.pinned) return;
+        if (isEmptyNote({ title, body_md: body, items }) && !p.labels && !p.pinned && !p.reminder_at) return;
         await ensureNote();
         if (!('archived' in p)) return;
       }
@@ -171,6 +184,24 @@
   function togglePin() { pinned = !pinned; patch({ pinned }); }
   function setColor(c) { color = c; patch({ color: c }); }
   function setLabels(ids) { noteLabels = ids; patch({ labels: ids }); }
+
+  async function setReminder(detail) {
+    reminderOpen = false;
+    reminderAt = detail.reminder_at; reminderRepeat = detail.reminder_rrule; reminderTz = detail.reminder_tz;
+    await ensureReminderPermission();
+    await patch(detail);
+    rescheduleReminders();
+  }
+  async function clearReminder() {
+    reminderOpen = false;
+    reminderAt = null; reminderRepeat = null; reminderTz = null;
+    await patch({ reminder_at: null });
+    rescheduleReminders();
+  }
+  function openReminder(e) {
+    reminderAnchor = (e?.currentTarget || document.activeElement)?.getBoundingClientRect?.() || null;
+    reminderOpen = true;
+  }
 
   async function convert() {
     const next = kind === 'text' ? 'checklist' : 'text';
@@ -267,7 +298,7 @@
   }
 
   function onKey(e) {
-    if (e.key === 'Escape' && !colorOpen && !labelsOpen) {
+    if (e.key === 'Escape' && !colorOpen && !labelsOpen && !reminderOpen) {
       e.preventDefault();
       if (showHistory) showHistory = false;
       else close();
@@ -280,7 +311,8 @@
     window.addEventListener('resize', onResize);
     await tick();
     if (!noteId) {
-      if (kind === 'text') titleEl?.focus();
+      if (prefill) scheduleText(); // shared content saves without needing an edit
+      else if (kind === 'text') titleEl?.focus();
     }
   });
   onDestroy(() => {
@@ -341,8 +373,12 @@
           {/if}
         {/key}
 
-        {#if chips.length}
+        {#if chips.length || reminderAt}
           <div class="editor-chips">
+            {#if reminderAt}
+              <ReminderChip note={reminderNote} size="md" clickable={!readOnly} removable={!readOnly}
+                on:edit={openReminder} on:clear={clearReminder} />
+            {/if}
             {#each chips as l (l.id)}
               <span class="chip">
                 <span class="chip-dot" style="background:{colorDot(l.color)}"></span>{l.name}
@@ -368,6 +404,9 @@
           <button class="btn btn-danger" on:click={deleteForever}>{$_('notes.delete_forever')}</button>
         {:else}
           <div class="bar-actions">
+            <button class="icon-btn" on:click={openReminder} title={$_('reminders.remind_me')} aria-label={$_('reminders.remind_me')}>
+              <span class="material-symbols-rounded">notification_add</span>
+            </button>
             <button class="icon-btn" on:click={openColor} title={$_('notes.color')} aria-label={$_('notes.color')}>
               <span class="material-symbols-rounded">palette</span>
             </button>
@@ -408,6 +447,10 @@
 
 <Popover bind:open={colorOpen} anchor={colorAnchor}>
   <ColorPalette value={color} on:select={(e) => { setColor(e.detail); colorOpen = false; }} />
+</Popover>
+<Popover bind:open={reminderOpen} anchor={reminderAnchor}>
+  <ReminderPicker reminderAt={reminderAt} repeat={reminderRepeat} tz={reminderTz}
+    on:set={(e) => setReminder(e.detail)} on:clear={clearReminder} />
 </Popover>
 <Popover bind:open={labelsOpen} anchor={labelsAnchor}>
   <LabelPicker selected={noteLabels} on:change={(e) => setLabels(e.detail)} />

@@ -30,6 +30,7 @@
   import SettingsRegional        from '../components/settings/SettingsRegional.svelte';
   import SettingsTrace           from '../components/settings/SettingsTrace.svelte';
   import SettingsServerConnection from '../components/settings/SettingsServerConnection.svelte';
+  import SettingsAppLock         from '../components/settings/SettingsAppLock.svelte';
   import SettingsNotifications   from '../components/settings/SettingsNotifications.svelte';
   import SettingsBackup          from '../components/settings/SettingsBackup.svelte';
   import SettingsUpdates         from '../components/settings/SettingsUpdates.svelte';
@@ -154,6 +155,7 @@
     apitokens:     { titleKey: 'settings.apitokens.section',         icon: 'key' },
     webhooks:      { titleKey: 'settings.webhooks.section',          icon: 'webhook' },
     serverconn:    { titleKey: 'settings.server.section',            icon: 'cloud' },
+    applock:       { titleKey: 'app_lock.section',                   icon: 'lock' },
     updates:       { titleKey: 'settings.updates.section',           icon: 'system_update' },
     diagnostics:   { titleKey: 'settings.diagnostics.section',       icon: 'troubleshoot' },
     about:         { titleKey: 'settings.about.section',             icon: 'info' },
@@ -176,6 +178,7 @@
     apitokens:     SettingsApiTokens,
     webhooks:      SettingsWebhooks,
     serverconn:    SettingsServerConnection,
+    applock:       SettingsAppLock,
     updates:       SettingsUpdates,
     diagnostics:   SettingsDiagnostics,
     about:         SettingsAbout,
@@ -198,6 +201,7 @@
     auth:          ['authentication','auth','sso','single sign-on','single sign on','oidc','openid','authentik','keycloak','authelia','password login'],
     apitokens:     ['api tokens','api token','personal access token','pat','mcp','model context protocol','claude desktop','cursor','codex','agent','ai agent','bearer token','scopes','revoke token'],
     webhooks:      ['webhooks','webhook','automation','n8n','home assistant','ifttt','push','event','integration','integrations','http post','callback url','signature','hmac','secret'],
+    applock:       ['app lock','lock','biometric','fingerprint','face unlock','pin','privacy','security','unlock'],
     serverconn:    ['server','connection','sync','connect','disconnect','local mode','offline','standalone','android','native','url','login'],
     updates:       ['updates','update','upgrade','version','new version','changelog','release','releases','apk','install','download','check for updates','auto-check','channel','stable','dev','dev-latest','beta','github','server update','docker','compose','docker-compose','check frequency','check interval','how often','hourly','daily','manual','manual only','cadence','banner','notification'],
     diagnostics:   ['diagnostics','logs','verbose','console','export','bug','report','troubleshoot','crash'],
@@ -413,6 +417,11 @@
     <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'serverconn')} class:active={currentSection === 'serverconn'} aria-current={currentSection === 'serverconn' ? 'page' : undefined} on:click={() => toggleSection('serverconn')}>
       <span class="material-symbols-rounded si">cloud_sync</span>
       <span>{$_('settings.server_connection.section')}</span>
+      <span class="material-symbols-rounded chevron">expand_more</span>
+    </button>
+    <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'applock')} class:active={currentSection === 'applock'} aria-current={currentSection === 'applock' ? 'page' : undefined} on:click={() => toggleSection('applock')}>
+      <span class="material-symbols-rounded si">lock</span>
+      <span>{$_('app_lock.section')}</span>
       <span class="material-symbols-rounded chevron">expand_more</span>
     </button>
   {/if}

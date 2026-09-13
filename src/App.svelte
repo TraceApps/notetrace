@@ -16,6 +16,9 @@
   import { currentUser, userMgmtActive, setupRequired, loadAuthState, handleOidcCallback } from './stores/auth.js';
   import { needsNativeSetup, isNative, getNativeMode, getServerUrl, apiUrl } from './lib/platform.js';
   import { writable } from 'svelte/store';
+  import { notesChanged } from './stores/notes.js';
+  import { appLocked } from './lib/app-lock.js';
+  import LockScreen from './components/LockScreen.svelte';
   import { describeConnectionIssue } from './lib/connection-message.js';
 
   // Sync state — mirrored from the real sync store (dynamically imported).
@@ -139,6 +142,20 @@
   }
   function _cancelPullSync() { _pullTracking = false; _pullDistance = 0; }
 
+  // Rebuild scheduled reminder notifications after any note change or sync,
+  // with notification action labels in the active language.
+  $: if (isNative && $notesChanged >= 0) {
+    import('./lib/note-reminders.js').then(({ setReminderLabels, rescheduleReminders }) => {
+      setReminderLabels({
+        done: $_('reminders.action_done'),
+        snooze: $_('reminders.action_snooze'),
+        reminder: $_('reminders.reminder'),
+        channel: $_('reminders.channel_name'),
+      });
+      rescheduleReminders();
+    }).catch(() => {});
+  }
+
   // Drive svelte-i18n's active locale from the user's saved language setting.
   $: if ($language) locale.set($language);
   import NativeSetup from './routes/NativeSetup.svelte';
@@ -165,6 +182,7 @@
   const routes = {
     '/':                   Notes,
     '/notes':              Notes,
+    '/reminders':          Notes,
     '/archive':            Notes,
     '/trash':              Notes,
     '/label/:id':          Notes,
@@ -288,6 +306,25 @@
       // Clean stale APKs from Directory.Data/updates/ on boot.
       import('./lib/updates.js').then(({ cleanUpdateCache }) => {
         cleanUpdateCache();
+      }).catch(() => { /* ignore */ });
+
+      // Optional biometric app lock.
+      import('./lib/app-lock.js').then(({ startAppLock }) => startAppLock()).catch(() => {});
+
+      // Share sheet: text and links shared from other apps open a new note.
+      import('./lib/share-intent.js').then(({ startShareIntake }) => {
+        startShareIntake(() => {
+          import('svelte-spa-router').then(({ push }) => push('/'));
+        });
+      }).catch(() => { /* ignore */ });
+
+      // Note reminders: route notification taps to the note and keep the
+      // scheduled set in step with the notes.
+      import('./lib/note-reminders.js').then(({ registerReminderActions, rescheduleReminders }) => {
+        registerReminderActions((id) => {
+          import('svelte-spa-router').then(({ push }) => push(`/?note=${id}`));
+        });
+        rescheduleReminders();
       }).catch(() => { /* ignore */ });
     } else {
       // PWA: register the service worker via virtual:pwa-register so we
@@ -500,6 +537,8 @@
 {:else if needsLogin}
   <Login />
 {:else}
+
+{#if $appLocked}<LockScreen />{/if}
 
 <Sidebar bind:open={sidebarOpen} persistent={sidebarPinned} on:close={() => { if (!sidebarPinned) sidebarOpen = false; }} />
 

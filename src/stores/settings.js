@@ -31,6 +31,8 @@ export const DEVICE_PREFS = new Set([
   'appearance','navStyle','sidebarPersistent','disableAnimations',
   'forceMobileLayout',     // per-device layout opt-out (mirrors NT/LT)
   'biometricLoginEnabled', // Android-only, per-device biometric unlock for sign-in
+  'appLockEnabled',        // Android-only: require biometric / device credential to open the app
+  'appLockTimeoutMin',     // minutes in the background before the lock re-engages (0 = immediately)
 ]);
 
 const SERVER_SETTINGS = USER_PREFS;
@@ -245,6 +247,8 @@ export const navStyle          = createSettingStore('navStyle',          'both')
 export const sidebarPersistent = createSettingStore('sidebarPersistent', true);
 export const disableAnimations = createSettingStore('disableAnimations', false);
 export const biometricLoginEnabled = createSettingStore('biometricLoginEnabled', false);
+export const appLockEnabled    = createSettingStore('appLockEnabled',    false);
+export const appLockTimeoutMin = createSettingStore('appLockTimeoutMin', 1);
 // Force-mobile layout: keep the mobile single-column pattern even on
 // wide viewports. Gates every desktop @media rule via the
 // :global(html:not(.force-mobile-layout)) prefix in Settings. Off by
