@@ -85,8 +85,17 @@
   }
   function clearSearch() { query = ''; load(); }
 
-  onMount(() => { refreshLabels(); });
-  onDestroy(() => clearTimeout(searchTimer));
+  let searchEl;
+  const shortcutLabel = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '') ? '\u2318K' : 'Ctrl K';
+  const focusSearch = () => { searchEl?.focus(); searchEl?.select(); };
+  onMount(() => {
+    refreshLabels();
+    window.addEventListener('note:focus-search', focusSearch);
+  });
+  onDestroy(() => {
+    clearTimeout(searchTimer);
+    window.removeEventListener('note:focus-search', focusSearch);
+  });
 
   // ── Editor ─────────────────────────────────────────────────────────
   function openNote(e) { editing = { note: e.detail }; }
@@ -291,8 +300,11 @@
   <div class="notes-toolbar">
     <div class="search">
       <span class="material-symbols-rounded">search</span>
-      <input type="search" placeholder={$_('notes.search_placeholder')} bind:value={query} on:input={onSearch}
+      <input type="search" bind:this={searchEl} placeholder={$_('notes.search_placeholder')} bind:value={query} on:input={onSearch}
         aria-label={$_('notes.search_placeholder')} />
+      {#if !query}
+        <kbd class="search-kbd" aria-hidden="true">{shortcutLabel}</kbd>
+      {/if}
       {#if query}
         <button class="search-clear" on:click={clearSearch} aria-label={$_('notes.clear_search')}>
           <span class="material-symbols-rounded">close</span>
@@ -476,5 +488,15 @@
     .capture { display: none; }
     .fab { display: flex; }
     .notes-body { gap: 18px; padding-top: 16px; }
+  }
+  .search-kbd {
+    display: none;
+    padding: 2px 7px; border-radius: 6px;
+    border: 1px solid var(--border); color: var(--text-3);
+    font: 500 11px/1.4 var(--font-sans, inherit);
+    white-space: nowrap;
+  }
+  @media (hover: hover) and (min-width: 768px) {
+    .search-kbd { display: inline-block; }
   }
 </style>

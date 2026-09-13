@@ -3,7 +3,7 @@
   import { fade, fly, slide } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { portal } from './lib/portal.js';
-  import Router, { location } from 'svelte-spa-router';
+  import Router, { location, push } from 'svelte-spa-router';
 
   import BottomNav from './components/layout/BottomNav.svelte';
   import Sidebar   from './components/layout/Sidebar.svelte';
@@ -521,9 +521,21 @@
       _wasNeedsLogin = true;
     }
   }
+
+  // Ctrl+K / Cmd+K jumps to note search from anywhere. Not while a note
+  // editor or dialog is open, where the shortcut would pull focus away.
+  async function _searchShortcut(e) {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'k') return;
+    if (document.querySelector('.editor-backdrop, [role="dialog"][aria-modal="true"]')) return;
+    e.preventDefault();
+    const onNotes = $location === '/' || /^\/(archive|trash|reminders|label\/)/.test($location);
+    if (!onNotes) { await push('/'); await new Promise(r => setTimeout(r, 60)); }
+    window.dispatchEvent(new CustomEvent('note:focus-search'));
+  }
 </script>
 
 <svelte:window
+  on:keydown={_searchShortcut}
   on:touchstart|capture={_startPullSync}
   on:touchmove|nonpassive|capture={_movePullSync}
   on:touchend|capture={_finishPullSync}
