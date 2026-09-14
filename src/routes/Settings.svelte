@@ -40,6 +40,7 @@
   import SettingsAuth            from '../components/settings/SettingsAuth.svelte';
   import SettingsApiTokens       from '../components/settings/SettingsApiTokens.svelte';
   import SettingsWebhooks        from '../components/settings/SettingsWebhooks.svelte';
+  import SettingsCooktrace       from '../components/settings/SettingsCooktrace.svelte';
   import SettingsEmail           from '../components/settings/SettingsEmail.svelte';
   import SettingsAbout           from '../components/settings/SettingsAbout.svelte';
   import Profile                 from './Profile.svelte';
@@ -148,6 +149,7 @@
     appearance:    { titleKey: 'settings.appearance.section',        icon: 'contrast' },
     regional:      { titleKey: 'settings.regional.section',          icon: 'public' },
     ai:            { titleKey: 'settings.ai.section',                icon: 'bolt' },
+    cooktrace:     { titleKey: 'cooktrace.section',                  icon: 'skillet' },
     notifications: { titleKey: 'settings.notifications.section',     icon: 'notifications' },
     email:         { titleKey: 'settings.email.section',             icon: 'mail' },
     importexport:  { titleKey: 'import_export.section',              icon: 'swap_vert' },
@@ -172,6 +174,7 @@
     appearance:    SettingsAppearance,
     regional:      SettingsRegional,
     ai:            SettingsTrace,
+    cooktrace:     SettingsCooktrace,
     notifications: SettingsNotifications,
     email:         SettingsEmail,
     importexport:  SettingsImportExport,
@@ -197,6 +200,7 @@
     appearance:    ['appearance','theme','dark','light','accent','color','navigation','sidebar','persistent','start page','animations','reduce motion','banner','page banner','force mobile','mobile layout','mobile view','phone layout','narrow layout'],
     regional:      ['regional','date','time','12h','24h','units','energy','kcal','kj','calories','kilojoules','imperial','metric','measurement system'],
     ai:            ['ai','trace','assistant','provider','model','custom model','model id','api key','chat','claude','openai','gemini','sonnet','opus','haiku','gpt','gemini 3','base url','artificial intelligence','smart log','smartlog','quick log','voice','dictate','hold to record','mic','transcribe','transcription','whisper','voice notes','read text','ocr','image text'],
+    cooktrace:     ['cooktrace','cook trace','shopping','shopping list','groceries','grocery','send to cooktrace','integration','integrations','link','traceapps','recipes'],
     notifications: ['notifications','reminders','cook day','thaw','alerts','push','apprise','gotify','ntfy','expiration','expiry','expires','expiring','pantry expiry','digest','weekly summary','shopping nudge'],
     email:         ['email','smtp','mail','password reset','invite','from address','tls','outgoing','send test','test email','recipient','test recipient','connection status','change password','change smtp'],
     importexport:  ['import','export','google keep','keep','takeout','markdown','obsidian','memos','joplin','blinko','bko','usememos','evernote','enex','zip','migrate','move from','images'],
@@ -413,6 +417,11 @@
   <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'ai')} class:active={currentSection === 'ai'} aria-current={currentSection === 'ai' ? 'page' : undefined} on:click={() => toggleSection('ai')}>
     <span class="material-symbols-rounded si">smart_toy</span>
     <span>{$_('settings.ai.section')}</span>
+    <span class="material-symbols-rounded chevron">expand_more</span>
+  </button>
+  <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'cooktrace')} class:active={currentSection === 'cooktrace'} aria-current={currentSection === 'cooktrace' ? 'page' : undefined} on:click={() => toggleSection('cooktrace')}>
+    <span class="material-symbols-rounded si">skillet</span>
+    <span>{$_('cooktrace.section')}</span>
     <span class="material-symbols-rounded chevron">expand_more</span>
   </button>
 

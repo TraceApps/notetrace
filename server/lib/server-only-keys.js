@@ -12,8 +12,11 @@
  */
 
 export const SERVER_ONLY_KEYS = new Set([
-  // No NoteTrace-specific server-only keys yet — additions land alongside
-  // any future OAuth integrations (e.g. recipe-import provider creds).
+  // CookTrace link (server/lib/cooktrace.js). The token is encrypted; none
+  // of these go to clients, which ask /api/integrations/cooktrace instead.
+  'cooktraceUrl',
+  'cooktraceToken',
+  'cooktraceInfo',
 ]);
 
 // Pattern fallback so newly added admin keys are auto-protected if they

@@ -33,6 +33,8 @@
   import { ensureReminderPermission, rescheduleReminders } from '../../lib/note-reminders.js';
   import ShareDialog from './ShareDialog.svelte';
   import TraceActions from './TraceActions.svelte';
+  import CooktraceSend from './CooktraceSend.svelte';
+  import { cooktraceLink, loadCooktraceLink } from '../../lib/cooktrace.js';
   import VoiceRecorder from './VoiceRecorder.svelte';
   import VoiceNotes from './VoiceNotes.svelte';
   import { recordingSupported, uploadVoiceNote } from '../../lib/voice-recorder.js';
@@ -90,8 +92,8 @@
   let queue = Promise.resolve();
   let saving = false;
   let showHistory = false;
-  let colorOpen = false, labelsOpen = false, reminderOpen = false, shareOpen = false, traceOpen = false, recordOpen = false;
-  let colorAnchor = null, labelsAnchor = null, reminderAnchor = null, shareAnchor = null, traceAnchor = null, recordAnchor = null;
+  let colorOpen = false, labelsOpen = false, reminderOpen = false, shareOpen = false, traceOpen = false, recordOpen = false, cookOpen = false;
+  let colorAnchor = null, labelsAnchor = null, reminderAnchor = null, shareAnchor = null, traceAnchor = null, recordAnchor = null, cookAnchor = null;
   let narrow = typeof window !== 'undefined' && window.innerWidth < 600;
 
   $: readOnly = trashed;
@@ -356,6 +358,19 @@
     await convert();
   }
 
+  // ── CookTrace shopping list ───────────────────────────────────────
+  async function openCooktrace(e) {
+    cookAnchor = e.currentTarget.getBoundingClientRect();
+    await flushAll();
+    cookOpen = true;
+  }
+  function onCooktraceSent(uuids) {
+    cookOpen = false;
+    if (!uuids.length || contentLocked) return;
+    for (const uuid of uuids) onItemUpdate({ detail: { uuid, patch: { checked: true } } });
+    editorKey++;
+  }
+
   // ── Actions ───────────────────────────────────────────────────────
   function togglePin() { pinned = !pinned; patch({ pinned }); }
   function setColor(c) { color = c; patch({ color: c }); }
@@ -504,7 +519,7 @@
   }
 
   function onKey(e) {
-    if (e.key === 'Escape' && viewerIndex == null && !colorOpen && !labelsOpen && !reminderOpen && !shareOpen && !traceOpen && !recordOpen) {
+    if (e.key === 'Escape' && viewerIndex == null && !colorOpen && !labelsOpen && !reminderOpen && !shareOpen && !traceOpen && !recordOpen && !cookOpen) {
       e.preventDefault();
       if (showHistory) showHistory = false;
       else close();
@@ -514,6 +529,7 @@
 
   onMount(async () => {
     loadLinks();
+    loadCooktraceLink();
     window.addEventListener('keydown', onKey);
     window.addEventListener('resize', onResize);
     await tick();
@@ -672,6 +688,11 @@
                 <span class="material-symbols-rounded">auto_awesome</span>
               </button>
             {/if}
+            {#if $cooktraceLink?.connected && kind === 'checklist'}
+              <button class="icon-btn" on:click={openCooktrace} title={$_('cooktrace.send')} aria-label={$_('cooktrace.send')}>
+                <span class="material-symbols-rounded">add_shopping_cart</span>
+              </button>
+            {/if}
             {#if $sharingAvailable}
               <button class="icon-btn" on:click={openShare} title={$_('sharing.share')} aria-label={$_('sharing.share')}>
                 <span class="material-symbols-rounded">person_add</span>
@@ -756,6 +777,11 @@
       on:prepend={(e) => applyTraceText(`${e.detail.markdown}\n\n${body}`)}
       on:checklist={(e) => applyTraceChecklist(e.detail.items)}
       on:close={() => traceOpen = false} />
+  {/if}
+</Popover>
+<Popover bind:open={cookOpen} anchor={cookAnchor}>
+  {#if cookOpen}
+    <CooktraceSend {items} canCheck={!contentLocked} on:sent={(e) => onCooktraceSent(e.detail.uuids)} on:close={() => cookOpen = false} />
   {/if}
 </Popover>
 <Popover bind:open={shareOpen} anchor={shareAnchor}>

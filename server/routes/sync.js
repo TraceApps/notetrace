@@ -43,6 +43,7 @@ import { wrap } from '../logger.js';
 import { requireAuth, userMgmtActive } from '../middleware/auth.js';
 import { snapshotVersion, tsMs, noteAccess, restampNote, revokedNoteIds, cleanAttachmentUrl } from '../lib/notes.js';
 import { dispatchWebhookEvent } from '../lib/webhooks.js';
+import { isServerOnlyKey } from '../lib/server-only-keys.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -224,6 +225,7 @@ router.post('/push', wrap((req, res) => {
     );
     const txn = db.transaction(() => {
       for (const s of req.body.settings) {
+        if (!s?.key || isServerOnlyKey(s.key)) continue;
         ins.run(u, s.key, typeof s.value === 'string' ? s.value : JSON.stringify(s.value), s.updated_at || _now());
       }
     });
@@ -282,7 +284,7 @@ router.get('/pull', wrap((req, res) => {
   out.settings = db.prepare(
     `SELECT key, value, updated_at FROM user_settings
       WHERE ${userClause(u)} AND synced_at >= ?`
-  ).all(...userArgs(u), since);
+  ).all(...userArgs(u), since).filter(r => !isServerOnlyKey(r.key));
 
   res.json({ now, tables: out, revoked_notes: revokedNoteIds(u, since) });
 }));

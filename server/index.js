@@ -30,6 +30,7 @@ import updatesRoutes      from './routes/updates.js';
 import apiTokensRoutes    from './routes/api-tokens.js';
 import webhooksRoutes     from './routes/webhooks.js';
 import mcpRoutes          from './routes/mcp.js';
+import integrationsRoutes from './routes/integrations.js';
 import { logger }   from './logger.js';
 import { authenticate, userMgmtActive } from './middleware/auth.js';
 import { csrfProtect } from './middleware/csrf.js';
@@ -190,6 +191,7 @@ router.use('/api/notify',       notifyRoutes);
 router.use('/api/admin/api-tokens', apiTokensRoutes);
 router.use('/api/admin/webhooks', webhooksRoutes);
 router.use('/api/mcp',          mcpRoutes);
+router.use('/api/integrations', integrationsRoutes);
 router.get('/api/health', (req, res) => res.json({ ok: true }));
 
 // Web Share Target (installed PWA). The service worker normally takes the

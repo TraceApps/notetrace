@@ -78,6 +78,8 @@ services:
       # - MCP_WRITE_ENABLED=${MCP_WRITE_ENABLED:-}
       # - MCP_DESTROY_ENABLED=${MCP_DESTROY_ENABLED:-}
       # - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}    # only needed for browser-based MCP clients
+      # Optional: Send to CookTrace when CookTrace is on your LAN or the same Docker network
+      # - ALLOW_PRIVATE_COOKTRACE_URLS=${ALLOW_PRIVATE_COOKTRACE_URLS:-}
       # Optional — OIDC Single Sign-On declared in env instead of the Settings UI.
       # Single-provider shorthand (`OIDC_*` is an alias for `OIDC_PROVIDER_1_*`):
       # - OIDC_ISSUER=${OIDC_ISSUER:-}

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import db from '../db.js';
 import { wrap } from '../logger.js';
 import { requireAuth, userMgmtActive } from '../middleware/auth.js';
+import { isServerOnlyKey } from '../lib/server-only-keys.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -47,6 +48,8 @@ router.get('/export', wrap((req, res) => {
       ? db.prepare(`SELECT * FROM ${t} WHERE deleted_at IS NULL`).all()
       : db.prepare(`SELECT * FROM ${t} WHERE user_id = ? AND deleted_at IS NULL`).all(u);
   }
+  // Server-only settings (a linked app's token) stay on the server.
+  if (out.user_settings) out.user_settings = out.user_settings.filter(r => !isServerOnlyKey(r.key));
 
   for (const t of TABLES_NOTE_CHILDREN) {
     out[t] = u == null
