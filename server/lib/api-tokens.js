@@ -24,8 +24,8 @@ const TOKEN_BYTES = 32;  // 256-bit secret
  */
 export const SCOPE_DESCRIPTIONS = {
   'mcp:read':    'MCP: read notes, checklists, and reminders.',
-  'mcp:write':   'MCP: add notes, append to notes, and check off checklist items. Requires MCP_WRITE_ENABLED=1 on the server.',
-  'mcp:destroy': 'MCP: delete notes and checklist items. Requires MCP_DESTROY_ENABLED=1 AND every call to include confirm=true.',
+  'mcp:write':   'MCP: create and edit notes, add and check off checklist items, set reminders and labels. Requires MCP_WRITE_ENABLED=1 on the server.',
+  'mcp:destroy': 'MCP: move notes to the trash. Requires MCP_DESTROY_ENABLED=1 AND every call to include confirm=true.',
 };
 
 export const KNOWN_SCOPES = new Set([

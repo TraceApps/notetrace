@@ -296,7 +296,7 @@ export const NotesNative = {
     if (!row) throw new Error('Note not found');
     const changing = ('title' in patch && String(patch.title) !== row.title)
       || ('body_md' in patch && String(patch.body_md) !== row.body_md);
-    if (changing) await _snapshot(row, 'edit');
+    if (changing) await _snapshot(row, patch.snapshot === 'restore' ? 'restore' : 'edit');
     const sets = [];
     const args = [];
     if ('title' in patch)   { sets.push('title = ?');   args.push(String(patch.title ?? '')); }

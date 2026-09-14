@@ -11,16 +11,18 @@
  * half of a gate is absent the corresponding tools don't appear in
  * tools/list at all.
  *
- * Note tools (search_notes, get_note, create_note, append_to_note,
- * add_checklist_item, check_checklist_item, list_reminders) arrive
- * with the notes data layer.
+ * The note tools are shared with Trace; see tools/notes.js for the tiers.
  */
+import { registerNoteReadTools, registerNoteWriteTools, registerNoteDestroyTools } from './notes.js';
 
-// eslint-disable-next-line no-unused-vars
-export function registerReadTools(server, ctx) {}
+export function registerReadTools(server, ctx) {
+  registerNoteReadTools(server, ctx);
+}
 
-// eslint-disable-next-line no-unused-vars
-export function registerWriteTools(server, ctx) {}
+export function registerWriteTools(server, ctx) {
+  registerNoteWriteTools(server, ctx);
+}
 
-// eslint-disable-next-line no-unused-vars
-export function registerDestroyTools(server, ctx) {}
+export function registerDestroyTools(server, ctx) {
+  registerNoteDestroyTools(server, ctx);
+}

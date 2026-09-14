@@ -18,6 +18,7 @@
  * loosely coupled so we can iterate on either independently.
  */
 import { getOpenAIChatParams } from './openai-chat-params.js';
+import { NOTE_TOOLS } from './trace-note-tools.js';
 
 // ── Provider catalog (kept in NoteTrace's `id`-keyed shape so the
 //    existing SettingsTrace dropdown keeps working). ───────────────────────
@@ -48,10 +49,8 @@ export const AI_MODELS = {
 };
 
 // ── Tool definitions ─────────────────────────────────────────────────────────
-// Note tools (search_notes, get_note, create_note, append_to_note,
-// add_checklist_item, check_checklist_item) arrive with the notes data
-// layer. Each provider skips the tools field when this list is empty.
-export const TOOLS = [];
+// The note tools live in trace-note-tools.js with their executor.
+export const TOOLS = NOTE_TOOLS;
 
 // ── Main entry point ────────────────────────────────────────────────────────
 

@@ -405,7 +405,8 @@ export const updateNote = db.transaction((u, id, patch = {}) => {
   const contentChanging =
     ('title' in patch && _cleanTitle(patch.title) !== row.title) ||
     ('body_md' in patch && _cleanBody(patch.body_md) !== row.body_md);
-  if (contentChanging) snapshotVersion(row, 'edit');
+  // snapshot: 'restore' always keeps a version (a whole-text rewrite by Trace).
+  if (contentChanging) snapshotVersion(row, patch.snapshot === 'restore' ? 'restore' : 'edit');
   if ('title' in patch)   { sets.push('title = ?');   args.push(_cleanTitle(patch.title)); }
   if ('body_md' in patch) { sets.push('body_md = ?'); args.push(_cleanBody(patch.body_md)); }
   if ('color' in patch)   { sets.push('color = ?');   args.push(_cleanColor(patch.color)); }
@@ -454,7 +455,7 @@ function _updateAsMember(u, { row, role, member }, patch) {
     const contentChanging =
       ('title' in patch && _cleanTitle(patch.title) !== row.title) ||
       ('body_md' in patch && _cleanBody(patch.body_md) !== row.body_md);
-    if (contentChanging) snapshotVersion(row, 'edit');
+    if (contentChanging) snapshotVersion(row, patch.snapshot === 'restore' ? 'restore' : 'edit');
     if ('title' in patch)   { sets.push('title = ?');   args.push(_cleanTitle(patch.title)); }
     if ('body_md' in patch) { sets.push('body_md = ?'); args.push(_cleanBody(patch.body_md)); }
     if ('color' in patch)   { sets.push('color = ?');   args.push(_cleanColor(patch.color)); }

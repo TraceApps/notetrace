@@ -27,6 +27,8 @@
   import { NoteApi } from '../../lib/api.js';
   import { isNative } from '../../lib/platform.js';
   import { callAI, callAIProxy, TOOLS, setToolHandler, AI_DEFAULT_MODELS } from '../../lib/aiChat.js';
+  import { executeNoteTool } from '../../lib/trace-note-tools.js';
+  import { signalNotesChanged, refreshLabels } from '../../stores/notes.js';
 
   let panelOpen = false;
   let messages = [];      // { role, content, time? }
@@ -286,10 +288,13 @@
     // Register the tool handler. Each tool delegates to NoteApi; results
     // are JSON-stringified by aiChat.js before going back to the model.
     setToolHandler(async (name, args) => {
-      switch (name) {
-        default:
-          return { error: `Unknown tool: ${name}` };
+      const result = await executeNoteTool(name, args);
+      // Anything Trace changed shows up on screen without a reload.
+      if (!['search_notes', 'get_note', 'list_labels', 'list_reminders'].includes(name) && !result?.error) {
+        signalNotesChanged();
+        refreshLabels();
       }
+      return result;
     });
   });
 
@@ -297,10 +302,14 @@
     const today = new Date().toISOString().slice(0, 10);
     const smartLogPreamble = smartLog ? `
 
-[SMART LOG] The user dictated this with voice. Clean it up into a clear, short note and reply with just the cleaned-up text, no preamble.` : '';
+[SMART LOG] The user dictated this with voice. Act on it with the note tools right away: add items to the list they name (search_notes to find it), set the reminder they ask for, or save it as a new, cleaned-up note with create_note. Then confirm in one short sentence.` : '';
+    const now = new Date();
+    const localNow = `${now.toLocaleDateString('en-CA')}T${now.toTimeString().slice(0, 5)}`;
     return `You are ${assistantName}, the assistant inside NoteTrace, a self-hosted notes app. You help the user capture, tidy, summarize, and find their notes, lists, and reminders.${smartLogPreamble}
 
-Today is ${today}. The user's date format is ${$dateFormat}.
+Today is ${today}; the user's local time is ${localNow} (${Intl.DateTimeFormat().resolvedOptions().timeZone}). The user's date format is ${$dateFormat}.
+
+Use the note tools to answer from the user's real notes: search_notes to find notes (search before saying something doesn't exist), get_note to read one, and the write tools to make the changes the user asks for. For lists (groceries, packing, to-dos) use checklists. Give reminder times as local times like ${now.toLocaleDateString('en-CA')}T09:00. Don't move notes to the trash unless the user clearly asked.
 
 Keep replies short and actionable. When you rewrite or summarize text, return it ready to paste into a note. If a tool returns { error: ... }, tell the user what went wrong and how to fix it.`;
   }
