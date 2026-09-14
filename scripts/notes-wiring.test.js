@@ -40,7 +40,11 @@ test('search input is reduced to quoted prefix terms before reaching FTS5', () =
 test('sync covers every note table in parent-first order', () => {
   const order = syncJs.match(/const PUSH_ORDER = \[([^\]]+)\]/)[1];
   const names = [...order.matchAll(/'(\w+)'/g)].map(m => m[1]);
-  assert.deepEqual(names.slice(0, 4), ['notes', 'labels', 'checklist_items', 'note_labels']);
+  for (const t of ['notes', 'labels', 'checklist_items', 'note_attachments', 'note_labels']) assert.ok(names.includes(t), `${t} missing from PUSH_ORDER`);
+  // Parents before children.
+  assert.ok(names.indexOf('notes') < names.indexOf('checklist_items'));
+  assert.ok(names.indexOf('notes') < names.indexOf('note_attachments'));
+  assert.ok(names.indexOf('labels') < names.indexOf('note_labels'));
 });
 
 test('sync checks that a pushed parent id belongs to the same owner', () => {

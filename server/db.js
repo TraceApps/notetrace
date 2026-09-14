@@ -259,6 +259,25 @@ db.exec(`
     UNIQUE (note_id, user_id)
   );
   CREATE INDEX IF NOT EXISTS idx_note_members_user ON note_members(user_id, deleted_at);
+
+  -- Images on a note, shown above its text or checklist. Like checklist
+  -- items: a stable client uuid, the note owner's user_id whoever adds it,
+  -- and a deleted_at tombstone so removals sync. url is an /uploads/ path.
+  CREATE TABLE IF NOT EXISTS note_attachments (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    uuid       TEXT NOT NULL UNIQUE,
+    user_id    INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    note_id    INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    url        TEXT NOT NULL DEFAULT '',
+    mime       TEXT,
+    width      INTEGER,
+    height     INTEGER,
+    position   REAL NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    deleted_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_attachments_note ON note_attachments(note_id);
 `);
 
 // ── Full-text search ───────────────────────────────────────────────────────
@@ -334,7 +353,7 @@ db.exec(`
 // land behind another device's last pull and never be sent to it.
 {
   const STAMP = `strftime('%Y-%m-%d %H:%M:%f', 'now')`;
-  for (const t of ['notes', 'labels', 'checklist_items', 'note_labels', 'ai_chat_history']) {
+  for (const t of ['notes', 'labels', 'checklist_items', 'note_labels', 'note_attachments', 'ai_chat_history']) {
     if (!columnExists(t, 'synced_at')) db.exec(`ALTER TABLE ${t} ADD COLUMN synced_at TEXT`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_${t}_synced ON ${t}(synced_at)`);
     db.exec(`

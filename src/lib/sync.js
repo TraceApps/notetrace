@@ -241,7 +241,9 @@ function _notify(payload) {
 // take at most one sync cycle to converge.
 // Scalar image-URL columns that can hold a device-local photo. Note
 // attachments register here when they land.
-const PHOTO_COLUMNS = [];
+const PHOTO_COLUMNS = [
+  { table: 'note_attachments', field: 'url' },
+];
 
 function _isLocalCapacitorUrl(url) {
   if (!url || typeof url !== 'string') return false;

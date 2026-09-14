@@ -41,7 +41,7 @@ import { Router } from 'express';
 import db from '../db.js';
 import { wrap } from '../logger.js';
 import { requireAuth, userMgmtActive } from '../middleware/auth.js';
-import { snapshotVersion, tsMs, noteAccess, restampNote, revokedNoteIds } from '../lib/notes.js';
+import { snapshotVersion, tsMs, noteAccess, restampNote, revokedNoteIds, cleanAttachmentUrl } from '../lib/notes.js';
 import { dispatchWebhookEvent } from '../lib/webhooks.js';
 
 const router = Router();
@@ -84,6 +84,12 @@ const TABLES = {
     uniqueKey: ['uuid'],
     softDelete: true,
   },
+  note_attachments: {
+    cols: ['uuid', 'note_id', 'url', 'mime', 'width', 'height', 'position'],
+    parents: { note_id: 'notes' },
+    uniqueKey: ['uuid'],
+    softDelete: true,
+  },
   note_labels: {
     cols: ['note_id', 'label_id'],
     parents: { note_id: 'notes', label_id: 'labels' },
@@ -99,7 +105,7 @@ const TABLES = {
 
 // Process tables in dependency order so parents land first within a
 // single push and child FKs can resolve against the freshly-minted ids.
-const PUSH_ORDER = ['notes', 'labels', 'checklist_items', 'note_labels', 'ai_chat_history'];
+const PUSH_ORDER = ['notes', 'labels', 'checklist_items', 'note_attachments', 'note_labels', 'ai_chat_history'];
 
 // ── POST /push ────────────────────────────────────────────────────────
 router.post('/push', wrap((req, res) => {
@@ -120,6 +126,14 @@ router.post('/push', wrap((req, res) => {
       for (const row of rows) {
         const translated = _translateParents(row, spec, idMaps, u);
         if (!translated) continue; // unresolvable or foreign parent; client retries next sync
+        if (name === 'note_attachments' && translated.url) {
+          // Only files on this server. A device-local path means the photo
+          // hasn't uploaded yet; leave it unacked so it's sent again after
+          // the next sync's upload pass.
+          const clean = cleanAttachmentUrl(translated.url);
+          if (!clean) continue;
+          translated.url = clean;
+        }
 
         let existing = null;
         if (row.server_id) {
@@ -136,11 +150,11 @@ router.post('/push', wrap((req, res) => {
           idMaps[name][row.client_id] = existing.id;
           continue;
         }
-        if (existing && name === 'checklist_items') {
-          // Items follow their note: anyone who can edit the note can edit them.
+        if (existing && (name === 'checklist_items' || name === 'note_attachments')) {
+          // Items and images follow their note: anyone who can edit the note can edit them.
           const access = noteAccess(u, existing.note_id);
           if (!access || access.role === 'view') {
-            db.prepare(`UPDATE checklist_items SET synced_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?`).run(existing.id);
+            db.prepare(`UPDATE ${name} SET synced_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?`).run(existing.id);
             results[name].push({ client_id: row.client_id, server_id: existing.id });
             continue;
           }
@@ -175,8 +189,8 @@ router.post('/push', wrap((req, res) => {
           // columns fall back to their schema DEFAULTs instead of
           // tripping NOT NULL constraints.
           const present = spec.cols.filter(c => translated[c] !== undefined);
-          // Items carry the note owner's id, whoever adds them.
-          const rowOwner = name === 'checklist_items'
+          // Items and images carry the note owner's id, whoever adds them.
+          const rowOwner = (name === 'checklist_items' || name === 'note_attachments')
             ? db.prepare(`SELECT user_id FROM notes WHERE id = ?`).get(translated.note_id)?.user_id ?? u
             : u;
           const info = db.prepare(_buildInsertSql(name, spec, present)).run(
@@ -246,9 +260,9 @@ router.get('/pull', wrap((req, res) => {
     // it was attached (SQLite orders NULLs first in ASC by default,
     // so top-level parents naturally lead).
     if (name === 'notes') { out.notes = _pullNotes(u, since); continue; }
-    if (name === 'checklist_items' && u != null) {
-      out.checklist_items = db.prepare(
-        `SELECT ${cols.join(', ')} FROM checklist_items
+    if ((name === 'checklist_items' || name === 'note_attachments') && u != null) {
+      out[name] = db.prepare(
+        `SELECT ${cols.join(', ')} FROM ${name}
           WHERE synced_at >= ? AND note_id IN (
             SELECT id FROM notes WHERE user_id = ?
             UNION SELECT note_id FROM note_members WHERE user_id = ? AND deleted_at IS NULL)`
@@ -302,7 +316,7 @@ function _translateParents(row, spec, idMaps, u) {
     if (parentTable === 'notes' && u != null) {
       const access = noteAccess(u, raw);
       if (!access) return null;
-      if (fk === 'note_id' && spec === TABLES.checklist_items && access.role === 'view') return null;
+      if (fk === 'note_id' && (spec === TABLES.checklist_items || spec === TABLES.note_attachments) && access.role === 'view') return null;
       continue;
     }
     const parent = db.prepare(`SELECT user_id FROM ${parentTable} WHERE id = ?`).get(raw);

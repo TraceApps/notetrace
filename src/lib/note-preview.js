@@ -35,7 +35,8 @@ export function markdownToPreview(md, maxChars = MAX_CHARS) {
 export function isEmptyNote(note) {
   if (!note) return true;
   const hasItems = Array.isArray(note.items) && note.items.some(i => String(i.text || '').trim());
-  return !String(note.title || '').trim() && !String(note.body_md || '').trim() && !hasItems;
+  const hasImages = Array.isArray(note.attachments) && note.attachments.length > 0;
+  return !String(note.title || '').trim() && !String(note.body_md || '').trim() && !hasItems && !hasImages;
 }
 
 /**

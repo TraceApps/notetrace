@@ -15,7 +15,7 @@ const TABLES = ['notes'];
 
 // Everything that hangs off notes, exported with them. Not touched by
 // DELETE / directly: trashing the notes is what the user asked for.
-const TABLES_NOTE_CHILDREN = ['labels', 'checklist_items', 'note_labels'];
+const TABLES_NOTE_CHILDREN = ['labels', 'checklist_items', 'note_labels', 'note_attachments'];
 
 // User-owned tables that also carry deleted_at (soft-delete). Same
 // filter as TABLES on export; not touched by DELETE, which is scoped to

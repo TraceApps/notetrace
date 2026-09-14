@@ -6,6 +6,7 @@
   import { noteColorStyle, colorDot } from '../../lib/note-colors.js';
   import { longpress } from '../../lib/long-press.js';
   import ReminderChip from './ReminderChip.svelte';
+  import AttachmentGrid from './AttachmentGrid.svelte';
   import { isOwner, canEdit, isShared } from '../../lib/note-sharing.js';
 
   export let note;
@@ -21,7 +22,8 @@
   $: shownItems = openItems.slice(0, PREVIEW_ITEMS);
   $: hiddenOpen = openItems.length - shownItems.length;
   $: noteLabels = (note.labels || []).map(id => $labelsById.get(id)).filter(Boolean);
-  $: empty = !note.title && !preview && !(note.items || []).length;
+  $: images = note.attachments || [];
+  $: empty = !note.title && !preview && !(note.items || []).length && !images.length;
   $: owner = isOwner(note);
   $: editable = canEdit(note);
   $: shared = isShared(note);
@@ -63,6 +65,10 @@
     >
       <span class="material-symbols-rounded" class:fill={note.pinned}>keep</span>
     </button>
+  {/if}
+
+  {#if images.length}
+    <AttachmentGrid attachments={images} size="card" />
   {/if}
 
   {#if note.title}

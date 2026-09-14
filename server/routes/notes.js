@@ -101,6 +101,21 @@ router.delete('/:id/items/:uuid', wrap((req, res) => {
   return note ? res.json(note) : notFound(res);
 }));
 
+// ── Attachments ──────────────────────────────────────────────────────
+// Images are uploaded first through /api/upload; these link the stored
+// file to the note. Body: { attachments: [{ uuid?, url, mime?, width?, height? }] }
+
+router.post('/:id/attachments', wrap((req, res) => {
+  const list = Array.isArray(req.body?.attachments) ? req.body.attachments : [];
+  const note = Notes.addAttachments(uid(req), idParam(req), list);
+  return note ? res.status(201).json(note) : notFound(res);
+}));
+
+router.delete('/:id/attachments/:uuid', wrap((req, res) => {
+  const note = Notes.deleteAttachment(uid(req), idParam(req), req.params.uuid);
+  return note ? res.json(note) : notFound(res);
+}));
+
 // ── Sharing ──────────────────────────────────────────────────────────
 // Needs user accounts (multi-user mode). The owner adds, changes, and
 // removes members; a member can remove themselves (leave).

@@ -79,6 +79,26 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_items_server ON checklist_items(server_id);
   CREATE INDEX IF NOT EXISTS idx_items_sync   ON checklist_items(sync_status);
 
+  CREATE TABLE IF NOT EXISTS note_attachments (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    server_id   INTEGER,
+    uuid        TEXT NOT NULL UNIQUE,
+    user_id     INTEGER DEFAULT 1,
+    note_id     INTEGER NOT NULL,
+    url         TEXT NOT NULL DEFAULT '',
+    mime        TEXT,
+    width       INTEGER,
+    height      INTEGER,
+    position    REAL NOT NULL DEFAULT 0,
+    created_at  TEXT DEFAULT (datetime('now')),
+    updated_at  TEXT DEFAULT (datetime('now')),
+    deleted_at  TEXT DEFAULT NULL,
+    sync_status TEXT DEFAULT 'synced'
+  );
+  CREATE INDEX IF NOT EXISTS idx_attachments_note   ON note_attachments(note_id);
+  CREATE INDEX IF NOT EXISTS idx_attachments_server ON note_attachments(server_id);
+  CREATE INDEX IF NOT EXISTS idx_attachments_sync   ON note_attachments(sync_status);
+
   CREATE TABLE IF NOT EXISTS labels (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     server_id   INTEGER,
@@ -355,13 +375,14 @@ export async function dbSetMeta(key, value) {
 
 // Tables sync.js pushes. Keep in dependency order so server-side FK
 // translation has parent ids minted by the time children push.
-const SYNC_TABLES = ['notes', 'labels', 'checklist_items', 'note_labels', 'ai_chat_history'];
+const SYNC_TABLES = ['notes', 'labels', 'checklist_items', 'note_attachments', 'note_labels', 'ai_chat_history'];
 
 // FK columns on synced child tables, and the parent table each points at.
 // Local rows hold local ids; sync.js translates them to server ids on push
 // and dbApplyPull translates server ids back to local ids on pull.
 export const SYNC_PARENTS = {
   checklist_items: { note_id: 'notes' },
+  note_attachments: { note_id: 'notes' },
   note_labels: { note_id: 'notes', label_id: 'labels' },
 };
 
@@ -369,6 +390,7 @@ export const SYNC_PARENTS = {
 // received its server_id yet (created here, not pushed before the pull).
 const SYNC_UNIQUE_KEYS = {
   checklist_items: ['uuid'],
+  note_attachments: ['uuid'],
   note_labels: ['note_id', 'label_id'],
 };
 
@@ -546,6 +568,7 @@ export async function dbApplyPull(payload) {
       const local = (await db.query(`SELECT id FROM notes WHERE server_id = ?`, [serverId]))?.values?.[0];
       if (!local) continue;
       await db.run(`DELETE FROM checklist_items WHERE note_id = ?`, [local.id]);
+      await db.run(`DELETE FROM note_attachments WHERE note_id = ?`, [local.id]);
       await db.run(`DELETE FROM note_labels WHERE note_id = ?`, [local.id]);
       await db.run(`DELETE FROM note_versions WHERE note_id = ?`, [local.id]);
       await db.run(`DELETE FROM notes WHERE id = ?`, [local.id]);

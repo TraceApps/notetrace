@@ -32,6 +32,9 @@
   import ReminderChip from './ReminderChip.svelte';
   import { ensureReminderPermission, rescheduleReminders } from '../../lib/note-reminders.js';
   import ShareDialog from './ShareDialog.svelte';
+  import AttachmentGrid from './AttachmentGrid.svelte';
+  import ImageViewer from './ImageViewer.svelte';
+  import { uploadNoteImages, isImageFile } from '../../lib/note-images.js';
   import { sharingAvailable } from '../../lib/note-sharing.js';
 
   /** Existing note, or null to create one. */
@@ -56,6 +59,11 @@
   let trashed = !!note?.trashed_at;
   let noteLabels = note?.labels ? [...note.labels] : [...initialLabels];
   let items = note?.items ? note.items.map(i => ({ ...i })) : [];
+  let attachments = note?.attachments ? [...note.attachments] : [];
+  let uploading = 0;
+  let viewerIndex = null;
+  let imageInput;
+  let dragOver = false;
   let updatedAt = note?.updated_at ?? null;
   let reminderAt = note?.reminder_at ?? null;
   let reminderRepeat = note?.reminder_rrule ?? null;
@@ -102,6 +110,7 @@
     trashed = !!n.trashed_at;
     color = n.color;
     noteLabels = [...(n.labels || [])];
+    attachments = [...(n.attachments || [])];
     reminderAt = n.reminder_at ?? null;
     reminderRepeat = n.reminder_rrule ?? null;
     reminderTz = n.reminder_tz ?? null;
@@ -117,6 +126,7 @@
       title, body_md: kind === 'text' ? body : '', kind, color, pinned,
       reminder_at: reminderAt, reminder_rrule: reminderRepeat, reminder_tz: reminderTz,
       labels: noteLabels,
+      attachments,
       items: kind === 'checklist' ? items.map((i, idx) => ({ uuid: i.uuid, text: i.text, checked: i.checked, position: i.position ?? idx + 1 })) : [],
     });
     apply(created);
@@ -134,7 +144,7 @@
     textTimer = null;
     return enqueue(async () => {
       if (!noteId) {
-        if (isEmptyNote({ title, body_md: body, items })) return;
+        if (isEmptyNote({ title, body_md: body, items, attachments })) return;
         await ensureNote();
         return;
       }
@@ -146,7 +156,7 @@
     touched = true;
     return enqueue(async () => {
       if (!noteId) {
-        if (isEmptyNote({ title, body_md: body, items }) && !p.labels && !p.pinned && !p.reminder_at) return;
+        if (isEmptyNote({ title, body_md: body, items, attachments }) && !p.labels && !p.pinned && !p.reminder_at) return;
         await ensureNote();
         if (!('archived' in p)) return;
       }
@@ -191,6 +201,55 @@
       if (!noteId) { await ensureNote(); return; }
       await NoteApi.reorderItems(noteId, uuids);
     });
+  }
+
+  // ── Images ────────────────────────────────────────────────────────
+  async function addImages(fileList) {
+    const files = [...(fileList || [])].filter(isImageFile);
+    if (!files.length || contentLocked) return;
+    touched = true;
+    uploading += files.length;
+    let result;
+    try {
+      result = await uploadNoteImages(files);
+    } finally {
+      uploading -= files.length;
+    }
+    if (result.failed) showError($_('attachments.upload_failed', { values: { count: result.failed } }));
+    if (!result.attachments.length) return;
+    attachments = [...attachments, ...result.attachments];
+    await enqueue(async () => {
+      if (!noteId) { await ensureNote(); return; }
+      apply(await NoteApi.addAttachments(noteId, result.attachments));
+    });
+  }
+  function removeImage(e) {
+    const uuid = e.detail;
+    touched = true;
+    attachments = attachments.filter(a => a.uuid !== uuid);
+    enqueue(async () => {
+      if (!noteId) return;
+      const n = await NoteApi.deleteAttachment(noteId, uuid);
+      updatedAt = n?.updated_at ?? updatedAt;
+    });
+  }
+  function onPaste(e) {
+    const files = [...(e.clipboardData?.files || [])].filter(isImageFile);
+    if (!files.length || contentLocked) return;
+    e.preventDefault();
+    addImages(files);
+  }
+  function onDragOver(e) {
+    if (contentLocked || ![...(e.dataTransfer?.types || [])].includes('Files')) return;
+    e.preventDefault();
+    dragOver = true;
+  }
+  function onDrop(e) {
+    dragOver = false;
+    const files = [...(e.dataTransfer?.files || [])].filter(isImageFile);
+    if (!files.length || contentLocked) return;
+    e.preventDefault();
+    addImages(files);
   }
 
   // ── Actions ───────────────────────────────────────────────────────
@@ -301,7 +360,7 @@
     closing = true;
     await flushAll();
     // A note that ended up empty is removed instead of lingering as a blank card.
-    if (!skipDiscard && noteId && !trashed && isEmptyNote({ title, body_md: body, items })) {
+    if (!skipDiscard && noteId && !trashed && isEmptyNote({ title, body_md: body, items, attachments })) {
       try { await NoteApi.deleteNoteForever(noteId); } catch { /* best effort */ }
       noteId = null;
     }
@@ -311,7 +370,7 @@
   }
 
   function onKey(e) {
-    if (e.key === 'Escape' && !colorOpen && !labelsOpen && !reminderOpen && !shareOpen) {
+    if (e.key === 'Escape' && viewerIndex == null && !colorOpen && !labelsOpen && !reminderOpen && !shareOpen) {
       e.preventDefault();
       if (showHistory) showHistory = false;
       else close();
@@ -340,7 +399,7 @@
     shareAnchor = e.currentTarget.getBoundingClientRect();
     await flushAll();
     if (!noteId) {
-      if (isEmptyNote({ title, body_md: body, items })) { showInfo($_('sharing.empty_note')); return; }
+      if (isEmptyNote({ title, body_md: body, items, attachments })) { showInfo($_('sharing.empty_note')); return; }
       await enqueue(ensureNote);
     }
     shareOpen = true;
@@ -354,8 +413,12 @@
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
+<!-- The host stays in place while the backdrop moves to <body>. Without a fixed
+     first node, closing the editor left its other top-level nodes behind. -->
+<div class="editor-host">
 <div use:portal class="editor-backdrop" on:click|self={() => close()} transition:fade={{ duration: 160 }}>
-  <div class="editor-panel" class:narrow style={noteColorStyle(color)}
+  <div class="editor-panel" class:narrow class:drag-over={dragOver} style={noteColorStyle(color)}
+    on:paste={onPaste} on:dragover={onDragOver} on:dragleave={() => dragOver = false} on:drop={onDrop}
     role="dialog" aria-modal="true" aria-label={title || $_('notes.untitled')}
     in:fly={{ y: narrow ? 30 : 16, duration: 220, easing: cubicOut }}>
 
@@ -390,6 +453,12 @@
       </header>
 
       <div class="editor-scroll">
+        {#if attachments.length || uploading}
+          <div class="editor-images">
+            <AttachmentGrid {attachments} pending={uploading} editable={!contentLocked}
+              on:open={(e) => viewerIndex = e.detail} on:remove={removeImage} />
+          </div>
+        {/if}
         {#key editorKey}
           {#if kind === 'text'}
             <TipTapEditor bind:this={bodyRef} bind:value={body} editable={!contentLocked}
@@ -451,6 +520,9 @@
               </button>
             {/if}
             {#if !contentLocked}
+              <button class="icon-btn" on:click={() => imageInput.click()} title={$_('attachments.add_image')} aria-label={$_('attachments.add_image')}>
+                <span class="material-symbols-rounded">add_photo_alternate</span>
+              </button>
               <button class="icon-btn" on:click={openColor} title={$_('notes.color')} aria-label={$_('notes.color')}>
                 <span class="material-symbols-rounded">palette</span>
               </button>
@@ -494,6 +566,12 @@
   </div>
 </div>
 
+<input bind:this={imageInput} class="note-image-input" type="file" accept="image/*" multiple hidden
+  on:change={(e) => { addImages(e.target.files); e.target.value = ''; }} />
+{#if viewerIndex != null}
+  <ImageViewer {attachments} index={viewerIndex} on:close={() => viewerIndex = null} />
+{/if}
+
 <Popover bind:open={colorOpen} anchor={colorAnchor}>
   <ColorPalette value={color} on:select={(e) => { setColor(e.detail); colorOpen = false; }} />
 </Popover>
@@ -509,8 +587,13 @@
 <Popover bind:open={labelsOpen} anchor={labelsAnchor}>
   <LabelPicker selected={noteLabels} on:change={(e) => setLabels(e.detail)} />
 </Popover>
+</div>
 
 <style>
+  .editor-host { display: contents; }
+  .editor-images { margin-bottom: 14px; }
+  .editor-panel.drag-over { outline: 2px dashed var(--accent); outline-offset: -6px; }
+
   .editor-backdrop {
     position: fixed; inset: 0; z-index: 200;
     background: rgba(0, 0, 0, 0.55);

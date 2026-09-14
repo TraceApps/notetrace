@@ -75,6 +75,22 @@ function _itemsFor(noteIds) {
   return map;
 }
 
+function _attachmentsFor(noteIds) {
+  if (!noteIds.length) return new Map();
+  const ph = noteIds.map(() => '?').join(',');
+  const rows = db.prepare(
+    `SELECT note_id, uuid, url, mime, width, height, position FROM note_attachments
+      WHERE note_id IN (${ph}) AND deleted_at IS NULL AND url != ''
+      ORDER BY position ASC, id ASC`
+  ).all(...noteIds);
+  const map = new Map();
+  for (const r of rows) {
+    if (!map.has(r.note_id)) map.set(r.note_id, []);
+    map.get(r.note_id).push({ uuid: r.uuid, url: r.url, mime: r.mime, width: r.width, height: r.height, position: r.position });
+  }
+  return map;
+}
+
 function _labelsFor(noteIds, u) {
   if (!noteIds.length) return new Map();
   const ph = noteIds.map(() => '?').join(',');
@@ -130,6 +146,7 @@ function _hydrate(rows, u) {
   const ids = rows.map(r => r.id);
   const items = _itemsFor(ids);
   const labels = _labelsFor(ids, u);
+  const attachments = _attachmentsFor(ids);
   const counts = _memberCounts(ids);
   const owners = _ownerNames(rows.filter(r => r.m_role).map(r => r.user_id));
   return rows.map(r => {
@@ -150,6 +167,7 @@ function _hydrate(rows, u) {
       updated_at: r.updated_at,
       labels: labels.get(r.id) || [],
       items: items.get(r.id) || [],
+      attachments: attachments.get(r.id) || [],
       ..._shareFields(r, counts, owners),
     };
   });
@@ -370,6 +388,7 @@ export const createNote = db.transaction((u, data = {}) => {
     data.items.forEach((it, i) => _upsertItem(u, id, { ...it, position: it.position ?? i + 1 }, ts));
   }
   if (Array.isArray(data.labels)) _setLabels(u, id, data.labels, ts);
+  _addAttachments(u, id, data.attachments, ts);
   const note = getNote(u, id);
   _emit(u, 'note.created', { note_id: id, title: note.title, kind: note.kind });
   return note;
@@ -454,6 +473,7 @@ export function restampNote(noteId) {
   const stamp = stampNow();
   db.prepare(`UPDATE notes SET synced_at = ? WHERE id = ?`).run(stamp, noteId);
   db.prepare(`UPDATE checklist_items SET synced_at = ? WHERE note_id = ?`).run(stamp, noteId);
+  db.prepare(`UPDATE note_attachments SET synced_at = ? WHERE note_id = ?`).run(stamp, noteId);
 }
 
 /** Switch a note between text and checklist without losing content. */
@@ -509,6 +529,7 @@ export const deleteNoteForever = db.transaction((u, id) => {
   const ts = now();
   db.prepare(`UPDATE checklist_items SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND deleted_at IS NULL`).run(ts, ts, id);
   db.prepare(`UPDATE note_labels SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND deleted_at IS NULL`).run(ts, ts, id);
+  db.prepare(`UPDATE note_attachments SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND deleted_at IS NULL`).run(ts, ts, id);
   db.prepare(`UPDATE notes SET deleted_at = ?, updated_at = ? WHERE id = ?`).run(ts, ts, id);
   db.prepare(`UPDATE note_members SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND deleted_at IS NULL`).run(stampNow(), stampNow(), id);
   db.prepare(`DELETE FROM note_versions WHERE note_id = ?`).run(id);
@@ -597,6 +618,58 @@ export const reorderItems = db.transaction((u, noteId, uuids = []) => {
   const upd = db.prepare(`UPDATE checklist_items SET position = ?, updated_at = ? WHERE uuid = ? AND note_id = ? AND deleted_at IS NULL`);
   uuids.forEach((uuid, i) => upd.run(i + 1, ts, uuid, noteId));
   _touch(noteId, ts);
+  return getNote(u, noteId);
+});
+
+// ── Attachments ──────────────────────────────────────────────────────
+
+export const ATTACHMENTS_MAX_PER_NOTE = 50;
+
+/** Only files this server stored (or a data-free relative uploads path) may be attached. */
+export function cleanAttachmentUrl(v) {
+  const s = String(v ?? '').trim();
+  return /^\/?uploads\/[A-Za-z0-9._-]+$/.test(s) ? (s.startsWith('/') ? s : `/${s}`) : null;
+}
+
+function _addAttachments(ownerOrU, noteId, list, ts) {
+  if (!Array.isArray(list)) return 0;
+  const owner = db.prepare(`SELECT user_id FROM notes WHERE id = ?`).get(noteId)?.user_id ?? ownerOrU;
+  const count = db.prepare(`SELECT COUNT(*) AS n FROM note_attachments WHERE note_id = ? AND deleted_at IS NULL`).get(noteId).n;
+  const max = db.prepare(`SELECT MAX(position) AS p FROM note_attachments WHERE note_id = ? AND deleted_at IS NULL`).get(noteId).p || 0;
+  let added = 0;
+  for (const a of list.slice(0, Math.max(0, ATTACHMENTS_MAX_PER_NOTE - count))) {
+    const url = cleanAttachmentUrl(a?.url);
+    if (!url) continue;
+    const uuid = typeof a.uuid === 'string' && a.uuid ? a.uuid.slice(0, 64) : randomUUID();
+    const num = v => (Number.isFinite(+v) && +v > 0 ? Math.round(+v) : null);
+    db.prepare(
+      `INSERT INTO note_attachments (uuid, user_id, note_id, url, mime, width, height, position, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(uuid) DO UPDATE SET deleted_at = NULL, updated_at = excluded.updated_at
+       WHERE note_attachments.note_id = excluded.note_id`
+    ).run(uuid, owner, noteId, url, typeof a.mime === 'string' ? a.mime.slice(0, 100) : null,
+          num(a.width), num(a.height), max + added + 1, ts, ts);
+    added++;
+  }
+  return added;
+}
+
+/** Add images to a note (owner or edit member). */
+export const addAttachments = db.transaction((u, noteId, list) => {
+  const row = _editableRow(u, noteId);
+  if (!row) return null;
+  const ts = now();
+  if (_addAttachments(u, noteId, list, ts)) _touch(noteId, ts);
+  return getNote(u, noteId);
+});
+
+export const deleteAttachment = db.transaction((u, noteId, uuid) => {
+  const row = _editableRow(u, noteId);
+  if (!row) return null;
+  const ts = now();
+  const r = db.prepare(`UPDATE note_attachments SET deleted_at = ?, updated_at = ? WHERE uuid = ? AND note_id = ? AND deleted_at IS NULL`)
+    .run(ts, ts, uuid, noteId);
+  if (r.changes) _touch(noteId, ts);
   return getNote(u, noteId);
 });
 
@@ -846,6 +919,7 @@ export const importNotes = db.transaction((u, list = []) => {
       ids.push(lid);
     }
     if (ids.length) _setLabels(u, id, ids, updated);
+    _addAttachments(u, id, raw.attachments, updated);
     result.imported++;
   }
   return result;

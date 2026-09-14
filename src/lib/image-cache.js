@@ -166,6 +166,14 @@ export async function cacheAllImages(onProgress) {
     }
   }
 
+  // Note images, so they show offline.
+  try {
+    const { getDb } = await import('./db-native.js');
+    const db = await getDb();
+    const r = await db.query(`SELECT url FROM note_attachments WHERE deleted_at IS NULL AND url != ''`, []);
+    for (const row of r?.values || []) addUrl(row.url);
+  } catch {}
+
   // User avatar from the cached login payload.
   try {
     const cachedUser = localStorage.getItem('note:cachedUser');

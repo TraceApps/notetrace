@@ -191,6 +191,10 @@ const _NoteApiHttp = {
   deleteLabel(id)                { return this.del(`/api/labels/${id}`); },
   reorderLabels(ids)             { return this.put('/api/labels/order', { ids }); },
 
+  // Attachments (upload the file with uploadImage first)
+  addAttachments(noteId, list)   { return this.post(`/api/notes/${noteId}/attachments`, { attachments: list }); },
+  deleteAttachment(noteId, uuid) { return this.del(`/api/notes/${noteId}/attachments/${encodeURIComponent(uuid)}`); },
+
   // Sharing
   getMembers(noteId)             { return this.get(`/api/notes/${noteId}/members`); },
   addMember(noteId, data)        { return this.post(`/api/notes/${noteId}/members`, data); },

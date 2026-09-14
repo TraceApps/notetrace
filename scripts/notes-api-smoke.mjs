@@ -238,6 +238,27 @@ imp = (await api('POST', '/api/notes/import', { notes: importBatch })).json;
 ok(imp.imported === 0 && imp.skipped === 3, 'importing the same notes again adds nothing');
 ok((await api('POST', '/api/notes/import', { notes: 'nope' })).status === 400, 'import rejects a non-array body');
 
+console.log('attachments');
+// A real 2x2 PNG so the upload route's byte check passes.
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEklEQVR4nGP4z8DwnwEIGGEMAB3gA/1cYUXVAAAAAElFTkSuQmCC', 'base64');
+const form = new FormData();
+form.append('file', new Blob([png], { type: 'image/png' }), 'dot.png');
+const up = await (await fetch(B + '/api/upload', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form })).json();
+ok(/^\/uploads\//.test(up.url || ''), `image uploads (${up.url})`);
+const withImg = (await api('POST', '/api/notes', { title: 'Receipt', attachments: [{ uuid: 'att-uuid-1', url: up.url, mime: 'image/png', width: 2, height: 2 }] })).json;
+ok(withImg.attachments?.length === 1 && withImg.attachments[0].url === up.url && withImg.attachments[0].width === 2, 'note created with an image');
+let an = (await api('POST', `/api/notes/${withImg.id}/attachments`, { attachments: [{ url: 'https://evil.example/x.png' }, { url: '/uploads/../db/notetrace.db' }, { url: up.url.slice(1) }] })).json;
+ok(an.attachments.length === 2 && an.attachments.every(a => /^\/uploads\/[\w.-]+$/.test(a.url)), 'only this server\'s upload paths can be attached');
+an = (await api('DELETE', `/api/notes/${withImg.id}/attachments/att-uuid-1`)).json;
+ok(an.attachments.length === 1 && !an.attachments.some(a => a.uuid === 'att-uuid-1'), 'image removed from note');
+const attPull = (await api('GET', '/api/sync/pull?since=1970-01-01')).json;
+ok(attPull.tables.note_attachments?.some(a => a.uuid === 'att-uuid-1' && a.deleted_at), 'image removal syncs as a tombstone');
+let attPush = (await api('POST', '/api/sync/push', { tables: { note_attachments: [
+  { client_id: 1, uuid: 'att-local-1', note_id: withImg.id, url: 'https://localhost/_capacitor_file_/data/uploads/img_1.jpg', updated_at: '2099-01-01 00:00:00' },
+  { client_id: 2, uuid: 'att-synced-1', note_id: withImg.id, url: up.url, mime: 'image/png', updated_at: '2099-01-01 00:00:00' },
+] } })).json;
+ok(attPush.tables.note_attachments.length === 1 && attPush.tables.note_attachments[0].client_id === 2, 'sync accepts uploaded images and holds back device-local paths');
+
 console.log('backup + export');
 const bk = (await api('POST', '/api/full-backup')).json;
 const rs = (await api('POST', `/api/full-backup/${bk.filename}/restore`)).json;

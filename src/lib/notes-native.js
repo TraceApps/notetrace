@@ -58,6 +58,9 @@ async function _hydrate(rows) {
   const items = await _q(
     `SELECT note_id, uuid, text, checked, position FROM checklist_items
       WHERE note_id IN (${ph}) AND deleted_at IS NULL ORDER BY position ASC, id ASC`, ids);
+  const files = await _q(
+    `SELECT note_id, uuid, url, mime, width, height, position FROM note_attachments
+      WHERE note_id IN (${ph}) AND deleted_at IS NULL AND url != '' ORDER BY position ASC, id ASC`, ids);
   const links = await _q(
     `SELECT nl.note_id, nl.label_id FROM note_labels nl
        JOIN labels l ON l.id = nl.label_id AND l.deleted_at IS NULL
@@ -66,6 +69,11 @@ async function _hydrate(rows) {
   for (const it of items) {
     if (!itemMap.has(it.note_id)) itemMap.set(it.note_id, []);
     itemMap.get(it.note_id).push({ uuid: it.uuid, text: it.text, checked: !!it.checked, position: it.position });
+  }
+  const fileMap = new Map();
+  for (const a of files) {
+    if (!fileMap.has(a.note_id)) fileMap.set(a.note_id, []);
+    fileMap.get(a.note_id).push({ uuid: a.uuid, url: a.url, mime: a.mime, width: a.width, height: a.height, position: a.position });
   }
   const labelMap = new Map();
   for (const l of links) {
@@ -88,6 +96,7 @@ async function _hydrate(rows) {
     updated_at: r.updated_at,
     labels: labelMap.get(r.id) || [],
     items: itemMap.get(r.id) || [],
+    attachments: fileMap.get(r.id) || [],
     share_role: r.share_role || 'owner',
     share_owner: r.share_owner || null,
     share_count: Number(r.share_count) || 0,
@@ -177,6 +186,31 @@ async function _tombstoneItems(noteId, ts) {
     [ts, ts, noteId]);
 }
 
+const ATTACHMENTS_MAX_PER_NOTE = 50;
+
+async function _addAttachments(noteId, list, ts) {
+  if (!Array.isArray(list) || !list.length) return 0;
+  const count = (await _q(`SELECT COUNT(*) AS n FROM note_attachments WHERE note_id = ? AND deleted_at IS NULL`, [noteId]))[0]?.n || 0;
+  const max = (await _q(`SELECT MAX(position) AS p FROM note_attachments WHERE note_id = ? AND deleted_at IS NULL`, [noteId]))[0]?.p || 0;
+  let added = 0;
+  for (const a of list.slice(0, Math.max(0, ATTACHMENTS_MAX_PER_NOTE - count))) {
+    if (!a?.url) continue;
+    const uuid = typeof a.uuid === 'string' && a.uuid ? a.uuid : _uuid();
+    const existing = (await _q(`SELECT id FROM note_attachments WHERE uuid = ?`, [uuid]))[0];
+    const num = v => (Number.isFinite(+v) && +v > 0 ? Math.round(+v) : null);
+    if (existing) {
+      await _run(`UPDATE note_attachments SET deleted_at = NULL, updated_at = ?, sync_status = 'pending' WHERE id = ?`, [ts, existing.id]);
+    } else {
+      await _run(
+        `INSERT INTO note_attachments (uuid, user_id, note_id, url, mime, width, height, position, created_at, updated_at, sync_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+        [uuid, LOCAL_USER_ID, noteId, String(a.url), a.mime || null, num(a.width), num(a.height), max + added + 1, ts, ts]);
+    }
+    added++;
+  }
+  return added;
+}
+
 async function _setLabels(noteId, labelIds, ts) {
   const wanted = new Set(labelIds.map(Number).filter(Number.isFinite));
   const owned = new Set((await _q(`SELECT id FROM labels WHERE deleted_at IS NULL`)).map(r => r.id));
@@ -252,6 +286,7 @@ export const NotesNative = {
       }
     }
     if (Array.isArray(data.labels)) await _setLabels(id, data.labels, ts);
+    await _addAttachments(id, data.attachments, ts);
     return _note(id);
   },
 
@@ -332,6 +367,7 @@ export const NotesNative = {
     const ts = _now();
     await _tombstoneItems(id, ts);
     await _run(`UPDATE note_labels SET deleted_at = ?, updated_at = ?, sync_status = 'pending' WHERE note_id = ? AND deleted_at IS NULL`, [ts, ts, id]);
+    await _run(`UPDATE note_attachments SET deleted_at = ?, updated_at = ?, sync_status = 'pending' WHERE note_id = ? AND deleted_at IS NULL`, [ts, ts, id]);
     await _run(`UPDATE notes SET deleted_at = ?, updated_at = ?, sync_status = 'pending' WHERE id = ?`, [ts, ts, id]);
     await _run(`DELETE FROM note_versions WHERE note_id = ?`, [id]);
     return { ok: true };
@@ -423,6 +459,27 @@ export const NotesNative = {
     return _note(noteId);
   },
 
+  // Attachments
+
+  async addAttachments(noteId, list = []) {
+    noteId = Number(noteId);
+    if (!(await _row(noteId))) throw new Error('Note not found');
+    const ts = _now();
+    if (await _addAttachments(noteId, list, ts)) {
+      await _run(`UPDATE notes SET updated_at = ?, sync_status = 'pending' WHERE id = ?`, [ts, noteId]);
+    }
+    return _note(noteId);
+  },
+
+  async deleteAttachment(noteId, uuid) {
+    noteId = Number(noteId);
+    const ts = _now();
+    await _run(`UPDATE note_attachments SET deleted_at = ?, updated_at = ?, sync_status = 'pending' WHERE uuid = ? AND note_id = ? AND deleted_at IS NULL`,
+      [ts, ts, uuid, noteId]);
+    await _run(`UPDATE notes SET updated_at = ?, sync_status = 'pending' WHERE id = ?`, [ts, noteId]);
+    return _note(noteId);
+  },
+
   // Import (local mode). Same rules as server/lib/notes.js importNotes:
   // original dates kept, labels matched by name, exact repeats skipped.
   async importNotes(list = []) {
@@ -467,6 +524,7 @@ export const NotesNative = {
         ids.push(lid);
       }
       if (ids.length) await _setLabels(id, ids, updated);
+      await _addAttachments(id, raw.attachments, updated);
       result.imported++;
     }
     return result;

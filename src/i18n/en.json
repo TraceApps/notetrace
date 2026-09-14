@@ -231,6 +231,16 @@
     "action_snooze":    "Snooze 1 Hour",
     "channel_name":     "Note reminders"
   },
+  "attachments": {
+    "add_image":      "Add Image",
+    "image":          "Image",
+    "open_image":     "Open image",
+    "remove_image":   "Remove image",
+    "uploading":      "Uploading image",
+    "previous":       "Previous image",
+    "next":           "Next image",
+    "upload_failed":  "{count, plural, one {# image couldn't be added} other {# images couldn't be added}}"
+  },
   "import_export": {
     "section":              "Import & Export",
     "import":               "Import",

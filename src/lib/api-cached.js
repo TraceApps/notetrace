@@ -33,7 +33,7 @@ const WRITE_METHODS = new Set([
   'createNote', 'updateNote', 'convertNote', 'trashNote', 'restoreNote',
   'deleteNoteForever', 'emptyTrash',
   'addItem', 'updateItem', 'deleteItem', 'reorderItems',
-  'restoreVersion', 'importNotes',
+  'restoreVersion', 'importNotes', 'addAttachments', 'deleteAttachment',
   'createLabel', 'updateLabel', 'deleteLabel', 'reorderLabels',
   'appendAiChat', 'clearAiChat',
   'uploadImage',
