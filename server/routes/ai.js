@@ -128,6 +128,59 @@ router.post('/transcribe', requireAuth, aiChatLimit, (req, res, next) => {
   });
 });
 
+// ── POST /api/ai/relay ────────────────────────────────────────────────────────
+// Trace's tool loop when Trace is set by environment variables. The client
+// builds the provider's own request (tools and all) and runs the tools on
+// the device, exactly as with a personal key; the server only adds the key,
+// forces the configured model, and forwards to the configured provider.
+// Body fields are allowlisted per provider and token limits are capped.
+const RELAY_FIELDS = {
+  claude: ['system', 'messages', 'tools', 'tool_choice', 'max_tokens'],
+  openai: ['messages', 'tools', 'tool_choice', 'max_tokens', 'max_completion_tokens', 'reasoning_effort', 'temperature'],
+  gemini: ['systemInstruction', 'contents', 'tools', 'toolConfig', 'generationConfig'],
+};
+const RELAY_MAX_TOKENS = 8192;
+
+export function relayRequest(cfg, body) {
+  const kind = cfg.provider === 'claude' ? 'claude' : cfg.provider === 'gemini' ? 'gemini' : 'openai';
+  const out = {};
+  for (const k of RELAY_FIELDS[kind]) if (body[k] !== undefined) out[k] = body[k];
+  for (const k of ['max_tokens', 'max_completion_tokens']) {
+    if (out[k] !== undefined) out[k] = Math.min(RELAY_MAX_TOKENS, Math.max(1, Number(out[k]) || 1024));
+  }
+  if (kind === 'claude') {
+    out.model = cfg.model;
+    out.max_tokens = out.max_tokens || 4096;
+    return { url: 'https://api.anthropic.com/v1/messages', headers: { 'Content-Type': 'application/json', 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01' }, body: out };
+  }
+  if (kind === 'gemini') {
+    return { url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cfg.model)}:generateContent?key=${encodeURIComponent(cfg.apiKey || '')}`, headers: { 'Content-Type': 'application/json' }, body: out };
+  }
+  out.model = cfg.model;
+  const base = cfg.provider === 'openai' ? 'https://api.openai.com' : String(cfg.baseUrl || '').replace(/\/+$/, '');
+  const headers = { 'Content-Type': 'application/json' };
+  if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
+  return { url: `${base}/v1/chat/completions`, headers, body: out };
+}
+
+router.post('/relay', requireAuth, aiChatLimit, wrap(async (req, res) => {
+  const body = req.body?.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: { message: 'body object required' } });
+  const cfg = _serverCfg();
+  const local = cfg.provider === 'oai-compat' || cfg.provider === 'custom';
+  if (!cfg.apiKey && !local) return res.status(503).json({ error: { message: 'AI not configured on server. Set AI_API_KEY in environment.' } });
+  if (local && (!cfg.baseUrl || !cfg.model)) return res.status(503).json({ error: { message: 'AI_PROVIDER=oai-compat requires AI_BASE_URL and AI_MODEL in environment.' } });
+  const r = relayRequest(cfg, body);
+  let upstream;
+  try {
+    upstream = await fetch(r.url, { method: 'POST', headers: r.headers, body: JSON.stringify(r.body), signal: AbortSignal.timeout(120_000) });
+  } catch (e) {
+    return res.status(502).json({ error: { message: e?.name === 'TimeoutError' ? 'The AI provider didn\'t answer in time.' : 'Couldn\'t reach the AI provider.' } });
+  }
+  const data = await upstream.json().catch(() => ({ error: { message: `AI provider error ${upstream.status}` } }));
+  res.status(upstream.status).json(data);
+}));
+
 router.post('/read-image', requireAuth, aiChatLimit, wrap(async (req, res) => {
   const { base64, mime } = req.body || {};
   if (typeof base64 !== 'string' || !/^image\/[a-z0-9.+-]+$/i.test(String(mime))) return res.status(400).json({ error: 'base64 and an image mime are required' });

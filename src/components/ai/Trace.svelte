@@ -26,7 +26,7 @@
   import { portal } from '../../lib/portal.js';
   import { NoteApi } from '../../lib/api.js';
   import { isNative } from '../../lib/platform.js';
-  import { callAI, callAIProxy, TOOLS, setToolHandler, AI_DEFAULT_MODELS } from '../../lib/aiChat.js';
+  import { callAI, TOOLS, setToolHandler, AI_DEFAULT_MODELS } from '../../lib/aiChat.js';
   import { executeNoteTool } from '../../lib/trace-note-tools.js';
   import { signalNotesChanged, refreshLabels } from '../../stores/notes.js';
 
@@ -166,7 +166,7 @@
         showError($_('trace_ai_ct.toast.voice_unsupported'));
         return;
       }
-      if (!$aiEnabled || (!$aiKeyVerified && !aiEnvLocked)) {
+      if (!$aiEffectivelyEnabled || (!$aiKeyVerified && !aiEnvLocked)) {
         showError($_('trace_ai_ct.toast.configure_ai'));
         return;
       }
@@ -317,7 +317,7 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
   async function send({ smartLog = false } = {}) {
     const text = input.trim();
     if ((!text && !attachedImage) || busy) return;
-    if (!$aiEnabled) {
+    if (!$aiEffectivelyEnabled) {
       showError($_('trace_ai_ct.toast.trace_disabled'));
       return;
     }
@@ -337,9 +337,10 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
     await tick(); _scrollToBottom();
 
     try {
-      const provider = $aiProvider;
-      const apiKey = $aiApiKey;
-      const model = $aiModel || AI_DEFAULT_MODELS[provider] || '';
+      // Set by env vars: the server's provider, through the server relay.
+      const provider = aiEnvLocked ? ($envLocks.ai_provider || 'claude') : $aiProvider;
+      const apiKey = aiEnvLocked ? '' : $aiApiKey;
+      const model = aiEnvLocked ? ($envLocks.ai_model || AI_DEFAULT_MODELS[provider] || '') : ($aiModel || AI_DEFAULT_MODELS[provider] || '');
       const baseUrl = $aiBaseUrl;
       const apiMessages = messages.map(m => ({ role: m.role, content: m.content })).slice(-20);
       // Inline the image into the last user message in the provider's format.
@@ -347,10 +348,8 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
         const lastIdx = apiMessages.length - 1;
         apiMessages[lastIdx] = _buildImageMessage(provider, text || 'Have a look at this.', attachedImage);
       }
-      const reply = aiEnvLocked
-        ? await callAIProxy({ messages: apiMessages, systemPrompt: _systemPrompt(smartLog) })
-        : await callAI({
-            provider, apiKey, model, baseUrl,
+      const reply = await callAI({
+            provider, apiKey, model, baseUrl: aiEnvLocked ? '' : baseUrl, relay: aiEnvLocked,
             messages: apiMessages,
             systemPrompt: _systemPrompt(smartLog),
             tools: TOOLS,

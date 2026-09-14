@@ -140,12 +140,19 @@ call the user's own AI provider from the browser or phone, like the
 Trace chat; when Trace is set by environment variables they go through
 `/api/ai/transcribe` and `/api/ai/read-image` instead.
 
+With Trace set by environment variables, the chat's tool loop still runs
+on the device: `/api/app-config/env-locks` reports the server's provider and
+model, the client builds that provider's request, and `/api/ai/relay`
+adds the key, forces the configured model, allowlists body fields, and
+forwards it.
+
 ### Note tools are shared by Trace and MCP
 
 `server/lib/note-tools.js` defines the note tools (search, get, create,
 update, append, checklist items, reminders, labels, trash) once, as a
-JSON Schema catalog plus `executeNoteTool(name, args, api)`. It has no
-imports, so Vite bundles it for the client too. Trace passes `NoteApi`
+JSON Schema catalog plus `executeNoteTool(name, args, api, opts)`. It
+imports only the pure `server/lib/reminders.js`, so Vite bundles it for
+the client too. Trace passes `NoteApi`
 (so tools work offline in Android local mode); the MCP server passes an
 adapter over `server/lib/notes.js`. The view-only guard, owner-only
 actions, and item matching live in that one file.
@@ -156,7 +163,11 @@ A link is stored as `[[Title]]` in `body_md` and shown as a chip by a
 TipTap node (`src/lib/note-link-extension.js`). Backlinks are a query
 over bodies, not a table, so imports and sync need nothing extra.
 Renaming a note rewrites `[[Old]]` to `[[New]]` in the owner's own
-notes, on the server and in Android local mode.
+notes, on the server and in Android local mode. The editor's title
+autosaves send `rename_links: false`, and closing the editor sends one
+rename from the title it opened with (`rename_links_from`), so partial
+titles never rewrite links. A rename is skipped when another note has
+the old or the new title.
 
 ### Imports parse on the client
 

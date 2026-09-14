@@ -54,13 +54,23 @@ export const TOOLS = NOTE_TOOLS;
 
 // ── Main entry point ────────────────────────────────────────────────────────
 
-export async function callAI({ provider, apiKey, model, messages, systemPrompt, tools, onToolCall, onToolResult, baseUrl }) {
+/**
+ * `relay: true` sends each request through /api/ai/relay, for installs where
+ * Trace is set by environment variables: pass the server's provider and
+ * model. Tools still run here, on the device, like with a personal key.
+ */
+export async function callAI({ provider, apiKey, model, messages, systemPrompt, tools, onToolCall, onToolResult, baseUrl, relay = false }) {
   // 'custom' is the legacy NoteTrace name for the same OpenAI-compatible
   // path that NutriTrace calls 'oai-compat'. Both are accepted.
-  if (!apiKey && provider !== 'custom' && provider !== 'oai-compat') {
+  if (!relay && !apiKey && provider !== 'custom' && provider !== 'oai-compat') {
     throw new Error('No API key configured. Add one in Settings → Trace Assistant.');
   }
-  const cb = { onToolCall, onToolResult };
+  const cb = { onToolCall, onToolResult, relay };
+  if (relay) {
+    apiKey = apiKey || 'relay';
+    baseUrl = baseUrl || 'relay';
+    model = model || AI_DEFAULT_MODELS[provider] || 'relay';
+  }
   switch (provider) {
     case 'claude':     return _callClaudeWithTools(apiKey, model, messages, systemPrompt, tools, cb);
     case 'openai':     return _callOpenAIWithTools(apiKey, model, messages, systemPrompt, tools, cb, 'https://api.openai.com');
@@ -73,6 +83,27 @@ export async function callAI({ provider, apiKey, model, messages, systemPrompt, 
     }
     default: throw new Error(`Unknown AI provider: ${provider}`);
   }
+}
+
+/** POST a provider request, directly or through the server relay. */
+async function _post(relay, url, headers, body) {
+  if (!relay) {
+    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+    return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
+  }
+  const { apiUrl, isNative, getServerUrl, getAuthToken } = await import('./platform.js');
+  const h = { 'Content-Type': 'application/json' };
+  if (isNative && getServerUrl()) {
+    const token = getAuthToken();
+    if (token) h.Authorization = `Bearer ${token}`;
+  } else {
+    const csrf = typeof localStorage !== 'undefined' ? localStorage.getItem('note:csrf') : null;
+    if (csrf) h['X-CSRF-Token'] = csrf;
+  }
+  const res = await fetch(apiUrl('/api/ai/relay'), { method: 'POST', credentials: 'include', headers: h, body: JSON.stringify({ body }) });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401) return { ok: false, status: 401, data: { error: { message: 'Not signed in. Sign in again to use Trace.' } } };
+  return { ok: res.ok, status: res.status, data };
 }
 
 /** Server-proxy fallback for env-locked installs. Text-only — tools
@@ -123,17 +154,13 @@ async function _callClaudeWithTools(apiKey, model, messages, systemPrompt, tools
       messages: currentMessages,
     };
     if (claudeTools.length) body.tools = claudeTools;
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
+    const res = await _post(cb?.relay, 'https://api.anthropic.com/v1/messages', {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    }, body);
+    const data = res.data;
     if (!res.ok) throw new Error(data.error?.message || `Claude API error ${res.status}`);
 
     const toolUses = (data.content || []).filter(b => b.type === 'tool_use');
@@ -181,12 +208,8 @@ async function _callOpenAIWithTools(apiKey, model, messages, systemPrompt, tools
     if (openaiTools.length) body.tools = openaiTools;
     const headers = { 'Content-Type': 'application/json' };
     if (apiKey && apiKey !== 'no-key') headers['Authorization'] = `Bearer ${apiKey}`;
-    const res = await fetch(`${baseUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
+    const res = await _post(cb?.relay, `${baseUrl}/v1/chat/completions`, headers, body);
+    const data = res.data;
     if (!res.ok) throw new Error(data.error?.message || `AI API error ${res.status}`);
 
     const choice = data.choices[0];
@@ -221,10 +244,11 @@ async function _callGeminiWithTools(apiKey, model, messages, systemPrompt, tools
   if (GEMINI_RETIRED.has(m)) m = AI_DEFAULT_MODELS.gemini;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
   const geminiTools = (tools || []).length ? [{
+    // Gemini refuses an OBJECT schema with no properties, so leave it out.
     functionDeclarations: tools.map(t => ({
       name: t.name,
       description: t.description,
-      parameters: t.parameters,
+      ...(Object.keys(t.parameters?.properties || {}).length ? { parameters: t.parameters } : {}),
     })),
   }] : undefined;
 
@@ -244,12 +268,8 @@ async function _callGeminiWithTools(apiKey, model, messages, systemPrompt, tools
       contents,
     };
     if (geminiTools) body.tools = geminiTools;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
+    const res = await _post(cb?.relay, url, { 'Content-Type': 'application/json' }, body);
+    const data = res.data;
     if (!res.ok) throw new Error(data.error?.message || `Gemini API error ${res.status}`);
     const candidate = data.candidates?.[0];
     const parts = candidate?.content?.parts || [];

@@ -194,6 +194,11 @@ async function _renameLinks(noteId, oldTitle, newTitle, ts) {
   const from = String(oldTitle || '').trim();
   const to = String(newTitle || '').trim();
   if (!from || !to || from === to) return;
+  // Another note with either title owns those links: leave them alone.
+  const clash = await _q(
+    `SELECT 1 FROM notes WHERE id != ? AND deleted_at IS NULL AND (share_role IS NULL OR share_role = 'owner') AND lower(trim(title)) IN (lower(?), lower(?)) LIMIT 1`,
+    [noteId, from, to]);
+  if (clash.length) return;
   const re = new RegExp(`\\[\\[\\s*${_escapeRe(from)}\\s*\\]\\]`, 'gi');
   const rows = await _q(
     `SELECT id, body_md FROM notes WHERE id != ? AND deleted_at IS NULL AND (share_role IS NULL OR share_role = 'owner') AND instr(lower(body_md), lower(?)) > 0`,
@@ -343,7 +348,7 @@ export const NotesNative = {
       await _run(`UPDATE notes SET ${sets.join(', ')}, updated_at = ?, sync_status = 'pending' WHERE id = ?`, [...args, ts, id]);
     }
     if (Array.isArray(patch.labels)) await _setLabels(id, patch.labels, ts);
-    if ('title' in patch) await _renameLinks(id, row.title, String(patch.title ?? ''), ts);
+    if ('title' in patch && patch.rename_links !== false) await _renameLinks(id, patch.rename_links_from ?? row.title, String(patch.title ?? ''), ts);
     return _note(id);
   },
 

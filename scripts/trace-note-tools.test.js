@@ -83,6 +83,16 @@ test('reminders use local time, and shared view-only notes are protected', async
   assert.equal(ok.ok, true);
   const local = parseToolTime('2099-03-01T09:30');
   assert.equal(local.getHours(), 9);
+  // A wall-clock time in a given zone, whatever this machine's zone is.
+  assert.equal(parseToolTime('2099-03-01T09:30', 'America/New_York').toISOString(), '2099-03-01T14:30:00.000Z');
+  assert.equal(parseToolTime('2099-07-01T09:30', 'America/New_York').toISOString(), '2099-07-01T13:30:00.000Z');
+  assert.equal(parseToolTime('2099-03-01T09:30:00+01:00', 'America/New_York').toISOString(), '2099-03-01T08:30:00.000Z');
+  const zoned = await executeNoteTool('set_reminder', { id: note.id, at: '2099-03-01T09:30' }, api, { timeZone: 'Asia/Tokyo' });
+  assert.ok(zoned.ok);
+  assert.equal(api.notes.get(note.id).reminder_tz, 'Asia/Tokyo');
+  assert.match(api.notes.get(note.id).reminder_at, /^2099-03-01 00:30/);
+  assert.match((await executeNoteTool('set_reminder', { id: note.id, at: '2099-03-01T09:30', time_zone: 'Mars/Base' }, api)).error, /Unknown time zone/);
+  await executeNoteTool('set_reminder', { id: note.id, at: '2099-03-01T09:30', repeat: 'weekly' }, api);
   assert.equal(api.notes.get(note.id).reminder_rrule, 'weekly');
   const reminders = await executeNoteTool('list_reminders', {}, api);
   assert.equal(reminders.reminders.length, 1);

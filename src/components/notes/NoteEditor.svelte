@@ -60,6 +60,7 @@
 
   let noteId = note?.id ?? null;
   let title = note?.title ?? prefill?.title ?? '';
+  const openedTitle = note?.title ?? '';
   let body = note?.body_md ?? prefill?.body_md ?? '';
   let kind = note?.kind ?? initialKind;
   let color = note?.color ?? null;
@@ -159,7 +160,8 @@
         await ensureNote();
         return;
       }
-      apply(await NoteApi.updateNote(noteId, kind === 'text' ? { title, body_md: body } : { title }));
+      // Links follow a rename once, on close, not through every half-typed title.
+      apply(await NoteApi.updateNote(noteId, kind === 'text' ? { title, body_md: body, rename_links: false } : { title, rename_links: false }));
     });
   }
 
@@ -478,6 +480,10 @@
     if (closing) return;
     closing = true;
     await flushAll();
+    const renamedFrom = openedTitle.trim();
+    if (noteId && !trashed && !contentLocked && renamedFrom && title.trim() && renamedFrom !== title.trim()) {
+      try { await NoteApi.updateNote(noteId, { title, rename_links_from: renamedFrom }); } catch { /* links can be fixed by hand */ }
+    }
     // A note that ended up empty is removed instead of lingering as a blank card.
     if (!skipDiscard && noteId && !trashed && isEmptyNote({ title, body_md: body, items, attachments })) {
       try { await NoteApi.deleteNoteForever(noteId); } catch { /* best effort */ }

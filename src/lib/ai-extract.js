@@ -24,8 +24,7 @@ const IMAGE_PROVIDERS = ['claude', 'openai', 'custom', 'oai-compat', 'gemini'];
 /** { transcribe, readImages }: what the current Trace setup can do. */
 export const extractSupport = derived([traceReady, envLocks, aiProvider], ([$ready, $locks, $provider]) => {
   if (!$ready) return { transcribe: false, readImages: false };
-  // The server's provider isn't known here; the server answers with an error if it can't.
-  if ($locks.ai) return { transcribe: true, readImages: true };
+  if ($locks.ai) return { transcribe: !!$locks.ai_transcribe, readImages: !!$locks.ai_read_images };
   return { transcribe: AUDIO_PROVIDERS.includes($provider), readImages: IMAGE_PROVIDERS.includes($provider) };
 });
 

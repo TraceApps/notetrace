@@ -10,7 +10,7 @@
  * sync, sharing permissions. Pure (no db, no DOM) so it's shared by the
  * server and the client bundle and tested against a fake api.
  */
-import { REPEATS, toUtcString, localTimeZone, nextOccurrence } from './reminders.js';
+import { REPEATS, toUtcString, localTimeZone, nextOccurrence, zonedToUtc } from './reminders.js';
 
 const BODY_LIMIT = 4000;
 const RESULT_LIMIT = 25;
@@ -112,7 +112,7 @@ export const NOTE_TOOLS = [
   },
   {
     name: 'set_reminder',
-    description: "Set or clear a note's reminder. `at` is a local date and time like 2026-09-20T09:00 (the user's time zone) or a full ISO time with an offset. Repeat is optional.",
+    description: "Set or clear a note's reminder. `at` is a date and time like 2026-09-20T09:00 in `time_zone` (the user's time zone when omitted), or a full ISO time with an offset. Repeat is optional.",
     parameters: {
       type: 'object',
       properties: {
@@ -120,6 +120,7 @@ export const NOTE_TOOLS = [
         at: { type: 'string', description: 'When to remind. Omit with clear=true to remove the reminder.' },
         repeat: { type: 'string', enum: ['none', 'daily', 'weekly', 'monthly', 'yearly'] },
         clear: { type: 'boolean' },
+        time_zone: { type: 'string', description: 'IANA time zone for `at` and for repeats, like America/New_York. Defaults to the user\'s time zone.' },
       },
       required: ['id'],
     },
@@ -191,15 +192,25 @@ function _full(note, labelName) {
   };
 }
 
-/** Parse the model's time: local wall-clock ("2026-09-20T09:00") or ISO with an offset. */
-export function parseToolTime(at, now = new Date()) {
+export function validTimeZone(tz) {
+  if (!tz || typeof tz !== 'string') return null;
+  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return tz; } catch { return null; }
+}
+
+/**
+ * Parse the model's time: wall-clock ("2026-09-20T09:00") in `timeZone`
+ * (this runtime's zone when omitted), or ISO with an offset.
+ */
+export function parseToolTime(at, timeZone = null) {
   const s = String(at || '').trim();
   if (!s) return null;
   const hasZone = /([zZ]|[+-]\d\d:?\d\d)$/.test(s);
   const local = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?$/);
   let d;
-  if (!hasZone && local) d = new Date(+local[1], +local[2] - 1, +local[3], local[4] != null ? +local[4] : 9, local[5] != null ? +local[5] : 0);
-  else d = new Date(s);
+  if (!hasZone && local) {
+    const parts = [+local[1], +local[2], +local[3], local[4] != null ? +local[4] : 9, local[5] != null ? +local[5] : 0];
+    d = timeZone ? zonedToUtc(...parts, timeZone) : new Date(parts[0], parts[1] - 1, parts[2], parts[3], parts[4]);
+  } else d = new Date(s);
   return Number.isFinite(d.getTime()) ? d : null;
 }
 
@@ -240,7 +251,12 @@ function _findItem(items, text) {
  * Run one tool call. Resolves a JSON-able result, or { error } the model
  * can explain to the user.
  */
-export async function executeNoteTool(name, args = {}, api) {
+/**
+ * Run a tool. `opts.timeZone` is the user's IANA zone, for reminder times
+ * without an offset; it defaults to this runtime's zone (right for Trace,
+ * which runs on the user's device).
+ */
+export async function executeNoteTool(name, args = {}, api, opts = {}) {
   if (!api) throw new Error('executeNoteTool needs a notes api');
   const a = args || {};
   const need = async (id) => {
@@ -349,11 +365,13 @@ export async function executeNoteTool(name, args = {}, api) {
         await api.updateNote(note.id, { reminder_at: null });
         return { ok: true, cleared: true };
       }
-      const when = parseToolTime(a.at);
+      if (a.time_zone && !validTimeZone(a.time_zone)) return { error: `Unknown time zone "${a.time_zone}". Use an IANA name like America/New_York.` };
+      const tz = validTimeZone(a.time_zone) || validTimeZone(opts.timeZone) || localTimeZone();
+      const when = parseToolTime(a.at, tz);
       if (!when) return { error: `Couldn't read the time "${a.at}". Use a form like 2026-09-20T09:00.` };
       const repeat = REPEATS.includes(a.repeat) ? a.repeat : null;
       if (!repeat && when <= new Date()) return { error: 'That time has already passed.' };
-      const updated = await api.updateNote(note.id, { reminder_at: toUtcString(when), reminder_rrule: repeat, reminder_tz: localTimeZone() });
+      const updated = await api.updateNote(note.id, { reminder_at: toUtcString(when), reminder_rrule: repeat, reminder_tz: tz });
       return { ok: true, reminder: _reminder(updated) };
     }
     case 'set_labels': {

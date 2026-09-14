@@ -10,18 +10,23 @@
   let timer = null;
   let error = '';
   let stopping = false;
+  let gone = false;
 
   onMount(async () => {
     if (!recordingSupported()) { error = $_('voice.unsupported'); return; }
     try {
-      handle = await startRecording();
+      const h = await startRecording();
+      // Closed while the permission prompt was up: release the mic.
+      if (gone) { h.cancel(); return; }
+      handle = h;
       timer = setInterval(() => { elapsed = Date.now() - handle.startedAt; }, 250);
     } catch {
-      error = $_('voice.denied');
+      if (!gone) error = $_('voice.denied');
     }
   });
 
   onDestroy(() => {
+    gone = true;
     clearInterval(timer);
     if (handle && !stopping) handle.cancel();
   });

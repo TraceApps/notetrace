@@ -274,6 +274,18 @@ const relinked = (await api('GET', `/api/notes/${linker.id}`)).json;
 ok(relinked.body_md === 'Work on [[Garden plan $1 (2027)]] and [[Nope]]', `renaming updates links, even with $ and parentheses (${relinked.body_md})`);
 bl = (await api('GET', `/api/notes/${target.id}/backlinks`)).json;
 ok(bl.length === 1, 'backlinks follow the new title');
+// Autosaves opt out; the editor renames once, from the title it opened with.
+const other = (await api('POST', '/api/notes', { title: 'Ideas' })).json;
+const idea = (await api('POST', '/api/notes', { title: 'Idea' })).json;
+const ideaLinker = (await api('POST', '/api/notes', { title: 'Hub', body_md: 'See [[Idea]] and [[Ideas]]' })).json;
+await api('PATCH', `/api/notes/${idea.id}`, { title: 'Ideas', rename_links: false });
+await api('PATCH', `/api/notes/${idea.id}`, { title: 'Ideas v2', rename_links: false });
+ok((await api('GET', `/api/notes/${ideaLinker.id}`)).json.body_md === 'See [[Idea]] and [[Ideas]]', 'autosaved titles leave links alone');
+await api('PATCH', `/api/notes/${idea.id}`, { title: 'Ideas v2', rename_links_from: 'Idea' });
+ok((await api('GET', `/api/notes/${ideaLinker.id}`)).json.body_md === 'See [[Ideas v2]] and [[Ideas]]', 'rename on close updates only links to this note');
+await api('PATCH', `/api/notes/${idea.id}`, { title: 'Ideas' });
+ok((await api('GET', `/api/notes/${ideaLinker.id}`)).json.body_md === 'See [[Ideas v2]] and [[Ideas]]', 'renaming onto another note\'s title leaves links alone');
+await api('DELETE', `/api/notes/${other.id}/forever`);
 
 console.log('backup + export');
 const bk = (await api('POST', '/api/full-backup')).json;

@@ -8,9 +8,11 @@
  *   destroy: move_to_trash
  * Every call runs as the token's user, with the same sharing and
  * ownership rules as the app. set_reminder reads a time without an offset
- * in the server's time zone, so agents should send ISO times with one.
+ * in the tool's `time_zone`, else the zone of the user's latest reminder
+ * (set from their own device), else the server's.
  */
 import { z } from 'zod';
+import db from '../../../db.js';
 import * as Notes from '../../notes.js';
 import { NOTE_TOOLS, executeNoteTool } from '../../note-tools.js';
 import { toolResult, toolError } from '../_util.js';
@@ -32,6 +34,14 @@ export function notesApiFor(u) {
     async updateItem(id, uuid, patch) { return must(Notes.updateItem(u, Number(id), uuid, patch), 'Item not found'); },
     async trashNote(id) { return must(Notes.trashNote(u, Number(id))); },
   };
+}
+
+/** The user's time zone, as last recorded by one of their devices on a reminder. */
+export function userTimeZone(u) {
+  const row = db.prepare(
+    `SELECT reminder_tz FROM notes WHERE user_id IS ? AND reminder_tz IS NOT NULL AND reminder_tz != '' ORDER BY updated_at DESC LIMIT 1`
+  ).get(u ?? null);
+  return row?.reminder_tz || null;
 }
 
 // JSON Schema (as used for Trace) to the zod shape registerTool wants.
@@ -65,7 +75,7 @@ function _register(server, ctx, names, { confirm = false } = {}) {
       { title: name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()), description: tool.description, inputSchema: shape },
       async ({ confirm: _c, ...args }) => {
         try {
-          const r = await executeNoteTool(name, args, notesApiFor(ctx.userId));
+          const r = await executeNoteTool(name, args, notesApiFor(ctx.userId), { timeZone: userTimeZone(ctx.userId) });
           return r?.error ? toolError(r.error) : toolResult(r);
         } catch (e) {
           return toolError(e.message || 'Tool failed');

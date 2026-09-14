@@ -430,7 +430,7 @@ export const updateNote = db.transaction((u, id, patch = {}) => {
     db.prepare(`UPDATE notes SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).run(...args, ts, id);
   }
   if (Array.isArray(patch.labels)) _setLabels(u, id, patch.labels, ts);
-  if ('title' in patch) _renameLinks(row.user_id, id, row.title, _cleanTitle(patch.title), ts);
+  if ('title' in patch && patch.rename_links !== false) _renameLinks(row.user_id, id, patch.rename_links_from != null ? _cleanTitle(patch.rename_links_from) : row.title, _cleanTitle(patch.title), ts);
   return getNote(u, id);
 });
 
@@ -461,7 +461,7 @@ function _updateAsMember(u, { row, role, member }, patch) {
     if ('body_md' in patch) { sets.push('body_md = ?'); args.push(_cleanBody(patch.body_md)); }
     if ('color' in patch)   { sets.push('color = ?');   args.push(_cleanColor(patch.color)); }
     if (sets.length) db.prepare(`UPDATE notes SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).run(...args, ts, id);
-    if ('title' in patch) _renameLinks(row.user_id, id, row.title, _cleanTitle(patch.title), ts);
+    if ('title' in patch && patch.rename_links !== false) _renameLinks(row.user_id, id, patch.rename_links_from != null ? _cleanTitle(patch.rename_links_from) : row.title, _cleanTitle(patch.title), ts);
   }
   if (Array.isArray(patch.labels)) _setLabels(u, id, patch.labels, ts);
   return getNote(u, id);
@@ -985,6 +985,11 @@ function _renameLinks(ownerId, noteId, oldTitle, newTitle, ts) {
   const from = String(oldTitle || '').trim();
   const to = String(newTitle || '').trim();
   if (!from || !to || from === to) return 0;
+  // Another note with either title owns those links: leave them alone.
+  const clash = db.prepare(
+    `SELECT 1 FROM notes WHERE user_id IS ? AND id != ? AND deleted_at IS NULL AND lower(trim(title)) IN (lower(?), lower(?)) LIMIT 1`
+  ).get(ownerId ?? null, noteId, from, to);
+  if (clash) return 0;
   const re = new RegExp(`\\[\\[\\s*${_escapeRe(from)}\\s*\\]\\]`, 'gi');
   const rows = db.prepare(
     `SELECT id, body_md FROM notes WHERE user_id IS ? AND id != ? AND deleted_at IS NULL AND instr(lower(body_md), lower(?)) > 0`
