@@ -32,6 +32,8 @@
   import ReminderChip from './ReminderChip.svelte';
   import { ensureReminderPermission, rescheduleReminders } from '../../lib/note-reminders.js';
   import ShareDialog from './ShareDialog.svelte';
+  import TraceActions from './TraceActions.svelte';
+  import { traceReady } from '../../lib/trace-run.js';
   import AttachmentGrid from './AttachmentGrid.svelte';
   import ImageViewer from './ImageViewer.svelte';
   import { uploadNoteImages, isImageFile } from '../../lib/note-images.js';
@@ -83,8 +85,8 @@
   let queue = Promise.resolve();
   let saving = false;
   let showHistory = false;
-  let colorOpen = false, labelsOpen = false, reminderOpen = false, shareOpen = false;
-  let colorAnchor = null, labelsAnchor = null, reminderAnchor = null, shareAnchor = null;
+  let colorOpen = false, labelsOpen = false, reminderOpen = false, shareOpen = false, traceOpen = false;
+  let colorAnchor = null, labelsAnchor = null, reminderAnchor = null, shareAnchor = null, traceAnchor = null;
   let narrow = typeof window !== 'undefined' && window.innerWidth < 600;
 
   $: readOnly = trashed;
@@ -254,6 +256,29 @@
     addImages(files);
   }
 
+  // ── Trace actions ─────────────────────────────────────────────────
+  async function openTrace(e) {
+    traceAnchor = e.currentTarget.getBoundingClientRect();
+    await flushAll();
+    traceOpen = true;
+  }
+  // A Trace rewrite always leaves a restore point, however recent the last edit.
+  async function applyTraceText(markdown) {
+    traceOpen = false;
+    touched = true;
+    body = markdown;
+    editorKey++;
+    await enqueue(async () => {
+      if (!noteId) { await ensureNote(); return; }
+      apply(await NoteApi.updateNote(noteId, { title, body_md: body, snapshot: 'restore' }));
+    });
+  }
+  async function applyTraceChecklist(lines) {
+    traceOpen = false;
+    await applyTraceText(lines.join('\n'));
+    await convert();
+  }
+
   // ── Actions ───────────────────────────────────────────────────────
   function togglePin() { pinned = !pinned; patch({ pinned }); }
   function setColor(c) { color = c; patch({ color: c }); }
@@ -372,7 +397,7 @@
   }
 
   function onKey(e) {
-    if (e.key === 'Escape' && viewerIndex == null && !colorOpen && !labelsOpen && !reminderOpen && !shareOpen) {
+    if (e.key === 'Escape' && viewerIndex == null && !colorOpen && !labelsOpen && !reminderOpen && !shareOpen && !traceOpen) {
       e.preventDefault();
       if (showHistory) showHistory = false;
       else close();
@@ -517,6 +542,11 @@
                 <span class="material-symbols-rounded">notification_add</span>
               </button>
             {/if}
+            {#if $traceReady && kind === 'text' && !contentLocked && body.trim()}
+              <button class="icon-btn trace-btn" on:click={openTrace} title={$_('trace_actions.title')} aria-label={$_('trace_actions.title')}>
+                <span class="material-symbols-rounded">auto_awesome</span>
+              </button>
+            {/if}
             {#if $sharingAvailable}
               <button class="icon-btn" on:click={openShare} title={$_('sharing.share')} aria-label={$_('sharing.share')}>
                 <span class="material-symbols-rounded">person_add</span>
@@ -581,6 +611,15 @@
 <Popover bind:open={reminderOpen} anchor={reminderAnchor}>
   <ReminderPicker reminderAt={reminderAt} repeat={reminderRepeat} tz={reminderTz}
     on:set={(e) => setReminder(e.detail)} on:clear={clearReminder} />
+</Popover>
+<Popover bind:open={traceOpen} anchor={traceAnchor}>
+  {#if traceOpen}
+    <TraceActions {title} {body}
+      on:replace={(e) => applyTraceText(e.detail.markdown)}
+      on:prepend={(e) => applyTraceText(`${e.detail.markdown}\n\n${body}`)}
+      on:checklist={(e) => applyTraceChecklist(e.detail.items)}
+      on:close={() => traceOpen = false} />
+  {/if}
 </Popover>
 <Popover bind:open={shareOpen} anchor={shareAnchor}>
   {#if shareOpen && noteId}

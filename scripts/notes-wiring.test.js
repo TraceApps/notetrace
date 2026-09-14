@@ -109,3 +109,9 @@ test('Android share sheet accepts text and images, single and multiple', () => {
   assert.match(manifest, /action\.SEND_MULTIPLE"[\s\S]*?mimeType="image\/\*"/);
   assert.match(read('../src/components/notes/NoteEditor.svelte'), /prefill\?\.images\?\.length\) addImages\(prefill\.images\)/);
 });
+
+test('English strings load before the first render (English only)', () => {
+  const i18n = read('../src/i18n/index.js');
+  assert.match(i18n, /addMessages\('en', en\)/);
+  assert.doesNotMatch(i18n, /register\(/, 'lazy-loaded messages leave the locale unset when the app first renders');
+});

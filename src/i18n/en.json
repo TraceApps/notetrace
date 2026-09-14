@@ -231,6 +231,23 @@
     "action_snooze":    "Snooze 1 Hour",
     "channel_name":     "Note reminders"
   },
+  "trace_actions": {
+    "title":          "Ask Trace",
+    "tidy":           "Tidy Up",
+    "tidy_desc":      "Fix spelling and grammar, and add structure",
+    "summarize":      "Summarize",
+    "summarize_desc": "A few bullet points with the key facts and to-dos",
+    "checklist":      "Make a Checklist",
+    "checklist_desc": "Turn this note into checkable items",
+    "working":        "Trace is working on it…",
+    "failed":         "Trace couldn't finish that",
+    "empty":          "Trace didn't return anything. Try again.",
+    "try_again":      "Try Again",
+    "use_this":       "Use This",
+    "use_checklist":  "Make Checklist",
+    "add_to_top":     "Add to Top",
+    "history_hint":   "The current text stays in version history."
+  },
   "attachments": {
     "add_image":      "Add Image",
     "image":          "Image",
