@@ -28,7 +28,7 @@
     <div class="setting-divider"></div>
     <div class="about-row">
       <span class="material-symbols-rounded about-feat-icon">database</span>
-      <span>Self-hosted — your data, your server</span>
+      <span>Self-hosted: your data, your server</span>
     </div>
     <div class="setting-divider"></div>
     <div class="about-row">

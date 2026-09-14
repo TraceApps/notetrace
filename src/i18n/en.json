@@ -851,7 +851,7 @@
       "federation_prefix":      "Optional federation with ",
       "federation_suffix":      " for nutrition tracking",
       "family_prefix":          "Part of the ",
-      "family_suffix":          " family (with NutriTrace and LiftTrace)",
+      "family_suffix":          " family (with NutriTrace, LiftTrace, and CookTrace)",
       "support_dev":            "Support Development"
     },
     "custom_color": {
