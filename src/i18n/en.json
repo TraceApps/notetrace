@@ -364,7 +364,7 @@
     "memos_unreachable":    "Couldn't reach that Memos server. Check the address; if NoteTrace uses https, Memos needs https too.",
     "no_memos_notes":       "No memos found for that account",
     "blinko_title":         "Blinko Backup",
-    "blinko_desc":          "A backup (.bko) file downloaded from Blinko's settings. Notes, images, tags, pins, archive, and dates come across, from the Blinko account that matches your username.",
+    "blinko_desc":          "A backup (.bko) file from an older Blinko version; current Blinko no longer creates them, so use its Markdown export with Markdown Files below. Notes, images, tags, pins, archive, and dates come across, from the Blinko account that matches your username.",
     "tags_to_labels":       "Turn #tags into labels",
     "choose_file":          "Choose File",
     "importing":            "Importing…",
