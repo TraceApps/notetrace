@@ -41,11 +41,11 @@ It runs as a single Docker container on your own hardware, with a PWA for the br
 
 NoteTrace is in active development toward its first release candidate. Working today:
 
-- **Notes and checklists.** Card grid with a pinned section and quick capture, a rich editor that stores Markdown, checklists with drag to reorder, labels and colors, archive, trash with a 30-day purge, full-text search, and version history.
-- **Reminders.** One-off or repeating (daily, weekly, monthly, yearly), kept at the same local time across daylight saving. Android schedules them on the device; the server delivers them through your push service and a `reminder.fired` webhook.
+- **Notes and checklists.** Card grid with a pinned section and quick capture, a rich editor that stores Markdown, checklists with drag to reorder, images on any note, labels and colors, archive, trash with a 30-day purge, full-text search (Ctrl+K), and version history.
+- **Reminders.** One-off or repeating (daily, weekly, monthly, yearly), kept at the same local time across daylight saving. Android fires them as exact alarms even with the app closed, the browser shows them while NoteTrace is open, and the server delivers them through your push service and a `reminder.fired` webhook.
 - **Sharing.** Share a note or list with other accounts on your server, with view or edit access. Pin, archive, labels, and reminders stay personal.
-- **Import and export.** Google Keep (Google Takeout), Markdown files (Obsidian, Memos, Joplin, and other Markdown exports), and a Markdown ZIP export.
-- **Android extras.** Share text and links into a new note from any app, and an optional fingerprint, face, or PIN app lock.
+- **Import and export.** Google Keep (Google Takeout, images included), Memos (straight from your Memos server), Blinko backups, and Markdown files (Obsidian, Joplin, and other Markdown exports). Export everything as a Markdown ZIP with images.
+- **Android extras.** Share text, links, and photos into a new note from any app, and an optional fingerprint, face, or PIN app lock.
 
 The foundation it shares with the other Trace apps:
 

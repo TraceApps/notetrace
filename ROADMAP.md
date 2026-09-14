@@ -29,7 +29,7 @@ Items marked ~~strikethrough~~ have been implemented.
 
 - ~~Note sync with per-item checklist merge~~
 - ~~Capture text and links from the Android share sheet~~
-- Capture images from the Android share sheet
+- ~~Capture images from the Android share sheet~~
 - ~~Native reminders on Android~~
 - ~~Biometric app lock~~
 
@@ -37,18 +37,20 @@ Items marked ~~strikethrough~~ have been implemented.
 
 - ~~Shared notes and lists with view or edit access~~
 - ~~Reminders with repeats (daily, weekly, monthly, yearly) delivered through push~~
-- ~~Google Takeout import (Google Keep notes, checklists, labels, colors, links)~~
-- Google Keep image and drawing attachments
-- ~~Markdown import (Obsidian, Memos, Joplin, and other Markdown exports)~~
-- Blinko backup import
-- ~~Markdown ZIP export~~
+- ~~Google Takeout import (Google Keep notes, checklists, images, drawings, labels, colors, links)~~
+- ~~Markdown import (Obsidian, Joplin, and other Markdown exports), with images~~
+- ~~Memos import from a Memos server~~
+- ~~Blinko backup import~~
+- ~~Markdown ZIP export, with images~~
+- ~~Image attachments on notes~~
+- ~~Reminder notifications in the browser~~
 
 ## Advanced
 
 - `[[Note title]]` links with a Linked From section
 - Timeline view alongside the grid
 - Voice notes with transcription
-- Image attachments with text search inside images
+- Text search inside images
 - Trace AI note tools: tidy, summarize, ask your notes
 - ~~Note webhook events~~
 - MCP note tools

@@ -10,7 +10,7 @@ NoteTrace is a self-hosted notes app. Your data is stored on **your own server**
 
 ### What NoteTrace stores on YOUR server:
 
-- Notes (titles, bodies, checklists, colors, pin / archive / trash state, reminder times)
+- Notes (titles, bodies, checklists, images you attach, colors, pin / archive / trash state, reminder times)
 - Who each note is shared with, and whether they can view or edit it (only accounts on your own server)
 - AI chat history (if Trace is enabled)
 - User account information (username, hashed password, optional email, optional display name, optional avatar)
@@ -37,7 +37,7 @@ NoteTrace connects to the following external services **only when you explicitly
 - **Webhooks.** Optional and off by default. If an admin enables them, event payloads are sent to the URLs you configure.
 - **GitHub Releases.** The in-app update check reads public release information from GitHub. No account data is sent.
 
-Google Keep (Takeout) and Markdown imports are read on your own device or browser and saved only to your own server or on-device database.
+Google Keep (Takeout), Blinko, and Markdown imports are read on your own device or browser and saved only to your own server or on-device database. A Memos import connects from your browser or phone directly to the Memos server you enter, using the access token you paste; the token isn't stored.
 
 ## Data Retention
 
@@ -57,8 +57,8 @@ The NoteTrace Android app stores data locally on your device in a SQLite databas
 - **Microphone.** Voice input for Trace
 - **Notifications.** Note reminders, backup-failed alerts
 - **Biometric.** Optional App Lock and biometric sign-in; fingerprint and face data never leave Android's secure hardware
-- **Schedule / use exact alarm.** Precise reminder delivery even when the app is backgrounded
-- **Receive boot completed.** Re-arm scheduled reminders after device reboot
+- **Schedule / use exact alarm.** Note reminders fire at the exact minute, even when the app is closed
+- **Receive boot completed.** Re-arm note reminders after a reboot
 - **External storage (Android 12 and below).** Save exported backups to your Downloads folder
 - **Install packages.** In-app self-updater (`Settings > Updates`) hands the downloaded APK to the system installer
 

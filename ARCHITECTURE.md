@@ -33,6 +33,14 @@ Everything else is discoverable with `grep` and `ls`.
 
 Things you'd want to know before rewriting them.
 
+### Portaled elements need a fixed first node
+
+`use:portal` moves an element to `<body>`. If that element is the first
+node of a component or `{#if}` block that has other top-level nodes,
+Svelte's teardown walks from the moved node and leaves the rest behind.
+Wrap such components in a plain element (see `.editor-host` in
+NoteEditor.svelte).
+
 ### Routing re-mounts on nav
 
 `{#key $location}` in App.svelte forces route components to
@@ -70,27 +78,54 @@ shared notes with their own pin and archive plus `share_role`,
 to drop notes it can no longer see. Sharing changes re-stamp the note
 so every device that can see it pulls it again.
 
-### Reminders have two delivery paths
+### Reminders have three delivery paths
 
 A reminder is stored as its first occurrence (UTC), a repeat, and the
 IANA time zone it was set in, so a repeat keeps its wall-clock time
 across daylight saving (`nextOccurrence` in `src/lib/reminders.js`,
 mirrored in `server/lib/reminders.js`, both covered by tests).
 
-- **Android:** `src/lib/note-reminders.js` rebuilds the scheduled
-  local notifications from the note list after every change or sync.
+- **Android:** native exact alarms. `NoteReminderScheduler.java` reads
+  the notes straight from the on-device SQLite file and arms one
+  `setExactAndAllowWhileIdle` alarm per note for its next occurrence
+  (`ReminderMath.java`, a Java port of the JS math with the same test
+  cases). `NoteReminderReceiver` re-reads the note when the alarm fires,
+  so an edited or cleared reminder doesn't go off, shows the
+  notification, and arms the next one; Done writes a pending local
+  change for sync. `BootReceiver` re-arms after reboots, updates, and
+  clock or time zone changes. `src/lib/note-reminders.js` only tells the
+  native side when notes changed.
+- **Browser:** `src/lib/web-reminders.js` shows due reminders while a
+  NoteTrace tab is open, once per occurrence (recorded in
+  localStorage). `public/sw-notifications.js` is imported into the
+  service worker so a click opens the note.
 - **Server:** `server/lib/reminder-delivery.js` runs every minute,
   finds occurrences that just came due (up to 2 hours late after a
   restart), and sends each one once, deduped in `notification_log` by
   occurrence time, to the owner's push service and the
   `reminder.fired` webhook.
 
+### Images are note attachments
+
+`note_attachments` rows (uuid, url, size, position) sync like checklist
+items: per row, tombstoned on delete, owner's `user_id`, and editable by
+`edit` members of a shared note. Files are uploaded first through
+`/api/upload` (scaled down in the browser by `src/lib/note-images.js`),
+and the server only accepts `/uploads/` paths it stored. In Android
+local mode a photo is saved on the device; the sync's photo pass uploads
+it and rewrites the URL before the row is pushed, and the server holds
+back any row that still points at a device-local file.
+
 ### Imports parse on the client
 
-Google Keep and Markdown imports are read and parsed in the browser or
-WebView (`src/lib/import-export/`, pure modules with tests) and sent
-in batches to `POST /api/notes/import`, or written straight to the
-on-device database in Android local mode. Original dates are kept and
+Google Keep, Blinko, Memos, and Markdown imports are read and parsed in
+the browser or WebView (`src/lib/import-export/`, pure modules with
+tests) and sent in batches to `POST /api/notes/import`, or written
+straight to the on-device database in Android local mode. Memos is read
+from the user's Memos server with their access token, which Memos
+accepts from any origin. The import returns the id of each created note,
+and images are uploaded only for those, so a repeated import uploads
+nothing twice. Original dates are kept and
 an exact repeat of a note already present is skipped, so importing the
 same file twice is harmless. The Markdown export builds its ZIP on the
 client from the normal notes API, so it works in every mode, and it

@@ -115,4 +115,16 @@ await (await getDbB()).run(`UPDATE notes SET trashed_at = '2020-01-01 00:00:00' 
 const purged = await B.N.purgeExpiredTrash();
 ok(purged === 1 && !(await B.N.getNotes({ view: 'trash' })).some(n => n.id === oldNote.id), 'B: notes trashed over 30 days ago are purged on the device');
 
+// 9. Images sync between devices, removals too; device-local paths wait for upload.
+let pic = await A.N.createNote({ title: 'Paint colors', body_md: 'Hallway' , attachments: [{ uuid: 'img-uuid-1', url: '/uploads/swatch.png', mime: 'image/png', width: 40, height: 30 }] });
+await A.N.addAttachments(pic.id, [{ uuid: 'img-uuid-2', url: 'https://localhost/_capacitor_file_/data/user/0/com.notetrace.app/files/uploads/local.jpg', mime: 'image/jpeg' }]);
+await sync(A); await sync(B);
+let picB = (await B.N.getNotes()).find(n => n.title === 'Paint colors');
+ok(picB && picB.attachments.length === 1 && picB.attachments[0].uuid === 'img-uuid-1' && picB.attachments[0].width === 40, `B: uploaded image syncs, device-local one waits (${picB?.attachments.map(a => a.uuid)})`);
+await sleep(1100);
+await B.N.deleteAttachment(picB.id, 'img-uuid-1');
+await sync(B); await sync(A);
+pic = await A.N.getNote(pic.id);
+ok(!pic.attachments.some(a => a.uuid === 'img-uuid-1'), 'A: image removed on B is gone on A');
+
 console.log(f ? `${f} FAILED` : 'all passed'); process.exit(f ? 1 : 0);
