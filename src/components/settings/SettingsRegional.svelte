@@ -1,30 +1,11 @@
 <script>
-  // Regional section, extracted from Settings.svelte. Owns language and
-  // date/time format.
-  // Stores + AVAILABLE_LOCALES import verbatim from the shell.
+  // Regional section: date and time format.
   import { _ } from 'svelte-i18n';
-  import { AVAILABLE_LOCALES } from '../../i18n/index.js';
-  import {
-    language, dateFormat, timeFormat,
-  } from '../../stores/settings.js';
+  import { dateFormat, timeFormat } from '../../stores/settings.js';
 </script>
 
 <div class="section-body">
   <div class="card settings-card">
-    <div class="setting-row">
-      <div>
-        <span class="setting-label">{$_('settings_page.regional.language')}</span>
-        <div class="setting-desc">UI language. A translation may lag one or two releases behind English; missing strings fall back to English.</div>
-      </div>
-      <div class="select-wrap" style="width:160px">
-        <select class="select sel-sm" value={$language} on:change={e => language.set(e.target.value)}>
-          {#each AVAILABLE_LOCALES as loc}
-            <option value={loc.code}>{loc.label}</option>
-          {/each}
-        </select>
-      </div>
-    </div>
-    <div class="setting-divider"></div>
     <div class="setting-row">
       <span class="setting-label">{$_('settings_page.regional.date_format')}</span>
       <div class="select-wrap" style="width:160px">

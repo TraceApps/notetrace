@@ -195,7 +195,7 @@
   const SECTION_KEYWORDS = {
     profile:       ['profile','my profile','account','name','avatar','log out','logout','sign out','password','change password'],
     appearance:    ['appearance','theme','dark','light','accent','color','navigation','sidebar','persistent','start page','animations','reduce motion','banner','page banner','force mobile','mobile layout','mobile view','phone layout','narrow layout'],
-    regional:      ['regional','language','translation','locale','date','time','12h','24h','units','energy','kcal','kj','calories','kilojoules','imperial','metric','measurement system'],
+    regional:      ['regional','date','time','12h','24h','units','energy','kcal','kj','calories','kilojoules','imperial','metric','measurement system'],
     ai:            ['ai','trace','assistant','provider','model','custom model','model id','api key','chat','claude','openai','gemini','sonnet','opus','haiku','gpt','gemini 3','base url','artificial intelligence','smart log','smartlog','quick log','voice','dictate','hold to record','mic'],
     notifications: ['notifications','reminders','cook day','thaw','alerts','push','apprise','gotify','ntfy','expiration','expiry','expires','expiring','pantry expiry','digest','weekly summary','shopping nudge'],
     email:         ['email','smtp','mail','password reset','invite','from address','tls','outgoing','send test','test email','recipient','test recipient','connection status','change password','change smtp'],

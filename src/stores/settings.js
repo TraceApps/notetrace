@@ -13,7 +13,7 @@ const _dlog = import.meta.env.DEV
 //
 export const USER_PREFS = new Set([
   // Locale + display
-  'language','accentColor','pageBanners','bannerStyle','bannerAnimation','startPage',
+  'accentColor','pageBanners','bannerStyle','bannerAnimation','startPage',
   'dateFormat','timeFormat','timezone',
   // AI Assistant ("Trace" persona)
   'aiEnabled','aiProvider','aiApiKey','aiModel','aiBaseUrl','aiAssistantName','aiKeyVerified',
@@ -258,7 +258,6 @@ export const appLockTimeoutMin = createSettingStore('appLockTimeoutMin', 1);
 export const forceMobileLayout = createSettingStore('forceMobileLayout', false);
 
 // ── User prefs (server-synced) ─────────────────────────────────────────────
-export const language    = createSettingStore('language',    'en');
 export const accentColor = createSettingStore('accentColor', 'lavender');
 // Page banners — three styles:
 //   'animated' = tall header with the page's illustrated SVG

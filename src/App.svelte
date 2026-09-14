@@ -11,8 +11,8 @@
   import Toast     from './components/ui/Toast.svelte';
   import ConfirmDialogMount from './components/ui/ConfirmDialogMount.svelte';
   import { DB }    from './lib/db.js';
-  import { navStyle, applyAccentColor, accentColor, applyAppearance, appearance, disableAnimations, sidebarPersistent, language, pageBanners, bannerStyle, bannerAnimation, forceMobileLayout, startPage } from './stores/settings.js';
-  import { _, locale } from 'svelte-i18n';
+  import { navStyle, applyAccentColor, accentColor, applyAppearance, appearance, disableAnimations, sidebarPersistent, pageBanners, bannerStyle, bannerAnimation, forceMobileLayout, startPage } from './stores/settings.js';
+  import { _ } from 'svelte-i18n';
   import { currentUser, userMgmtActive, setupRequired, loadAuthState, handleOidcCallback } from './stores/auth.js';
   import { needsNativeSetup, isNative, getNativeMode, getServerUrl, apiUrl } from './lib/platform.js';
   import { writable } from 'svelte/store';
@@ -167,8 +167,6 @@
     if (label) import('./lib/web-reminders.js').then(({ setWebReminderLabel }) => setWebReminderLabel(label)).catch(() => {});
   }
 
-  // Drive svelte-i18n's active locale from the user's saved language setting.
-  $: if ($language) locale.set($language);
   import NativeSetup from './routes/NativeSetup.svelte';
 
   let showNativeSetup = needsNativeSetup();

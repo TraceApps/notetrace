@@ -675,7 +675,6 @@
       "anim_aurora":            "Aurora"
     },
     "regional": {
-      "language":               "Language",
       "language_desc":          "UI language. A translation may lag one or two releases behind English; missing strings fall back to English.",
       "date_format":            "Date Format",
       "date_natural":           "D MMM YYYY",
