@@ -41,6 +41,14 @@ Svelte's teardown walks from the moved node and leaves the rest behind.
 Wrap such components in a plain element (see `.editor-host` in
 NoteEditor.svelte).
 
+### Swapping a component in place needs `{#key}`
+
+On the Svelte 5 runtime, an `{#if}` block whose condition turns false
+and then true again while its outro is still running resumes the old
+instance instead of mounting a new one. Opening a linked note from
+inside the editor hits exactly that, so Notes.svelte wraps the editor in
+`{#key editing}`.
+
 ### Routing re-mounts on nav
 
 `{#key $location}` in App.svelte forces route components to
@@ -120,6 +128,36 @@ local mode a photo is saved on the device; the sync's photo pass uploads
 it and rewrites the URL before the row is pushed, and the server holds
 back any row that still points at a device-local file.
 
+### Voice notes and image text are attachment text
+
+A voice note is an audio attachment with `duration_ms`; an image is an
+attachment too. Trace's transcript or the text read from an image is
+saved in `extracted_text` on the same row, and the full-text index
+covers it (the FTS `items` column is checklist text plus attachment
+text; `server/db.js` recreates the FTS triggers on every start, so
+existing databases pick up changes). Transcription and image reading
+call the user's own AI provider from the browser or phone, like the
+Trace chat; when Trace is set by environment variables they go through
+`/api/ai/transcribe` and `/api/ai/read-image` instead.
+
+### Note tools are shared by Trace and MCP
+
+`server/lib/note-tools.js` defines the note tools (search, get, create,
+update, append, checklist items, reminders, labels, trash) once, as a
+JSON Schema catalog plus `executeNoteTool(name, args, api)`. It has no
+imports, so Vite bundles it for the client too. Trace passes `NoteApi`
+(so tools work offline in Android local mode); the MCP server passes an
+adapter over `server/lib/notes.js`. The view-only guard, owner-only
+actions, and item matching live in that one file.
+
+### `[[Links]]` are plain Markdown
+
+A link is stored as `[[Title]]` in `body_md` and shown as a chip by a
+TipTap node (`src/lib/note-link-extension.js`). Backlinks are a query
+over bodies, not a table, so imports and sync need nothing extra.
+Renaming a note rewrites `[[Old]]` to `[[New]]` in the owner's own
+notes, on the server and in Android local mode.
+
 ### Imports parse on the client
 
 Google Keep, Evernote, Blinko, Memos, and Markdown imports are read and parsed in
@@ -138,8 +176,16 @@ imports back without losing labels, color, reminder, or dates.
 ### Federation-style calls go through the server
 
 Anything that talks to another service with a secret (AI providers
-when locked server-side, push services, webhooks) goes through this
-server. Tokens and API keys never reach the browser or WebView.
+when locked server-side, push services, webhooks, CookTrace) goes
+through this server. Tokens and API keys never reach the browser or
+WebView. Keys like the CookTrace token are listed in
+`server/lib/server-only-keys.js`, which keeps them out of settings
+responses, sync pulls and pushes, and the data export.
+
+Send to CookTrace (`server/lib/cooktrace.js`) calls CookTrace's MCP
+endpoint with the user's token (`add_shopping_item`, one call per item),
+so it needs nothing new on the CookTrace side beyond turning on MCP
+writes. CookTrace addresses pass the same SSRF guard as webhooks.
 
 ### Native sync semantics
 

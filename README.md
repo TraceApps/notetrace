@@ -45,7 +45,11 @@ NoteTrace is in active development toward its first release candidate. Working t
 - **Reminders.** One-off or repeating (daily, weekly, monthly, yearly), kept at the same local time across daylight saving. Android fires them as exact alarms even with the app closed, the browser shows them while NoteTrace is open, and the server delivers them through your push service and a `reminder.fired` webhook.
 - **Sharing.** Share a note or list with other accounts on your server, with view or edit access. Pin, archive, labels, and reminders stay personal.
 - **Import and export.** Google Keep (Google Takeout, images included), Evernote (.enex), Memos (straight from your Memos server), Blinko backups, and Markdown files (Obsidian, Joplin, and other Markdown exports). Export everything as a Markdown ZIP with images.
-- **Android extras.** Share text, links, and photos into a new note from any app, and an optional fingerprint, face, or PIN app lock.
+- **Links and timeline.** `[[Note title]]` links with suggestions as you type and a Linked From section on the linked note; renaming a note updates the links. Switch the grid to a timeline grouped by day.
+- **Voice notes and image text.** Record voice notes on any note, transcribed by Trace and searchable. Trace can also read the text in images, so a photo of a receipt or a whiteboard turns up in search.
+- **Trace in your notes.** Tidy Up, Summarize, and Make a Checklist from the editor, and a Trace chat that can find, create, and update notes, check items off, and set reminders. The same note tools are on the MCP endpoint for external AI agents.
+- **CookTrace.** Send a checklist's open items to your CookTrace shopping list.
+- **Share from anywhere.** Share text, links, and photos into a new note from any Android app or into the installed web app, and an optional fingerprint, face, or PIN app lock on Android.
 
 The foundation it shares with the other Trace apps:
 
@@ -121,9 +125,11 @@ Open `http://localhost:3004` and a first-run wizard walks you through creating a
 | `BACKUP_RETENTION` | - | How many auto-backups to keep. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` / `SMTP_SECURE` | - | Password reset + invite email. Without SMTP, invites fall back to a copyable link. |
 | `AI_PROVIDER` / `AI_API_KEY` / `AI_MODEL` / `AI_BASE_URL` / `AI_ENABLED` | - | Lock Trace to a server-side provider. |
+| `AI_TRANSCRIBE_MODEL` | provider default | Speech-to-text model for voice notes when Trace is set by env (`gpt-4o-mini-transcribe` on OpenAI, `whisper-1` on OpenAI-compatible servers). |
 | `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` (or numbered `OIDC_PROVIDER_N_*`) | - | OIDC SSO provider(s). Env-defined providers are read-only in the UI. |
 | `MCP_ENABLED` / `MCP_WRITE_ENABLED` / `MCP_DESTROY_ENABLED` | unset | Model Context Protocol endpoint and its write / destructive tiers. |
 | `WEBHOOKS_ENABLED` | unset | Outgoing signed webhooks. |
+| `ALLOW_PRIVATE_COOKTRACE_URLS` | unset | Allow Send to CookTrace to reach a CookTrace on a LAN or Docker network address. |
 
 Env values take priority over Settings-UI values and lock the field for all users. The full annotated list is in [.env.example](.env.example).
 

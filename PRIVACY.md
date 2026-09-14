@@ -10,7 +10,7 @@ NoteTrace is a self-hosted notes app. Your data is stored on **your own server**
 
 ### What NoteTrace stores on YOUR server:
 
-- Notes (titles, bodies, checklists, images you attach, colors, pin / archive / trash state, reminder times)
+- Notes (titles, bodies, checklists, images and voice notes you attach, text Trace transcribed or read from them, colors, pin / archive / trash state, reminder times)
 - Who each note is shared with, and whether they can view or edit it (only accounts on your own server)
 - AI chat history (if Trace is enabled)
 - User account information (username, hashed password, optional email, optional display name, optional avatar)
@@ -31,9 +31,10 @@ NoteTrace is a self-hosted notes app. Your data is stored on **your own server**
 NoteTrace connects to the following external services **only when you explicitly enable them**:
 
 - **OIDC providers (Authentik, Keycloak, Pocket-ID, Authelia, Google, Auth0, or any OIDC 1.0 provider).** If admins configure SSO, sign-in is delegated to your chosen identity provider. Client secrets are stored encrypted at rest.
-- **AI providers (Claude, OpenAI, Gemini, OpenAI-compatible).** If Trace is enabled, your conversation and any note content you include is sent to the provider you choose. Subject to their respective privacy policies. Your API key is stored on your server, not ours. The "OpenAI Compatible" provider (Ollama, LM Studio, LocalAI, vLLM, and similar) connects directly from the browser to the endpoint you configure; the NoteTrace server never sees those requests in per-user mode.
+- **AI providers (Claude, OpenAI, Gemini, OpenAI-compatible).** If Trace is enabled, your conversation and any note content you include is sent to the provider you choose. Trace's note tools send the notes it looks up to that provider. Transcribing a voice note sends the recording, and reading text in an image sends the image; both happen when you ask, or automatically if you turn that on in Settings, Trace. Subject to their respective privacy policies. Your API key is stored on your server, not ours. The "OpenAI Compatible" provider (Ollama, LM Studio, LocalAI, vLLM, and similar) connects directly from the browser to the endpoint you configure; the NoteTrace server never sees those requests in per-user mode.
 - **Push notification services (Apprise, Gotify, ntfy).** Optional. If configured, notification content (note reminders, backup-failed alerts) is sent to your push server. Only one provider is active at a time.
 - **SMTP (email).** Optional. If configured, password reset emails and user invites are sent via your SMTP provider.
+- **CookTrace.** Optional. If you link a CookTrace server, the checklist items you send go to it. The CookTrace token is stored encrypted on your NoteTrace server and is never sent to your browser or phone.
 - **Webhooks.** Optional and off by default. If an admin enables them, event payloads are sent to the URLs you configure.
 - **GitHub Releases.** The in-app update check reads public release information from GitHub. No account data is sent.
 
@@ -54,7 +55,7 @@ The NoteTrace Android app stores data locally on your device in a SQLite databas
 
 - **Internet.** Server sync, AI chat, in-app updates
 - **Camera.** Note photos, Trace image attachments
-- **Microphone.** Voice input for Trace
+- **Microphone.** Voice notes and voice input for Trace
 - **Notifications.** Note reminders, backup-failed alerts
 - **Biometric.** Optional App Lock and biometric sign-in; fingerprint and face data never leave Android's secure hardware
 - **Schedule / use exact alarm.** Note reminders fire at the exact minute, even when the app is closed

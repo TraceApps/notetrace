@@ -42,20 +42,22 @@ Items marked ~~strikethrough~~ have been implemented.
 - ~~Memos import from a Memos server~~
 - ~~Evernote import (.enex, with images, checklists, tags, and reminders)~~
 - ~~Blinko backup import~~
+- ~~Share photos into the installed web app~~
+- ~~Start Page setting~~
 - ~~Markdown ZIP export, with images~~
 - ~~Image attachments on notes~~
 - ~~Reminder notifications in the browser~~
 
 ## Advanced
 
-- `[[Note title]]` links with a Linked From section
-- Timeline view alongside the grid
-- Voice notes with transcription
-- Text search inside images
-- Trace AI note tools: tidy, summarize, ask your notes
+- ~~`[[Note title]]` links with a Linked From section~~
+- ~~Timeline view alongside the grid~~
+- ~~Voice notes with transcription~~
+- ~~Text search inside images~~
+- ~~Trace AI note tools: tidy, summarize, ask your notes~~
 - ~~Note webhook events~~
-- MCP note tools
-- CookTrace integration: send a checklist to a CookTrace shopping list
+- ~~MCP note tools~~
+- ~~CookTrace integration: send a checklist to a CookTrace shopping list~~
 
 ## Wear OS Companion
 
