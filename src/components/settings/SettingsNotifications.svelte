@@ -85,7 +85,7 @@
       showSuccess($_('settings_notifications.toast.test_sent'));
       testStatus = 'ok';
     } catch (e) {
-      showError(e.message || 'Push test failed');
+      showError(e.message || $_('settings_notifications.toast.test_failed'));
       testStatus = 'fail';
     } finally {
       testing = false;
@@ -155,7 +155,7 @@
     <div class="setting-row">
       <div>
         <span class="setting-label">{$_('settings_notifications.service')}</span>
-        <span class="setting-desc">External delivery via Apprise, Gotify, or ntfy. Secrets stay on your server.</span>
+        <span class="setting-desc">{$_('settings_notifications.service_desc')}</span>
       </div>
       <div class="select-wrap">
         <select class="select sel-sm" value={$notifPushService}
@@ -174,8 +174,8 @@
         <label class="form-label">{$_('settings_notifications.apprise_url')}</label>
         <input class="input" type="url" placeholder="https://apprise.example.com"
           value={$appriseUrl} on:change={e => appriseUrl.set(e.target.value)} />
-        <label class="form-label">Tag (Optional)</label>
-        <input class="input" type="text" placeholder="phone, all, etc."
+        <label class="form-label">{$_('settings_notifications.apprise_tag')}</label>
+        <input class="input" type="text" placeholder={$_('settings_notifications.apprise_tag_placeholder')}
           value={$appriseTag} on:change={e => appriseTag.set(e.target.value)} />
       </div>
     {:else if $notifPushService === 'gotify'}
@@ -191,13 +191,13 @@
     {:else if $notifPushService === 'ntfy'}
       <div class="setting-divider"></div>
       <div class="form-block">
-        <label class="form-label">ntfy Server</label>
+        <label class="form-label">{$_('settings_notifications.ntfy_server')}</label>
         <input class="input" type="url" placeholder="https://ntfy.sh"
           value={$ntfyUrl} on:change={e => ntfyUrl.set(e.target.value)} />
         <label class="form-label">{$_('settings_notifications.topic')}</label>
         <input class="input" type="text" placeholder="notetrace-myhome"
           value={$ntfyTopic} on:change={e => ntfyTopic.set(e.target.value)} />
-        <label class="form-label">Bearer Token (Optional)</label>
+        <label class="form-label">{$_('settings_notifications.ntfy_token')}</label>
         <input class="input" type="text"
           value={$ntfyToken} on:change={e => ntfyToken.set(e.target.value)} />
       </div>
@@ -208,15 +208,15 @@
       <div class="setting-row">
         <div>
           <span class="setting-label">{$_('settings_notifications.send_test')}</span>
-          <span class="setting-desc">Verifies the server can reach your service.</span>
+          <span class="setting-desc">{$_('settings_notifications.send_test_desc')}</span>
         </div>
         <button class="btn btn-primary" on:click={sendTestPush} disabled={testing}>
           {#if testStatus === 'ok'}
-            <span class="material-symbols-rounded">check</span> Sent
+            <span class="material-symbols-rounded">check</span> {$_('settings_notifications.test_sent_short')}
           {:else if testStatus === 'fail'}
-            <span class="material-symbols-rounded">error</span> Failed
+            <span class="material-symbols-rounded">error</span> {$_('settings_notifications.test_failed_short')}
           {:else}
-            {testing ? 'Sending…' : 'Send Test'}
+            {testing ? $_('settings_notifications.sending') : $_('settings_notifications.send_test')}
           {/if}
         </button>
       </div>

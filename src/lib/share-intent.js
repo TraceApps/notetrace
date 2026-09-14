@@ -4,10 +4,10 @@
  * Android: the ShareIntent native plugin (MainActivity) delivers text,
  * links, and images from the system share sheet; images arrive as files in
  * the app cache and are read here as File objects. Installed PWA: the
- * manifest's share_target sends a GET to /share-target, which the server
- * redirects to /#/?share=1&title=&text=&url= (text and links only). Both end
- * up in `pendingShare`, which the Notes screen watches to open a pre-filled
- * editor that uploads any images.
+ * manifest's share_target POSTs to /share-target, where the service worker
+ * holds photos in Cache Storage and redirects to
+ * /#/?share=1&title=&text=&url=&files=<id> (takeSharedFiles reads them back).
+ * Both open a pre-filled editor that uploads any images.
  */
 import { writable } from 'svelte/store';
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -37,6 +37,28 @@ async function _sharedFiles(images = []) {
     }
   }
   return files;
+}
+
+/** Photos a PWA share left in Cache Storage (public/sw-extras.js). Read once, then removed. */
+export async function takeSharedFiles(id) {
+  if (!id || typeof caches === 'undefined') return [];
+  try {
+    const cache = await caches.open('note-share');
+    const keys = (await cache.keys()).filter(r => r.url.includes(`/__share/${id}/`));
+    const files = [];
+    for (const req of keys) {
+      const res = await cache.match(req);
+      if (res) {
+        const blob = await res.blob();
+        const name = decodeURIComponent(res.headers.get('X-File-Name') || 'image');
+        files.push(new File([blob], name, { type: blob.type || res.headers.get('Content-Type') || 'image/jpeg' }));
+      }
+      await cache.delete(req);
+    }
+    return files;
+  } catch {
+    return [];
+  }
 }
 
 let _started = false;

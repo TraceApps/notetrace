@@ -25,7 +25,7 @@
   import { nextOccurrence, isPast } from '../lib/reminders.js';
   import { ensureReminderPermission, rescheduleReminders } from '../lib/note-reminders.js';
   import { isOwner, canEdit } from '../lib/note-sharing.js';
-  import { pendingShare, shareToNote } from '../lib/share-intent.js';
+  import { pendingShare, shareToNote, takeSharedFiles } from '../lib/share-intent.js';
 
   export let params = {};
 
@@ -108,8 +108,10 @@
   async function openFromQuery(qs) {
     const params = new URLSearchParams(qs || '');
     if (params.get('share') === '1') {
-      editing = { kind: 'text', prefill: shareToNote({ title: params.get('title'), text: params.get('text'), url: params.get('url') }) };
+      const prefill = shareToNote({ title: params.get('title'), text: params.get('text'), url: params.get('url') });
       replaceRoute(path);
+      prefill.images = await takeSharedFiles(params.get('files'));
+      if (prefill.title || prefill.body_md || prefill.images.length) editing = { kind: 'text', prefill };
       return;
     }
     const id = Number(params.get('note'));

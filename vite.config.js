@@ -45,8 +45,8 @@ export default defineConfig({
       registerType: 'prompt',
       workbox: {
         globPatterns: ['offline.html'],
-        // Opens the note when a reminder notification is clicked (public/sw-notifications.js).
-        importScripts: ['sw-notifications.js'],
+        // Reminder notification clicks and shared photos (public/sw-extras.js).
+        importScripts: ['sw-extras.js'],
         navigateFallback: null,
         navigateFallbackDenylist: [/.*/],
         cleanupOutdatedCaches: true,
@@ -75,10 +75,19 @@ export default defineConfig({
         scope: './',
         // Installed PWA shows up in the OS share sheet; the server turns the
         // GET into a hash route that opens a pre-filled new note.
+        // POST so photos can come along. The service worker takes the share
+        // (public/sw-extras.js); /share-target on the server is the fallback
+        // for text before the worker is installed.
         share_target: {
           action: 'share-target',
-          method: 'GET',
-          params: { title: 'title', text: 'text', url: 'url' },
+          method: 'POST',
+          enctype: 'multipart/form-data',
+          params: {
+            title: 'title',
+            text: 'text',
+            url: 'url',
+            files: [{ name: 'images', accept: ['image/*', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic'] }],
+          },
         },
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },

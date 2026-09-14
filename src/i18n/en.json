@@ -1008,6 +1008,7 @@
   "settings_notifications": {
     "toast": {
       "test_sent":                 "Test sent, check your push service.",
+      "test_failed":               "Push test failed",
       "not_supported":             "This browser does not support notifications.",
       "permission_granted":        "Notification permission granted.",
       "permission_denied":         "Permission denied. Enable it in browser settings."
@@ -1033,6 +1034,15 @@
     "app_token":                   "App Token",
     "topic":                       "Topic",
     "send_test":                   "Send Test",
+    "send_test_desc":              "Checks that the server can reach your push service.",
+    "sending":                     "Sending…",
+    "test_sent_short":             "Sent",
+    "test_failed_short":           "Failed",
+    "service_desc":                "Delivery through Apprise, Gotify, or ntfy. Tokens and passwords stay on your server.",
+    "apprise_tag":                 "Tag (Optional)",
+    "apprise_tag_placeholder":     "phone, all",
+    "ntfy_server":                 "ntfy Server",
+    "ntfy_token":                  "Bearer Token (Optional)",
     "reminders":                   "Reminders",
     "note_reminders":              "Note Reminders",
     "note_reminders_desc":         "Get a notification when a note's reminder time comes due."

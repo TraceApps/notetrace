@@ -2,7 +2,8 @@
  * scheduler.js — Server-side scheduled tasks for NoteTrace.
  *
  * A 15-minute tick runs housekeeping (expired invite tokens, trash older
- * than 30 days, old reminder dedupe rows) and the scheduled full backup.
+ * than 30 days, old reminder dedupe rows, unused uploads once a day) and the
+ * scheduled full backup.
  * A separate 1-minute tick delivers note reminders on time
  * (reminder-delivery.js, deduped through notification_log).
  *
@@ -14,12 +15,14 @@ import db from '../db.js';
 import { logger } from '../logger.js';
 import { purgeExpiredTrash } from './notes.js';
 import { deliverDueReminders, pruneReminderLog } from './reminder-delivery.js';
+import { purgeOrphanUploads } from './upload-cleanup.js';
 
 const TICK_MS = 15 * 60 * 1000; // 15 minutes
 const REMINDER_TICK_MS = 60 * 1000;
 let _interval = null;
 let _reminderInterval = null;
 let _delivering = false;
+let _lastUploadCleanup = 0;
 
 async function _reminderTick() {
   if (_delivering) return; // a slow push service must not stack ticks
@@ -79,6 +82,17 @@ async function runTick() {
     if (n > 0) logger.info?.(`[scheduler] permanently deleted ${n} note(s) from trash`);
   } catch (e) {
     logger.debug?.(`[scheduler] trash purge error: ${e.message}`);
+  }
+
+  // Uploaded files nothing refers to anymore, once a day.
+  if (Date.now() - _lastUploadCleanup > 24 * 60 * 60 * 1000) {
+    _lastUploadCleanup = Date.now();
+    try {
+      const n = purgeOrphanUploads();
+      if (n > 0) logger.info?.(`[scheduler] removed ${n} unused upload(s)`);
+    } catch (e) {
+      logger.debug?.(`[scheduler] upload cleanup error: ${e.message}`);
+    }
   }
 
   try { pruneReminderLog(); }

@@ -11,7 +11,7 @@
   import Toast     from './components/ui/Toast.svelte';
   import ConfirmDialogMount from './components/ui/ConfirmDialogMount.svelte';
   import { DB }    from './lib/db.js';
-  import { navStyle, applyAccentColor, accentColor, applyAppearance, appearance, disableAnimations, sidebarPersistent, language, pageBanners, bannerStyle, bannerAnimation, forceMobileLayout } from './stores/settings.js';
+  import { navStyle, applyAccentColor, accentColor, applyAppearance, appearance, disableAnimations, sidebarPersistent, language, pageBanners, bannerStyle, bannerAnimation, forceMobileLayout, startPage } from './stores/settings.js';
   import { _, locale } from 'svelte-i18n';
   import { currentUser, userMgmtActive, setupRequired, loadAuthState, handleOidcCallback } from './stores/auth.js';
   import { needsNativeSetup, isNative, getNativeMode, getServerUrl, apiUrl } from './lib/platform.js';
@@ -295,6 +295,12 @@
   }
 
   onMount(async () => {
+    // Start Page: only when the app opens on the default route, never over a
+    // deep link, a share, or a notification tap.
+    if (['', '#', '#/'].includes(window.location.hash) && ['/reminders', '/archive'].includes($startPage)) {
+      import('svelte-spa-router').then(({ replace }) => replace($startPage)).catch(() => {});
+    }
+
     // Local-mode scheduled backup tick — JS-side scheduler that fires
     // exportLocalZip() when due. No-ops in PWA / server modes. See
     // src/lib/local-backup-scheduler.js for design notes.

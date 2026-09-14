@@ -25,10 +25,11 @@
     { value: 'sidebar', label: 'Side Panel'     },
     { value: 'both',    label: 'Both'           },
   ];
-  // Start page choices. Grows as Reminders / Archive land; the row
-  // hides while Notes is the only option.
-  const START_PAGE_OPTS = [
-    { value: '/', label: 'Notes' },
+  // Where the app opens. Applied once on launch (App.svelte).
+  $: START_PAGE_OPTS = [
+    { value: '/', label: $_('nav.notes') },
+    { value: '/reminders', label: $_('nav.reminders') },
+    { value: '/archive', label: $_('nav.archive') },
   ];
   const ACCENT_COLORS = [
     { value: 'lavender', label: 'Lavender', dark: '#B69CFF', light: '#7C5CE0' },

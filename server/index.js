@@ -6,6 +6,7 @@ import 'dotenv/config';
 // so any downstream module-init outbound fetch already sees it.
 import './lib/proxy-agent.js';
 import express from 'express';
+import multer from 'multer';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import fs from 'fs';
@@ -190,14 +191,21 @@ router.use('/api/admin/webhooks', webhooksRoutes);
 router.use('/api/mcp',          mcpRoutes);
 router.get('/api/health', (req, res) => res.json({ ok: true }));
 
-// Web Share Target (installed PWA): the OS sends a GET here with the shared
-// title / text / url. Hand them to the hash router, which opens a new note.
-router.get('/share-target', (req, res) => {
+// Web Share Target (installed PWA). The service worker normally takes the
+// POST (public/sw-extras.js) and keeps any photos; these routes cover a share
+// that arrives before the worker is installed, and older GET shares. Only the
+// text survives here; photos are dropped, never stored.
+function _shareRedirect(res, fields) {
   const p = new URLSearchParams({ share: '1' });
   for (const k of ['title', 'text', 'url']) {
-    if (typeof req.query[k] === 'string' && req.query[k]) p.set(k, req.query[k].slice(0, 20000));
+    if (typeof fields?.[k] === 'string' && fields[k]) p.set(k, fields[k].slice(0, 20000));
   }
   res.redirect(303, `${BASE_URL}/#/?${p.toString()}`);
+}
+router.get('/share-target', (req, res) => _shareRedirect(res, req.query));
+const _shareForm = multer({ storage: multer.memoryStorage(), limits: { fileSize: 1, files: 0, fields: 10, fieldSize: 20000 } });
+router.post('/share-target', (req, res) => {
+  _shareForm.none()(req, res, () => _shareRedirect(res, req.body));
 });
 
 // Serve Svelte frontend (production build) — anything except index.html.
