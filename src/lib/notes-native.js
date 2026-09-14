@@ -483,15 +483,17 @@ export const NotesNative = {
   // Import (local mode). Same rules as server/lib/notes.js importNotes:
   // original dates kept, labels matched by name, exact repeats skipped.
   async importNotes(list = []) {
-    const result = { imported: 0, skipped: 0, labels_created: 0 };
+    const result = { imported: 0, skipped: 0, labels_created: 0, ids: [] };
     const labelIds = new Map((await NotesNative.getLabels()).map(l => [l.name.toLowerCase(), l.id]));
     const ts = _now();
     for (const raw of list) {
+      result.ids.push(null);
       const kind = raw?.kind === 'checklist' ? 'checklist' : 'text';
       const title = String(raw?.title ?? '').slice(0, 1000);
       const body = kind === 'text' ? String(raw?.body_md ?? '') : '';
       const items = kind === 'checklist' && Array.isArray(raw?.items) ? raw.items.filter(i => String(i?.text ?? '').trim()) : [];
-      if (!title && !body.trim() && !items.length) { result.skipped++; continue; }
+      const hasImages = Array.isArray(raw?.files) && raw.files.length > 0;
+      if (!title && !body.trim() && !items.length && !hasImages) { result.skipped++; continue; }
       const created = _reminderAt(raw.created_at) || ts;
       const updated = _reminderAt(raw.updated_at) || created;
       const dup = (await _q(
@@ -525,6 +527,7 @@ export const NotesNative = {
       }
       if (ids.length) await _setLabels(id, ids, updated);
       await _addAttachments(id, raw.attachments, updated);
+      result.ids[result.ids.length - 1] = id;
       result.imported++;
     }
     return result;

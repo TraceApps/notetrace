@@ -20,7 +20,7 @@ const keepText = {
   createdTimestampUsec: 1726000000000000,
   labels: [{ name: 'Home' }, { name: 'Errands' }],
   annotations: [{ description: '', source: 'WEBLINK', title: 'Filters', url: 'https://example.com/filters' }],
-  attachments: [{ filePath: 'a.jpg', mimetype: 'image/jpeg' }],
+  attachments: [{ filePath: 'a.jpg', mimetype: 'image/jpeg' }, { filePath: 'memo.3gp', mimetype: 'audio/3gpp' }],
 };
 
 const keepList = {
@@ -48,7 +48,8 @@ test('keep: text note keeps line breaks, links, labels, color, pin, and dates', 
   assert.equal(note.pinned, true);
   assert.equal(note.created_at, '2024-09-10 20:26:40');
   assert.equal(note.updated_at, '2024-09-12 14:06:40');
-  assert.equal(attachments, 1);
+  assert.deepEqual(note.files, [{ name: 'a.jpg' }]);
+  assert.equal(attachments, 1); // the voice recording
 });
 
 test('keep: checklist keeps order and checked state, drops blank items', () => {
@@ -62,9 +63,11 @@ test('keep: checklist keeps order and checked state, drops blank items', () => {
 test('keep: non-note JSON is ignored and attachment-only notes are counted', () => {
   assert.equal(isKeepNote({ name: 'Labels' }), false);
   assert.equal(parseKeepNote([1, 2]), null);
-  const r = parseKeepNote({ textContent: '', title: '', isTrashed: false, attachments: [{}, {}] });
+  const r = parseKeepNote({ textContent: '', title: '', isTrashed: false, attachments: [{ filePath: 'a.m4a', mimetype: 'audio/mp4' }, {}] });
   assert.equal(r.note, null);
   assert.equal(r.attachments, 2);
+  const photoOnly = parseKeepNote({ textContent: '', title: '', isTrashed: false, attachments: [{ filePath: 'p.png', mimetype: 'image/png' }] });
+  assert.equal(photoOnly.note.files.length, 1); // a photo-only note is still a note
 });
 
 test('markdown: front matter subset (quoted, inline and block lists, booleans)', () => {
@@ -140,4 +143,95 @@ test('export: file names are safe and unique per folder', () => {
   assert.equal(exportFileName({ title: 'A B C' }, used), 'A B C (2).md');
   assert.equal(exportFileName({ id: 3, title: '' }, used), 'Note 3.md');
   assert.equal(exportFileName({ title: 'Follow-up' }, used), 'Follow-up.md');
+});
+
+test('markdown: local image embeds become files, remote images stay', () => {
+  const n = parseMarkdownNote('vault/Trips/Lisbon.md', '![](../img/tram%2028.jpg)\n\nGreat view ![remote](https://x.test/a.png)\n\n![[sunset.PNG|300]]\n\n![[Other note]]');
+  assert.deepEqual(n.files, [{ path: 'vault/img/tram 28.jpg' }, { name: 'sunset.PNG' }]);
+  assert.match(n.body_md, /^Great view !\[remote\]\(https:\/\/x\.test\/a\.png\)/);
+  assert.match(n.body_md, /!\[\[Other note\]\]/); // note embeds aren't images
+});
+
+test('export: images round trip, and a checklist with images stays a checklist', () => {
+  const note = { id: 9, title: 'Garden', kind: 'checklist', items: [{ text: 'Tomatoes', checked: false }], created_at: '2026-09-01 12:00:00', updated_at: '2026-09-01 12:00:00' };
+  const md = noteToMarkdown(note, [], ['../attachments/abc 1.jpg']);
+  assert.match(md, /!\[\]\(\.\.\/attachments\/abc%201\.jpg\)/);
+  const back = parseMarkdownNote('NoteTrace/Notes/Garden.md', md);
+  assert.equal(back.kind, 'checklist');
+  assert.deepEqual(back.items, note.items);
+  assert.deepEqual(back.files, [{ path: 'NoteTrace/attachments/abc 1.jpg' }]);
+});
+
+import { parseBlinkoBackup, isBlinkoBackup } from '../src/lib/import-export/blinko.js';
+
+const blinko = {
+  exportTime: '2026-09-01T00:00:00Z',
+  version: '1.6.0',
+  notes: [
+    { id: 1, account: { name: 'alex' }, content: 'Call the plumber #home\n\n![leak](/api/file/leak.jpg)', isArchived: false, isTop: true, createdAt: '2026-08-01T10:00:00.000Z', updatedAt: '2026-08-02T10:00:00.000Z', type: 0, attachments: [{ name: 'leak.jpg', path: '/api/file/leak.jpg', type: 'image/jpeg' }, { name: 'quote.pdf', path: '/api/file/quote.pdf', type: 'application/pdf' }] },
+    { id: 2, account: { name: 'alex' }, content: '- [ ] Milk\n- [x] Bread', isArchived: true, isTop: false, createdAt: '2026-08-03T10:00:00.000Z', updatedAt: '2026-08-03T10:00:00.000Z', type: 2, attachments: [] },
+    { id: 3, account: { name: 'sam' }, content: 'Sam private note', createdAt: '2026-08-03T10:00:00.000Z', updatedAt: '2026-08-03T10:00:00.000Z', attachments: [] },
+  ],
+};
+
+test('blinko: backup notes, tags from content, images, checklists; one account only', () => {
+  assert.equal(isBlinkoBackup(blinko), true);
+  const none = parseBlinkoBackup(blinko, { username: 'nobody' });
+  assert.equal(none.notes.length, 0, 'several accounts and no match imports nothing');
+  assert.deepEqual(none.accounts, ['alex', 'sam']);
+  const r = parseBlinkoBackup(blinko, { username: 'ALEX' });
+  assert.equal(r.notes.length, 2);
+  const [a, b] = r.notes;
+  assert.equal(a.body_md, 'Call the plumber #home');
+  assert.deepEqual(a.labels, ['home']);
+  assert.deepEqual(a.files, [{ name: 'leak.jpg' }], 'embed of a listed attachment is not added twice');
+  assert.equal(a.pinned, true);
+  assert.equal(a.created_at, '2026-08-01 10:00:00');
+  assert.equal(r.attachments, 1, 'the PDF is counted, not imported');
+  assert.equal(b.kind, 'checklist');
+  assert.equal(b.archived, true);
+  assert.deepEqual(b.items, [{ text: 'Milk', checked: false }, { text: 'Bread', checked: true }]);
+});
+
+test('blinko: Markdown export file names give the date, not a title', () => {
+  const n = parseMarkdownNote('note-12-1754042400000.md', 'Idea #work\n![x](./files/x.png)');
+  assert.equal(n.title, '');
+  assert.equal(n.created_at, '2025-08-01 10:00:00');
+  assert.deepEqual(n.files, [{ path: 'files/x.png' }]);
+});
+
+import { parseMemo, memosBaseUrl } from '../src/lib/import-export/memos.js';
+
+test('memos: current API memo with tags, pin, archive, images, and a link', () => {
+  const r = parseMemo({
+    name: 'memos/abc', state: 'ARCHIVED', creator: 'users/1', pinned: true,
+    createTime: '2026-07-01T09:30:00Z', updateTime: '2026-07-02T09:30:00Z',
+    content: '# Reading list\n\nFinish the Le Guin #books', tags: ['books', 'someday'],
+    attachments: [
+      { name: 'attachments/u1', filename: 'cover photo.jpg', type: 'image/jpeg' },
+      { name: 'attachments/u2', filename: 'notes.pdf', type: 'application/pdf' },
+      { name: 'attachments/u3', filename: 'Site', type: '', externalLink: 'https://example.com' },
+    ],
+  }, { userName: 'users/1' });
+  const n = r.note;
+  assert.equal(n.title, 'Reading list');
+  assert.equal(n.body_md, 'Finish the Le Guin #books\n\n[Site](https://example.com)');
+  assert.deepEqual(n.labels, ['books', 'someday']);
+  assert.equal(n.pinned, true);
+  assert.equal(n.archived, true);
+  assert.equal(n.created_at, '2026-07-01 09:30:00');
+  assert.deepEqual(n.files, [{ path: '/file/attachments/u1/cover%20photo.jpg', name: 'cover photo.jpg' }]);
+  assert.equal(r.otherFiles, 1);
+});
+
+test('memos: other people\'s memos, comments, and old-API resources', () => {
+  assert.equal(parseMemo({ name: 'memos/1', content: 'x', creator: 'users/2' }, { userName: 'users/1' }), null);
+  assert.equal(parseMemo({ name: 'memos/2', content: 'reply', creator: 'users/1', parent: 'memos/1' }, { userName: 'users/1' }), null);
+  const old = parseMemo({ name: 'memos/3', rowStatus: 'ACTIVE', creator: 'users/1', content: '- [ ] milk\n- [x] eggs', displayTime: '2024-01-01T00:00:00Z',
+    resources: [{ name: 'resources/9', filename: 'a.png', type: 'image/png' }] }, { userName: 'users/1' });
+  assert.equal(old.note.kind, 'checklist');
+  assert.equal(old.note.archived, false);
+  assert.deepEqual(old.note.files, [{ path: '/file/resources/9/a.png', name: 'a.png' }]);
+  assert.equal(memosBaseUrl('memos.home.lan/'), 'https://memos.home.lan');
+  assert.equal(memosBaseUrl('http://10.0.0.5:5230//'), 'http://10.0.0.5:5230');
 });

@@ -11,6 +11,11 @@
  *     color, pinned, archived, trashed, labels: [name], created_at,
  *     updated_at, reminder_at, reminder_rrule, reminder_tz }
  * Timestamps are 'YYYY-MM-DD HH:MM:SS' UTC or null.
+ *
+ * Images: an import can carry `files: [path]`, paths inside the imported
+ * zip that the importer uploads and attaches. The Markdown form is an image
+ * embed with a relative path at the top of the body, which any Markdown app
+ * shows and which imports back as an attachment.
  */
 
 export const NOTE_COLORS = ['plum', 'moss', 'clay', 'tide', 'sand', 'rose'];
@@ -130,11 +135,47 @@ export function inlineTags(md) {
   return [...tags];
 }
 
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|bmp|heic|heif|avif)$/i;
+
+/** Resolve a relative path against the folder of the Markdown file that references it. */
+export function resolveRelative(fromFile, rel) {
+  const target = decodeURI(String(rel || '').split(/[?#]/)[0]);
+  const parts = String(fromFile || '').split('/').slice(0, -1);
+  for (const seg of target.split('/')) {
+    if (seg === '..') parts.pop();
+    else if (seg && seg !== '.') parts.push(seg);
+  }
+  return parts.join('/');
+}
+
+/**
+ * Pull local image embeds out of a Markdown body. Remote images
+ * (http, data) stay in the text. Returns { body, files } where files are
+ * { path } relative to the zip root, or { name } for Obsidian ![[name]]
+ * embeds, which Obsidian resolves by file name anywhere in the vault.
+ */
+export function extractImageEmbeds(filePath, md) {
+  const files = [];
+  let body = String(md || '').replace(/!\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g, (m, src) => {
+    if (/^[a-z][a-z0-9+.-]*:/i.test(src) || !IMAGE_EXT_RE.test(src.split(/[?#]/)[0])) return m;
+    files.push({ path: resolveRelative(filePath, src) });
+    return '';
+  });
+  body = body.replace(/!\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g, (m, name) => {
+    if (!IMAGE_EXT_RE.test(name.trim())) return m;
+    files.push({ name: name.trim().split('/').pop() });
+    return '';
+  });
+  if (files.length) body = body.replace(/^[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '');
+  return { body, files };
+}
+
 // File names that are dates, ids, or "Untitled" don't make good titles.
 function _titleFromFilename(path) {
   const base = String(path || '').split('/').pop().replace(/\.(md|markdown|txt)$/i, '').trim();
   if (!base) return '';
   if (/^untitled/i.test(base)) return '';
+  if (/^note-\d+-\d{10,}$/i.test(base)) return ''; // Blinko export: note-<id>-<time>
   if (/^[\d\s_:.T-]+Z?$/.test(base)) return '';
   if (/^[0-9a-f-]{16,}$/i.test(base)) return '';
   return base;
@@ -150,6 +191,8 @@ export function parseMarkdownNote(path, text, { tagsToLabels = true } = {}) {
     ? { data: {}, body: String(text || '').replace(/\r\n?/g, '\n') }
     : parseFrontMatter(text);
   let body = isText ? plainTextToMarkdown(rawBody) : rawBody.replace(/^\n+/, '').replace(/\s+$/, '');
+  let files = [];
+  if (!isText) ({ body, files } = extractImageEmbeds(path, body));
 
   // An explicit title (even an empty one, as NoteTrace exports write for
   // untitled notes) wins over the H1 and file-name fallbacks.
@@ -175,7 +218,10 @@ export function parseMarkdownNote(path, text, { tagsToLabels = true } = {}) {
   const labels = new Set([..._toList(data.labels), ..._toList(data.tags)].map(_cleanLabel).filter(Boolean));
   if (tagsToLabels) for (const t of inlineTags(body)) labels.add(_cleanLabel(t));
 
-  const created = toSqlTs(data.created ?? data.created_at ?? data.date ?? null);
+  // Blinko's Markdown export has no front matter; its file name carries the creation time.
+  const blinkoTime = String(path || '').match(/(?:^|\/)note-\d+-(\d{10,})\.md$/i);
+  const created = toSqlTs(data.created ?? data.created_at ?? data.date ?? null)
+    || (blinkoTime ? toSqlTs(new Date(Number(blinkoTime[1]))) : null);
   const updated = toSqlTs(data.updated ?? data.updated_at ?? data.modified ?? null) || created;
   const reminderAt = toSqlTs(data.reminder ?? null);
 
@@ -195,14 +241,18 @@ export function parseMarkdownNote(path, text, { tagsToLabels = true } = {}) {
     reminder_rrule: reminderAt && REPEATS.includes(data.repeat) ? data.repeat : null,
     reminder_tz: reminderAt && typeof data.timezone === 'string' ? data.timezone : null,
   };
-  if (!note.title && !note.body_md.trim() && !note.items.length) return null;
+  note.files = files;
+  if (!note.title && !note.body_md.trim() && !note.items.length && !files.length) return null;
   return note;
 }
 
 // ── Export ───────────────────────────────────────────────────────────
 
-/** A note (API shape) to a Markdown document with front matter. */
-export function noteToMarkdown(note, labelNames = []) {
+/**
+ * A note (API shape) to a Markdown document with front matter.
+ * `imagePaths` are the note's exported images, relative to the file.
+ */
+export function noteToMarkdown(note, labelNames = [], imagePaths = []) {
   const fm = [];
   const put = (k, v) => {
     if (v === null || v === undefined || v === '' || v === false || (Array.isArray(v) && !v.length)) return;
@@ -223,9 +273,11 @@ export function noteToMarkdown(note, labelNames = []) {
   put('created', sqlToIso(note.created_at));
   put('updated', sqlToIso(note.updated_at));
 
-  const body = note.kind === 'checklist'
+  const content = note.kind === 'checklist'
     ? (note.items || []).map(i => `- [${i.checked ? 'x' : ' '}] ${String(i.text || '').replace(/\n/g, ' ')}`).join('\n')
     : String(note.body_md || '');
+  const images = imagePaths.map(p => `![](${encodeURI(p)})`).join('\n\n');
+  const body = images ? (content ? `${images}\n\n${content}` : images) : content;
   return `---\n${fm.join('\n')}\n---\n\n${body}${body.endsWith('\n') ? '' : '\n'}`;
 }
 

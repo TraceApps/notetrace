@@ -871,10 +871,13 @@ function _cleanTs(v) {
  * duplicate anything. No webhooks fire for imports.
  */
 export const importNotes = db.transaction((u, list = []) => {
-  const result = { imported: 0, skipped: 0, labels_created: 0 };
+  // ids[i] is the new note's id, or null when list[i] was skipped, so the
+  // client only uploads images for notes that were actually created.
+  const result = { imported: 0, skipped: 0, labels_created: 0, ids: [] };
   const labelIds = new Map(listLabels(u).map(l => [l.name.toLowerCase(), l.id]));
   const ts = now();
   for (const raw of list.slice(0, IMPORT_BATCH_MAX)) {
+    result.ids.push(null);
     if (!raw || typeof raw !== 'object') { result.skipped++; continue; }
     const kind = NOTE_KINDS.has(raw.kind) ? raw.kind : 'text';
     const title = _cleanTitle(raw.title);
@@ -882,7 +885,8 @@ export const importNotes = db.transaction((u, list = []) => {
     const items = kind === 'checklist' && Array.isArray(raw.items)
       ? raw.items.filter(i => i && String(i.text ?? '').trim()).slice(0, 2000)
       : [];
-    if (!title && !body.trim() && !items.length) { result.skipped++; continue; }
+    const hasImages = Array.isArray(raw.files) && raw.files.length > 0;
+    if (!title && !body.trim() && !items.length && !hasImages) { result.skipped++; continue; }
     const created = _cleanTs(raw.created_at) || ts;
     const updated = _cleanTs(raw.updated_at) || created;
     const dup = db.prepare(
@@ -920,6 +924,7 @@ export const importNotes = db.transaction((u, list = []) => {
     }
     if (ids.length) _setLabels(u, id, ids, updated);
     _addAttachments(u, id, raw.attachments, updated);
+    result.ids[result.ids.length - 1] = id;
     result.imported++;
   }
   return result;

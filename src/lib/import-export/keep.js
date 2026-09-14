@@ -3,8 +3,9 @@
  *
  * Takeout writes one JSON file per note under Takeout/Keep/. Text,
  * checklists, labels, colors, pins, archive, trash, links, and edit
- * dates are imported. Attachments (images, drawings, audio) are counted
- * so the summary can say what was left behind.
+ * dates are imported, and photos and drawings come along as images
+ * (`files`, uploaded by the importer). Voice recordings are counted so the
+ * summary can say what was left behind.
  */
 import { plainTextToMarkdown, toSqlTs } from './markdown.js';
 
@@ -55,7 +56,10 @@ export function parseKeepNote(obj) {
 
   const updated = usecToTs(obj.userEditedTimestampUsec);
   const created = usecToTs(obj.createdTimestampUsec) || updated;
-  const attachments = Array.isArray(obj.attachments) ? obj.attachments.length : 0;
+  const all = Array.isArray(obj.attachments) ? obj.attachments : [];
+  // Photos and drawings are images; voice recordings aren't imported.
+  const images = all.filter(a => typeof a?.filePath === 'string' && /^image\//i.test(String(a.mimetype || '')));
+  const attachments = all.length - images.length;
   const note = {
     title: String(obj.title ?? '').trim().slice(0, 1000),
     body_md: body,
@@ -73,7 +77,8 @@ export function parseKeepNote(obj) {
     reminder_at: null,
     reminder_rrule: null,
     reminder_tz: null,
+    files: images.map(a => ({ name: a.filePath.split('/').pop() })),
   };
-  const empty = !note.title && !note.body_md.trim() && !note.items.length;
+  const empty = !note.title && !note.body_md.trim() && !note.items.length && !note.files.length;
   return { note: empty ? null : note, attachments };
 }

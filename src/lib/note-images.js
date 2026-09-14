@@ -58,12 +58,14 @@ export async function prepareImage(file) {
 /**
  * Upload image files. Resolves attachment records ready for
  * NoteApi.addAttachments / createNote({ attachments }). Files that fail
- * are skipped and counted in `failed`.
+ * are skipped and counted in `failed`. When the server's upload rate limit
+ * is hit, it stops and returns `rateLimited` with the files not yet sent.
  */
 export async function uploadNoteImages(files) {
   const attachments = [];
   let failed = 0;
-  for (const file of files) {
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
     if (!isImageFile(file)) { failed++; continue; }
     try {
       const { blob, width, height, mime } = await prepareImage(file);
@@ -73,9 +75,13 @@ export async function uploadNoteImages(files) {
       const url = await NoteApi.uploadImage(upload);
       if (!url) { failed++; continue; }
       attachments.push({ uuid: _uuid(), url, mime, width, height });
-    } catch {
+    } catch (e) {
+      // The server's upload rate limit: stop here and hand back what's left.
+      if (/429|too many requests/i.test(String(e?.message || ''))) {
+        return { attachments, failed, rateLimited: true, remaining: files.slice(i) };
+      }
       failed++;
     }
   }
-  return { attachments, failed };
+  return { attachments, failed, rateLimited: false, remaining: [] };
 }
