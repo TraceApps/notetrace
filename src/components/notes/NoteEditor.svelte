@@ -382,7 +382,7 @@
   }
 
   let closing = false;
-  async function close(skipDiscard = false) {
+  async function close(skipDiscard = false, navigate = null) {
     if (closing) return;
     closing = true;
     await flushAll();
@@ -393,7 +393,37 @@
     }
     if (touched || skipDiscard) signalNotesChanged();
     refreshLabels();
-    dispatch('close', { id: noteId });
+    dispatch('close', { id: noteId, navigate });
+  }
+
+  // ── [[Links]] ─────────────────────────────────────────────────────
+  let linkTitles = [];
+  let backlinks = [];
+  async function loadLinks() {
+    try { linkTitles = (await NoteApi.getNoteTitles()).map(t => t.title); } catch { linkTitles = []; }
+    if (noteId) {
+      try { backlinks = await NoteApi.getBacklinks(noteId); } catch { backlinks = []; }
+    }
+  }
+  function navigateTo(id) {
+    if (id && id !== noteId) close(false, id);
+  }
+  async function openLinked(linkTitle) {
+    await flushAll();
+    const target = await NoteApi.findNoteByTitle(linkTitle).catch(() => null);
+    if (target) { navigateTo(target.id); return; }
+    const ok = await confirmDialog({
+      title: $_('note_links.missing_title'),
+      message: $_('note_links.missing_message', { values: { title: linkTitle } }),
+      confirmText: $_('note_links.create'),
+    });
+    if (!ok) return;
+    try {
+      const created = await NoteApi.createNote({ title: linkTitle, body_md: '', kind: 'text' });
+      navigateTo(created.id);
+    } catch (e) {
+      showError(e.message || $_('notes.save_failed'));
+    }
   }
 
   function onKey(e) {
@@ -406,6 +436,7 @@
   function onResize() { narrow = window.innerWidth < 600; }
 
   onMount(async () => {
+    loadLinks();
     window.addEventListener('keydown', onKey);
     window.addEventListener('resize', onResize);
     await tick();
@@ -490,7 +521,8 @@
         {#key editorKey}
           {#if kind === 'text'}
             <TipTapEditor bind:this={bodyRef} bind:value={body} editable={!contentLocked}
-              placeholder={$_('notes.body_placeholder')} on:change={scheduleText} />
+              linkTitles={linkTitles.filter(t => t.toLowerCase() !== title.trim().toLowerCase())}
+              placeholder={$_('notes.body_placeholder')} on:change={scheduleText} on:openlink={(e) => openLinked(e.detail)} />
           {:else}
             <ChecklistEditor bind:this={checklistRef} {items} editable={!contentLocked}
               on:add={onItemAdd} on:update={onItemUpdate} on:delete={onItemDelete} on:reorder={onItemReorder} />
@@ -524,6 +556,20 @@
               </span>
             {/each}
           </div>
+        {/if}
+
+        {#if backlinks.length}
+          <section class="backlinks" aria-label={$_('note_links.linked_from')}>
+            <h3>{$_('note_links.linked_from')}</h3>
+            <div class="backlink-list">
+              {#each backlinks as b (b.id)}
+                <button class="chip backlink" on:click={() => navigateTo(b.id)}>
+                  <span class="material-symbols-rounded">{b.kind === 'checklist' ? 'checklist' : 'description'}</span>
+                  {b.title || $_('notes.untitled')}
+                </button>
+              {/each}
+            </div>
+          </section>
         {/if}
       </div>
 
@@ -634,6 +680,12 @@
 <style>
   .editor-host { display: contents; }
   .editor-images { margin-bottom: 14px; }
+  .backlinks { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--note-border, var(--border)); }
+  .backlinks h3 { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); margin-bottom: 8px; }
+  .backlink-list { display: flex; flex-wrap: wrap; gap: 6px; }
+  .backlink { padding: 0 12px 0 9px; cursor: pointer; }
+  .backlink:hover { background: color-mix(in srgb, var(--text-1) 11%, transparent); color: var(--text-1); }
+  .backlink .material-symbols-rounded { font-size: 16px; }
   .editor-panel.drag-over { outline: 2px dashed var(--accent); outline-offset: -6px; }
 
   .editor-backdrop {

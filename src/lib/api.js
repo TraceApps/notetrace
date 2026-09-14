@@ -191,6 +191,11 @@ const _NoteApiHttp = {
   deleteLabel(id)                { return this.del(`/api/labels/${id}`); },
   reorderLabels(ids)             { return this.put('/api/labels/order', { ids }); },
 
+  // [[Links]]
+  getNoteTitles()                { return this.get('/api/notes/titles'); },
+  findNoteByTitle(title)         { return this.get(`/api/notes/by-title?title=${encodeURIComponent(title)}`).catch(e => { if (/not found/i.test(e.message)) return null; throw e; }); },
+  getBacklinks(noteId)           { return this.get(`/api/notes/${noteId}/backlinks`); },
+
   // Attachments (upload the file with uploadImage first)
   addAttachments(noteId, list)   { return this.post(`/api/notes/${noteId}/attachments`, { attachments: list }); },
   // Import follow-ups. importNotes runs on the server when one is connected

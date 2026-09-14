@@ -430,6 +430,7 @@ export const updateNote = db.transaction((u, id, patch = {}) => {
     db.prepare(`UPDATE notes SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).run(...args, ts, id);
   }
   if (Array.isArray(patch.labels)) _setLabels(u, id, patch.labels, ts);
+  if ('title' in patch) _renameLinks(row.user_id, id, row.title, _cleanTitle(patch.title), ts);
   return getNote(u, id);
 });
 
@@ -460,6 +461,7 @@ function _updateAsMember(u, { row, role, member }, patch) {
     if ('body_md' in patch) { sets.push('body_md = ?'); args.push(_cleanBody(patch.body_md)); }
     if ('color' in patch)   { sets.push('color = ?');   args.push(_cleanColor(patch.color)); }
     if (sets.length) db.prepare(`UPDATE notes SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).run(...args, ts, id);
+    if ('title' in patch) _renameLinks(row.user_id, id, row.title, _cleanTitle(patch.title), ts);
   }
   if (Array.isArray(patch.labels)) _setLabels(u, id, patch.labels, ts);
   return getNote(u, id);
@@ -933,3 +935,54 @@ export const importNotes = db.transaction((u, list = []) => {
   }
   return result;
 });
+
+// ── Links ([[Note title]]) ───────────────────────────────────────────
+
+const _escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Titled notes the caller can see, for link suggestions. */
+export function listNoteTitles(u) {
+  return _selectNotes(u, { where: ["n.trashed_at IS NULL", "n.title != ''"], order: 'n.updated_at DESC' })
+    .map(r => ({ id: r.id, title: r.title }));
+}
+
+/** The note a [[title]] points at: an exact title match (ignoring case), active notes before archived ones. */
+export function findNoteByTitle(u, title) {
+  const t = String(title || '').trim();
+  if (!t) return null;
+  const rows = _selectNotes(u, { where: ['n.trashed_at IS NULL', 'lower(trim(n.title)) = lower(?)'], args: [t], order: 'n.archived ASC, n.updated_at DESC' });
+  return rows.length ? _hydrate(rows.slice(0, 1), u)[0] : null;
+}
+
+/** Notes that link to this one ("Linked From"). */
+export function listBacklinks(u, noteId) {
+  const access = noteAccess(u, noteId);
+  const title = access?.row?.title?.trim();
+  if (!access || !title) return access ? [] : null;
+  const re = new RegExp(`\\[\\[\\s*${_escapeRe(title)}\\s*\\]\\]`, 'i');
+  return _selectNotes(u, { where: ['n.id != ?', 'n.trashed_at IS NULL', "instr(lower(n.body_md), lower(?)) > 0"], args: [noteId, title], order: 'n.updated_at DESC' })
+    .filter(r => re.test(r.body_md))
+    .map(r => ({ id: r.id, title: r.title, kind: r.kind, archived: !!(r.m_role ? r.m_archived : r.archived) }));
+}
+
+/**
+ * Renaming a note keeps links to it working: [[Old title]] in the owner's
+ * other notes becomes [[New title]]. Other people's notes aren't touched.
+ */
+function _renameLinks(ownerId, noteId, oldTitle, newTitle, ts) {
+  const from = String(oldTitle || '').trim();
+  const to = String(newTitle || '').trim();
+  if (!from || !to || from === to) return 0;
+  const re = new RegExp(`\\[\\[\\s*${_escapeRe(from)}\\s*\\]\\]`, 'gi');
+  const rows = db.prepare(
+    `SELECT id, body_md FROM notes WHERE user_id IS ? AND id != ? AND deleted_at IS NULL AND instr(lower(body_md), lower(?)) > 0`
+  ).all(ownerId ?? null, noteId, from);
+  let changed = 0;
+  for (const r of rows) {
+    const next = r.body_md.replace(re, () => `[[${to}]]`);
+    if (next === r.body_md) continue;
+    db.prepare(`UPDATE notes SET body_md = ?, updated_at = ? WHERE id = ?`).run(next, ts, r.id);
+    changed++;
+  }
+  return changed;
+}

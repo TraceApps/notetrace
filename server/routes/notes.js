@@ -41,6 +41,13 @@ router.post('/import', wrap((req, res) => {
   res.json(Notes.importNotes(uid(req), list));
 }));
 
+// Link helpers. Registered before /:id routes.
+router.get('/titles', wrap((req, res) => { res.json(Notes.listNoteTitles(uid(req))); }));
+router.get('/by-title', wrap((req, res) => {
+  const note = Notes.findNoteByTitle(uid(req), typeof req.query.title === 'string' ? req.query.title : '');
+  return note ? res.json(note) : notFound(res);
+}));
+
 // Empty trash. Registered before /:id routes so "trash" never parses as an id.
 router.delete('/trash', wrap((req, res) => {
   res.json({ deleted: Notes.emptyTrash(uid(req)) });
@@ -99,6 +106,11 @@ router.patch('/:id/items/:uuid', wrap((req, res) => {
 router.delete('/:id/items/:uuid', wrap((req, res) => {
   const note = Notes.deleteItem(uid(req), idParam(req), req.params.uuid);
   return note ? res.json(note) : notFound(res);
+}));
+
+router.get('/:id/backlinks', wrap((req, res) => {
+  const list = Notes.listBacklinks(uid(req), idParam(req));
+  return list ? res.json(list) : notFound(res);
 }));
 
 // ── Attachments ──────────────────────────────────────────────────────

@@ -17,6 +17,7 @@ export function markdownToPreview(md, maxChars = MAX_CHARS) {
     .replace(/^\s*[-*+]\s+\[[ xX]\]\s+/gm, '')
     .replace(/^\s*[-*+]\s+/gm, '• ')
     .replace(/^\s*(\d+)[.)]\s+/gm, '$1. ')
+    .replace(/\[\[([^[\]\n]+)\]\]/g, '$1')
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
     .replace(/(\*\*|__)(.+?)\1/g, '$2')

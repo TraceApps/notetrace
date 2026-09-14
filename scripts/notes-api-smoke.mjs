@@ -261,6 +261,20 @@ let attPush = (await api('POST', '/api/sync/push', { tables: { note_attachments:
 ] } })).json;
 ok(attPush.tables.note_attachments.length === 1 && attPush.tables.note_attachments[0].client_id === 2, 'sync accepts uploaded images and holds back device-local paths');
 
+console.log('links');
+const target = (await api('POST', '/api/notes', { title: 'Garden plan' })).json;
+const linker = (await api('POST', '/api/notes', { title: 'Weekend', body_md: 'Work on [[garden plan]] and [[Nope]]' })).json;
+ok((await api('GET', `/api/notes/by-title?title=${encodeURIComponent('GARDEN PLAN')}`)).json.id === target.id, 'by-title matches ignoring case');
+ok((await api('GET', `/api/notes/by-title?title=Nope`)).status === 404, 'by-title 404s for a missing note');
+let bl = (await api('GET', `/api/notes/${target.id}/backlinks`)).json;
+ok(bl.length === 1 && bl[0].id === linker.id, 'backlinks list the linking note');
+ok((await api('GET', '/api/notes/titles')).json.some(t => t.id === target.id && t.title === 'Garden plan'), 'titles list for suggestions');
+await api('PATCH', `/api/notes/${target.id}`, { title: 'Garden plan $1 (2027)' });
+const relinked = (await api('GET', `/api/notes/${linker.id}`)).json;
+ok(relinked.body_md === 'Work on [[Garden plan $1 (2027)]] and [[Nope]]', `renaming updates links, even with $ and parentheses (${relinked.body_md})`);
+bl = (await api('GET', `/api/notes/${target.id}/backlinks`)).json;
+ok(bl.length === 1, 'backlinks follow the new title');
+
 console.log('backup + export');
 const bk = (await api('POST', '/api/full-backup')).json;
 const rs = (await api('POST', `/api/full-backup/${bk.filename}/restore`)).json;

@@ -127,4 +127,11 @@ await sync(B); await sync(A);
 pic = await A.N.getNote(pic.id);
 ok(!pic.attachments.some(a => a.uuid === 'img-uuid-1'), 'A: image removed on B is gone on A');
 
+// 10. [[Links]] on the device: find by title, backlinks, rename updates links.
+const tgt = await A.N.createNote({ title: 'Reading list' });
+const src = await A.N.createNote({ title: 'Plans', body_md: 'Check [[reading list]]' });
+ok((await A.N.findNoteByTitle('READING LIST'))?.id === tgt.id && (await A.N.getBacklinks(tgt.id)).some(b => b.id === src.id), 'A: local find-by-title and backlinks');
+await A.N.updateNote(tgt.id, { title: 'Books to read' });
+ok((await A.N.getNote(src.id)).body_md === 'Check [[Books to read]]', 'A: renaming updates links in local notes');
+
 console.log(f ? `${f} FAILED` : 'all passed'); process.exit(f ? 1 : 0);

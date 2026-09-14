@@ -186,6 +186,25 @@ async function _tombstoneItems(noteId, ts) {
     [ts, ts, noteId]);
 }
 
+const _escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Renaming a note updates [[Old title]] links in the user's own notes.
+async function _renameLinks(noteId, oldTitle, newTitle, ts) {
+  const from = String(oldTitle || '').trim();
+  const to = String(newTitle || '').trim();
+  if (!from || !to || from === to) return;
+  const re = new RegExp(`\\[\\[\\s*${_escapeRe(from)}\\s*\\]\\]`, 'gi');
+  const rows = await _q(
+    `SELECT id, body_md FROM notes WHERE id != ? AND deleted_at IS NULL AND (share_role IS NULL OR share_role = 'owner') AND instr(lower(body_md), lower(?)) > 0`,
+    [noteId, from]);
+  for (const r of rows) {
+    const next = r.body_md.replace(re, () => `[[${to}]]`);
+    if (next !== r.body_md) {
+      await _run(`UPDATE notes SET body_md = ?, updated_at = ?, sync_status = 'pending' WHERE id = ?`, [next, ts, r.id]);
+    }
+  }
+}
+
 const ATTACHMENTS_MAX_PER_NOTE = 50;
 
 async function _addAttachments(noteId, list, ts) {
@@ -322,7 +341,33 @@ export const NotesNative = {
       await _run(`UPDATE notes SET ${sets.join(', ')}, updated_at = ?, sync_status = 'pending' WHERE id = ?`, [...args, ts, id]);
     }
     if (Array.isArray(patch.labels)) await _setLabels(id, patch.labels, ts);
+    if ('title' in patch) await _renameLinks(id, row.title, String(patch.title ?? ''), ts);
     return _note(id);
+  },
+
+  // [[Links]]
+
+  async getNoteTitles() {
+    return _q(`SELECT id, title FROM notes WHERE deleted_at IS NULL AND trashed_at IS NULL AND title != '' ORDER BY updated_at DESC`);
+  },
+
+  async findNoteByTitle(title) {
+    const t = String(title || '').trim();
+    if (!t) return null;
+    const row = (await _q(
+      `SELECT * FROM notes WHERE deleted_at IS NULL AND trashed_at IS NULL AND lower(trim(title)) = lower(?) ORDER BY archived ASC, updated_at DESC LIMIT 1`, [t]))[0];
+    return row ? (await _hydrate([row]))[0] : null;
+  },
+
+  async getBacklinks(noteId) {
+    const note = (await _q(`SELECT title FROM notes WHERE id = ? AND deleted_at IS NULL`, [Number(noteId)]))[0];
+    const title = note?.title?.trim();
+    if (!title) return [];
+    const re = new RegExp(`\\[\\[\\s*${_escapeRe(title)}\\s*\\]\\]`, 'i');
+    const rows = await _q(
+      `SELECT id, title, kind, archived, body_md FROM notes WHERE id != ? AND deleted_at IS NULL AND trashed_at IS NULL AND instr(lower(body_md), lower(?)) > 0 ORDER BY updated_at DESC`,
+      [Number(noteId), title]);
+    return rows.filter(r => re.test(r.body_md)).map(r => ({ id: r.id, title: r.title, kind: r.kind, archived: !!r.archived }));
   },
 
   async convertNote(id, kind) {

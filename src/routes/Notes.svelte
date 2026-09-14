@@ -7,7 +7,7 @@
    *   /trash       trashed notes (auto-deleted after 30 days)
    *   /label/:id   notes carrying one label
    */
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { location, querystring, replace as replaceRoute } from 'svelte-spa-router';
   import { _ } from 'svelte-i18n';
   import { bannerStyle } from '../stores/settings.js';
@@ -122,7 +122,19 @@
     } catch { /* note gone */ }
     replaceRoute(path);
   }
-  function closeEditor() { editing = null; load(); }
+  async function closeEditor(e) {
+    const target = e?.detail?.navigate;
+    editing = null;
+    load();
+    // Following a [[link]] or a Linked From entry opens that note next.
+    if (target) {
+      await tick();
+      try {
+        const n = await NoteApi.getNote(target);
+        if (n) editing = { note: n };
+      } catch { /* note gone */ }
+    }
+  }
 
   // Shared from another Android app.
   $: if ($pendingShare && !editing) {
@@ -391,8 +403,12 @@
 </div>
 
 {#if editing}
-  <NoteEditor note={editing.note || null} initialKind={editing.kind || 'text'} initialLabels={editing.labels || []}
-    prefill={editing.prefill || null} on:close={closeEditor} />
+  <!-- Keyed per open: reopening while the last editor is still fading out
+       would otherwise resume that editor with the previous note's state. -->
+  {#key editing}
+    <NoteEditor note={editing.note || null} initialKind={editing.kind || 'text'} initialLabels={editing.labels || []}
+      prefill={editing.prefill || null} on:close={closeEditor} />
+  {/key}
 {/if}
 
 <Popover bind:open={colorOpen} anchor={colorAnchor}>

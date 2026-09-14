@@ -248,6 +248,14 @@
     "add_to_top":     "Add to Top",
     "history_hint":   "The current text stays in version history."
   },
+  "note_links": {
+    "suggestions":     "Link to a note",
+    "link_new":        "Link to \"{title}\"",
+    "linked_from":     "Linked From",
+    "missing_title":   "Create This Note?",
+    "missing_message": "There's no note called \"{title}\" yet. Create it now?",
+    "create":          "Create Note"
+  },
   "attachments": {
     "add_image":      "Add Image",
     "image":          "Image",
