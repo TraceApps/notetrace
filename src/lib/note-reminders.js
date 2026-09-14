@@ -1,19 +1,23 @@
 /**
  * note-reminders.js: note reminders on Android.
  *
- * Scheduling is native (NoteReminderScheduler.java): exact alarms read the
- * notes from the on-device database, so reminders fire on time with the
- * app closed, after a reboot, and across daylight saving changes. This
- * module tells the native side when notes changed, passes the device
- * setting and translated notification strings, and routes notification
- * taps and Done actions back into the app.
+ * Scheduling is native (NoteReminderScheduler.java): exact alarms, so
+ * reminders fire on time with the app closed, after a reboot, and across
+ * daylight saving changes. After every note change or sync this module hands
+ * the native side the full reminder list with notification text worked out
+ * (the native code never opens the app's database), passes the device
+ * setting and translated strings, and routes notification taps and Done
+ * actions back into the app.
  *
  * Web and PWA reminders live in web-reminders.js; this module is a no-op
  * there.
  */
 import { registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
-import { isNative, getServerUrl } from './platform.js';
+import { isNative } from './platform.js';
+import { NoteApi } from './api.js';
+import { REPEATS } from './reminders.js';
+import { reminderNotificationText } from './note-preview.js';
 
 const NoteReminders = isNative ? registerPlugin('NoteReminders') : null;
 
@@ -56,14 +60,40 @@ async function _clearLegacy() {
   } catch { /* try again next launch */ }
 }
 
-/** Re-arm the native alarms. Debounced; safe to call after every change. */
+async function _reschedule() {
+  const notes = await NoteApi.getNotes({ view: 'reminders' });
+  const fallback = _config.labels.reminder || 'Reminder';
+  const reminders = notes
+    .filter(n => n.reminder_at)
+    .map(n => {
+      const { title, body } = reminderNotificationText(n, fallback);
+      return { id: n.id, title, body, at: n.reminder_at, rrule: n.reminder_rrule || null, tz: n.reminder_tz || null };
+    });
+  await NoteReminders.reschedule({ reminders });
+}
+
+/** Hand the native side the current reminder list. Debounced; safe to call after every change. */
 export function rescheduleReminders() {
   if (!NoteReminders) return;
   clearTimeout(_timer);
-  // A short delay lets the local database write settle before the native side reads it.
-  _timer = setTimeout(() => {
-    NoteReminders.reschedule().catch(() => {});
-  }, 600);
+  _timer = setTimeout(() => { _reschedule().catch(() => {}); }, 400);
+}
+
+/** Clear one-off reminders the user marked Done from a notification. */
+async function _applyDone(onChanged) {
+  let ids = [];
+  try { ({ noteIds: ids = [] } = await NoteReminders.takeDone()); } catch { return; }
+  if (!ids.length) return;
+  for (const id of ids) {
+    try {
+      const note = await NoteApi.getNote(id);
+      if (note?.reminder_at && !REPEATS.includes(note.reminder_rrule)) {
+        await NoteApi.updateNote(id, { reminder_at: null });
+      }
+    } catch { /* note gone */ }
+  }
+  onChanged?.();
+  rescheduleReminders();
 }
 
 /** Whether Android lets NoteTrace fire at the exact minute. */
@@ -87,13 +117,14 @@ export async function registerReminderActions(openNote, onChanged) {
   await _clearLegacy();
   try {
     await NoteReminders.addListener('reminderOpen', ({ noteId }) => { if (noteId) openNote(noteId); });
-    await NoteReminders.addListener('remindersChanged', async () => {
-      onChanged?.();
-      // The native Done wrote a pending change; send it now when connected.
-      if (getServerUrl()) {
-        try { const { fullSync } = await import('./sync.js'); await fullSync(true); } catch { /* next sync loop */ }
-      }
-    });
+    // Done while the app runs; updateNote queues the change for sync.
+    await NoteReminders.addListener('remindersChanged', () => { _applyDone(onChanged); });
+    // Done while the app was closed: picked up at start and on every resume.
+    await _applyDone(onChanged);
+    try {
+      const { App } = await import('@capacitor/app');
+      App.addListener('appStateChange', ({ isActive }) => { if (isActive) _applyDone(onChanged); });
+    } catch { /* ignore */ }
     const { noteId } = await NoteReminders.getPendingOpen();
     if (noteId) openNote(noteId);
   } catch (e) {

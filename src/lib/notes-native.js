@@ -471,6 +471,11 @@ export const NotesNative = {
     return _note(noteId);
   },
 
+  // Local mode: imports create local notes, so their images are local too.
+  async importAddAttachments(noteId, list = []) {
+    return NotesNative.addAttachments(noteId, list);
+  },
+
   async deleteAttachment(noteId, uuid) {
     noteId = Number(noteId);
     const ts = _now();
@@ -496,7 +501,8 @@ export const NotesNative = {
       if (!title && !body.trim() && !items.length && !hasImages) { result.skipped++; continue; }
       const created = _reminderAt(raw.created_at) || ts;
       const updated = _reminderAt(raw.updated_at) || created;
-      const dup = (await _q(
+      const imageOnly = !title && !body.trim() && !items.length;
+      const dup = !(imageOnly && !_reminderAt(raw.created_at)) && (await _q(
         `SELECT 1 FROM notes WHERE deleted_at IS NULL AND title = ? AND kind = ? AND body_md = ? AND created_at = ? LIMIT 1`,
         [title, kind, body, created]))[0];
       if (dup) { result.skipped++; continue; }

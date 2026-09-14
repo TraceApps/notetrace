@@ -193,6 +193,11 @@ const _NoteApiHttp = {
 
   // Attachments (upload the file with uploadImage first)
   addAttachments(noteId, list)   { return this.post(`/api/notes/${noteId}/attachments`, { attachments: list }); },
+  // Import follow-ups. importNotes runs on the server when one is connected
+  // and returns server ids, so the images for those notes must go to the
+  // server too: straight upload (no local fallback), attach by server id.
+  importUploadImage(file)        { return this.uploadImage(file); },
+  importAddAttachments(noteId, list) { return this.addAttachments(noteId, list); },
   deleteAttachment(noteId, uuid) { return this.del(`/api/notes/${noteId}/attachments/${encodeURIComponent(uuid)}`); },
 
   // Sharing
@@ -230,7 +235,7 @@ const SERVER_ONLY_METHODS = new Set([
   'getMembers', 'addMember', 'updateMember', 'removeMember',
   // Imports run on the server (keeping original dates) and reach this
   // device through sync.
-  'importNotes',
+  'importNotes', 'importUploadImage', 'importAddAttachments',
   // Low-level HTTP primitives, used by components that don't have a
   // dedicated NoteApi wrapper (invite list, session config, admin OIDC
   // CRUD, etc.). NoteApiNative stubs these to throw in pure local mode;

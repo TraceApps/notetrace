@@ -61,7 +61,7 @@ export async function prepareImage(file) {
  * are skipped and counted in `failed`. When the server's upload rate limit
  * is hit, it stops and returns `rateLimited` with the files not yet sent.
  */
-export async function uploadNoteImages(files) {
+export async function uploadNoteImages(files, { upload = (f) => NoteApi.uploadImage(f) } = {}) {
   const attachments = [];
   let failed = 0;
   for (let i = 0; i < files.length; i++) {
@@ -71,8 +71,8 @@ export async function uploadNoteImages(files) {
       const { blob, width, height, mime } = await prepareImage(file);
       const ext = mime === 'image/jpeg' ? 'jpg' : (mime.split('/')[1] || 'img').replace(/[^a-z0-9]/gi, '');
       const base = String(file.name || 'image').replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'image';
-      const upload = blob instanceof File ? blob : new File([blob], `${base}.${ext}`, { type: mime });
-      const url = await NoteApi.uploadImage(upload);
+      const uploadFile = blob instanceof File ? blob : new File([blob], `${base}.${ext}`, { type: mime });
+      const url = await upload(uploadFile);
       if (!url) { failed++; continue; }
       attachments.push({ uuid: _uuid(), url, mime, width, height });
     } catch (e) {

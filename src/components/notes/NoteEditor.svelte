@@ -61,6 +61,8 @@
   let items = note?.items ? note.items.map(i => ({ ...i })) : [];
   let attachments = note?.attachments ? [...note.attachments] : [];
   let uploading = 0;
+  // Images removed here, so a save still in flight can't put them back on screen.
+  const removedImages = new Set();
   let viewerIndex = null;
   let imageInput;
   let dragOver = false;
@@ -110,7 +112,7 @@
     trashed = !!n.trashed_at;
     color = n.color;
     noteLabels = [...(n.labels || [])];
-    attachments = [...(n.attachments || [])];
+    attachments = (n.attachments || []).filter(a => !removedImages.has(a.uuid));
     reminderAt = n.reminder_at ?? null;
     reminderRepeat = n.reminder_rrule ?? null;
     reminderTz = n.reminder_tz ?? null;
@@ -226,11 +228,11 @@
   function removeImage(e) {
     const uuid = e.detail;
     touched = true;
+    removedImages.add(uuid);
     attachments = attachments.filter(a => a.uuid !== uuid);
     enqueue(async () => {
       if (!noteId) return;
-      const n = await NoteApi.deleteAttachment(noteId, uuid);
-      updatedAt = n?.updated_at ?? updatedAt;
+      apply(await NoteApi.deleteAttachment(noteId, uuid));
     });
   }
   function onPaste(e) {

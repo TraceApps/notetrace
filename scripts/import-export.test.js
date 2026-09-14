@@ -232,6 +232,7 @@ test('memos: other people\'s memos, comments, and old-API resources', () => {
   assert.equal(old.note.kind, 'checklist');
   assert.equal(old.note.archived, false);
   assert.deepEqual(old.note.files, [{ path: '/file/resources/9/a.png', name: 'a.png' }]);
+  assert.equal(parseMemo({ name: 'memos/4', creator: 'users/1', content: 'no heading here' }, { userName: 'users/1' }).note.title, '', 'untitled memos stay untitled');
   assert.equal(memosBaseUrl('memos.home.lan/'), 'https://memos.home.lan');
   assert.equal(memosBaseUrl('http://10.0.0.5:5230//'), 'http://10.0.0.5:5230');
 });

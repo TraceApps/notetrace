@@ -93,9 +93,12 @@ test('Android reminders are native exact alarms, re-armed after reboot', () => {
   assert.match(manifest, /android:name="\.BootReceiver"[\s\S]*BOOT_COMPLETED[\s\S]*TIMEZONE_CHANGED/);
   assert.match(main, /registerPlugin\(NoteRemindersPlugin\.class\)/);
   assert.match(sched, /setExactAndAllowWhileIdle/);
-  // The database file the native side reads must match the JS connection name.
-  assert.match(read('../src/lib/db-native.js'), /const DB_NAME = 'notetrace_local'/);
-  assert.match(sched, /"notetrace_localSQLite\.db"/);
+  // A second SQLite library in the app process can corrupt the Capacitor SQLite
+  // database, so the native reminder code works only from its own list file.
+  for (const f of ['NoteReminderScheduler', 'NoteReminderReceiver', 'NoteRemindersPlugin', 'BootReceiver', 'NoteReminderStore']) {
+    assert.doesNotMatch(read(`../android/app/src/main/java/com/notetrace/app/${f}.java`), /android\.database\.sqlite|SQLiteDatabase/, `${f} must not open SQLite`);
+  }
+  assert.match(js, /NoteReminders\.reschedule\(\{ reminders \}\)/);
   assert.doesNotMatch(js, /LocalNotifications\.schedule\(/, 'JS must not schedule reminders alongside the native alarms');
 });
 

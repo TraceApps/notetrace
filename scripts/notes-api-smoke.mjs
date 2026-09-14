@@ -237,6 +237,8 @@ ok(impList && impList.items.length === 2 && impList.items[1].checked, 'imported 
 imp = (await api('POST', '/api/notes/import', { notes: importBatch })).json;
 ok(imp.imported === 0 && imp.skipped === 3, 'importing the same notes again adds nothing');
 ok((await api('POST', '/api/notes/import', { notes: 'nope' })).status === 400, 'import rejects a non-array body');
+imp = (await api('POST', '/api/notes/import', { notes: [{ title: '', body_md: '', kind: 'text', files: [{ name: 'a.jpg' }] }, { title: '', body_md: '', kind: 'text', files: [{ name: 'b.jpg' }] }] })).json;
+ok(imp.imported === 2 && imp.ids.every(Boolean), 'undated image-only notes are not mistaken for repeats');
 
 console.log('attachments');
 // A real 2x2 PNG so the upload route's byte check passes.

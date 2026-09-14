@@ -5,6 +5,7 @@ import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
 
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -15,12 +16,13 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  * NoteReminders: the WebView's bridge to the native reminder engine.
  *
  *   configure({ enabled, labels })  device setting + notification strings
- *   reschedule()                    re-read notes and re-arm alarms
+ *   reschedule({ reminders })       replace the reminder list, re-arm alarms
+ *   takeDone()                      note ids whose one-off reminder got Done
  *   getPendingOpen()                note id from a notification tap at cold start
  *   exactAlarmStatus() / openExactAlarmSettings()
  *
  * Events: "reminderOpen" { noteId } when a notification is tapped while the
- * app runs, "remindersChanged" after Done clears a reminder natively.
+ * app runs, "remindersChanged" after Done, so the app can take the ids.
  */
 @CapacitorPlugin(name = "NoteReminders")
 public class NoteRemindersPlugin extends Plugin {
@@ -69,13 +71,29 @@ public class NoteRemindersPlugin extends Plugin {
 
     @PluginMethod
     public void reschedule(PluginCall call) {
+        JSArray reminders = call.getArray("reminders");
         getBridge().execute(() -> {
+            if (reminders != null) NoteReminderStore.write(getContext(), reminders);
             int armed = NoteReminderScheduler.scheduleAll(getContext());
             JSObject r = new JSObject();
             r.put("armed", armed);
             r.put("exact", NoteReminderScheduler.canScheduleExact(getContext()));
             call.resolve(r);
         });
+    }
+
+    @PluginMethod
+    public void takeDone(PluginCall call) {
+        android.content.SharedPreferences p = NoteReminderScheduler.prefs(getContext());
+        java.util.Set<String> ids = p.getStringSet("done_pending", new java.util.HashSet<>());
+        JSArray out = new JSArray();
+        for (String id : ids) {
+            try { out.put(Long.parseLong(id)); } catch (NumberFormatException ignored) { }
+        }
+        p.edit().remove("done_pending").apply();
+        JSObject r = new JSObject();
+        r.put("noteIds", out);
+        call.resolve(r);
     }
 
     @PluginMethod

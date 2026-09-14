@@ -889,7 +889,10 @@ export const importNotes = db.transaction((u, list = []) => {
     if (!title && !body.trim() && !items.length && !hasImages) { result.skipped++; continue; }
     const created = _cleanTs(raw.created_at) || ts;
     const updated = _cleanTs(raw.updated_at) || created;
-    const dup = db.prepare(
+    // A note with only images has nothing to compare but its date, so it's
+    // only treated as a repeat when the source gave it a real one.
+    const imageOnly = !title && !body.trim() && !items.length;
+    const dup = !(imageOnly && !_cleanTs(raw.created_at)) && db.prepare(
       `SELECT 1 FROM notes WHERE ${userClause(u)} AND deleted_at IS NULL
          AND title = ? AND kind = ? AND body_md = ? AND created_at = ? LIMIT 1`
     ).get(...userArgs(u), title, kind, body, created);

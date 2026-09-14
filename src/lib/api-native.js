@@ -105,6 +105,9 @@ export const NoteApiNative = {
 
   // ── Image upload via Filesystem ────────────────────────────────────
 
+  // Local-mode imports store their images on the device, like any upload.
+  importUploadImage(file) { return this.uploadImage(file); },
+
   async uploadImage(file) {
     const base64 = await _fileToBase64(file);
     const safe = String(file?.name || 'image').replace(/[^a-zA-Z0-9.]/g, '_');

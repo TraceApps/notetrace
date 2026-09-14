@@ -106,7 +106,7 @@ async function _uploadWithRetry(files) {
   const out = { attachments: [], failed: 0 };
   let pending = files;
   for (let attempt = 0; pending.length; attempt++) {
-    const r = await uploadNoteImages(pending);
+    const r = await uploadNoteImages(pending, { upload: (f) => NoteApi.importUploadImage(f) });
     out.attachments.push(...r.attachments);
     out.failed += r.failed;
     if (!r.rateLimited) break;
@@ -148,7 +148,7 @@ export async function importParsedNotes(parsed, onProgress) {
       total.imagesFailed += up.failed;
       if (up.attachments.length) {
         try {
-          await NoteApi.addAttachments(id, up.attachments);
+          await NoteApi.importAddAttachments(id, up.attachments);
           total.images += up.attachments.length;
         } catch { total.imagesFailed += up.attachments.length; }
       }

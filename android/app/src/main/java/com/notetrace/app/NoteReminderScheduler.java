@@ -7,22 +7,18 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.database.Cursor;
-import android.database.sqlite.SQLiteDatabase;
 import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
 
-import java.io.File;
 import java.util.HashSet;
 import java.util.Set;
 
 /**
  * NoteReminderScheduler: schedules note reminders as exact alarms.
  *
- * Reads the notes straight from the app's on-device SQLite database (the
- * same file the WebView writes through the Capacitor SQLite plugin), so it
- * works after a reboot or with the app closed. One alarm per note, for its
+ * Works from NoteReminderStore, the reminder list the app keeps current, so
+ * it runs after a reboot or with the app closed. One alarm per note, for its
  * next occurrence; when it fires, NoteReminderReceiver shows the
  * notification and calls scheduleAll again to arm the one after.
  *
@@ -37,7 +33,6 @@ import java.util.Set;
  */
 public final class NoteReminderScheduler {
     private static final String TAG = "NoteReminders";
-    static final String DB_FILENAME = "notetrace_localSQLite.db";
     static final String PREFS = "notetrace_reminders";
     static final String CHANNEL_ID = "notetrace-reminders";
 
@@ -68,13 +63,6 @@ public final class NoteReminderScheduler {
         return prefs(ctx).getString("label_" + key, fallback);
     }
 
-    static SQLiteDatabase openDb(Context ctx, boolean writable) {
-        File f = ctx.getDatabasePath(DB_FILENAME);
-        if (!f.exists()) return null;
-        return SQLiteDatabase.openDatabase(f.getAbsolutePath(), null,
-            writable ? SQLiteDatabase.OPEN_READWRITE : SQLiteDatabase.OPEN_READONLY);
-    }
-
     static void ensureChannel(Context ctx) {
         NotificationManager nm = ctx.getSystemService(NotificationManager.class);
         if (nm == null) return;
@@ -100,27 +88,15 @@ public final class NoteReminderScheduler {
         long nowMs = System.currentTimeMillis();
 
         if (enabled(ctx)) {
-            SQLiteDatabase db = null;
-            Cursor c = null;
             try {
-                db = openDb(ctx, false);
-                if (db != null) {
-                    c = db.rawQuery(
-                        "SELECT id, reminder_at, reminder_rrule, reminder_tz FROM notes " +
-                        "WHERE reminder_at IS NOT NULL AND deleted_at IS NULL AND trashed_at IS NULL", null);
-                    while (c.moveToNext()) {
-                        long id = c.getLong(0);
-                        Long occ = nextToArm(ctx, id, c.getString(1), c.getString(2), c.getString(3), nowMs);
-                        if (occ == null) continue;
-                        arm(ctx, id, Math.max(occ, nowMs + 1000L), occ, false);
-                        now.add(String.valueOf(id));
-                    }
+                for (NoteReminderStore.Reminder r : NoteReminderStore.read(ctx)) {
+                    Long occ = nextToArm(ctx, r.id, r.at, r.rrule, r.tz, nowMs);
+                    if (occ == null) continue;
+                    arm(ctx, r.id, Math.max(occ, nowMs + 1000L), occ, false);
+                    now.add(String.valueOf(r.id));
                 }
             } catch (Exception e) {
                 Log.w(TAG, "scheduleAll failed: " + e.getMessage());
-            } finally {
-                if (c != null) c.close();
-                if (db != null) db.close();
             }
         }
 

@@ -47,7 +47,8 @@ export function parseMemo(memo, { userName = '' } = {}) {
   const state = memo.state || memo.rowStatus || 'NORMAL';
   if (state !== 'NORMAL' && state !== 'ARCHIVED' && state !== 'ACTIVE') return null;
 
-  const note = parseMarkdownNote('memo.md', memo.content, { tagsToLabels: true });
+  // No file name: a memo without a heading stays untitled.
+  const note = parseMarkdownNote('', memo.content, { tagsToLabels: true });
   const files = [];
   let otherFiles = 0;
   let links = '';

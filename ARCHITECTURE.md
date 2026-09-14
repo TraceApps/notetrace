@@ -85,16 +85,20 @@ IANA time zone it was set in, so a repeat keeps its wall-clock time
 across daylight saving (`nextOccurrence` in `src/lib/reminders.js`,
 mirrored in `server/lib/reminders.js`, both covered by tests).
 
-- **Android:** native exact alarms. `NoteReminderScheduler.java` reads
-  the notes straight from the on-device SQLite file and arms one
-  `setExactAndAllowWhileIdle` alarm per note for its next occurrence
-  (`ReminderMath.java`, a Java port of the JS math with the same test
-  cases). `NoteReminderReceiver` re-reads the note when the alarm fires,
-  so an edited or cleared reminder doesn't go off, shows the
-  notification, and arms the next one; Done writes a pending local
-  change for sync. `BootReceiver` re-arms after reboots, updates, and
-  clock or time zone changes. `src/lib/note-reminders.js` only tells the
-  native side when notes changed.
+- **Android:** native exact alarms. After every note change or sync,
+  `src/lib/note-reminders.js` hands the native side the full reminder
+  list (with notification text) and `NoteReminderStore` saves it to a
+  file. `NoteReminderScheduler.java` arms one `setExactAndAllowWhileIdle`
+  alarm per note for its next occurrence (`ReminderMath.java`, a Java
+  port of the JS math with the same test cases). `NoteReminderReceiver`
+  re-checks the latest list when the alarm fires, so an edited or cleared
+  reminder doesn't go off, shows the notification, and arms the next
+  one. Done queues the note id; the app clears the reminder through its
+  normal data layer when it next runs. `BootReceiver` re-arms after
+  reboots, updates, and clock or time zone changes. The native code never
+  opens the app's SQLite database: the Capacitor SQLite plugin ships its
+  own SQLite, and a second SQLite library in the same process can release
+  its file locks and corrupt the database.
 - **Browser:** `src/lib/web-reminders.js` shows due reminders while a
   NoteTrace tab is open, once per occurrence (recorded in
   localStorage). `public/sw-notifications.js` is imported into the
