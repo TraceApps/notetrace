@@ -18,7 +18,8 @@ const BY_VALUE = new Map(NOTE_COLORS.map(c => [c.value, c]));
 
 export function noteColorStyle(value) {
   const key = BY_VALUE.get(value || null)?.key || 'default';
-  return `--note-bg: var(--note-${key}-bg); --note-border: var(--note-${key}-border);`;
+  const glow = key === 'default' ? 'var(--accent)' : BY_VALUE.get(value).dot;
+  return `--note-bg: var(--note-${key}-bg); --note-border: var(--note-${key}-border); --note-glow: ${glow};`;
 }
 
 export function colorDot(value) {

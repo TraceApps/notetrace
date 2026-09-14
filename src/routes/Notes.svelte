@@ -338,6 +338,7 @@
         </button>
       {/if}
     </div>
+    <div class="toolbar-actions">
     {#if view !== 'reminders'}
       <button class="icon-btn layout-toggle" on:click={() => notesLayout.set(timeline ? 'grid' : 'timeline')}
         title={timeline ? $_('timeline.show_grid') : $_('timeline.show_timeline')}
@@ -350,6 +351,7 @@
         <span class="material-symbols-rounded">delete_sweep</span>{$_('notes.empty_trash')}
       </button>
     {/if}
+    </div>
   </div>
 
   <div class="notes-body">
@@ -468,18 +470,22 @@
   .notes-section.timeline .section-label { max-width: 720px; margin-left: auto; margin-right: auto; }
 
   .notes-page { --notes-max: 1680px; }
+  /* Search sits on the same center line and width as the capture bar, with
+     the view buttons to its right. Phones stack it as a plain row. */
   .notes-toolbar {
-    display: flex; align-items: center; gap: 12px;
+    display: grid; grid-template-columns: 1fr minmax(0, 600px) 1fr; align-items: center; gap: 12px;
     padding: 12px var(--page-px) 0;
     max-width: var(--notes-max); margin: 0 auto; width: 100%;
   }
+  .toolbar-actions { grid-column: 3; justify-self: start; display: flex; align-items: center; gap: 8px; }
   .search {
-    flex: 1; max-width: 560px;
+    grid-column: 2; width: 100%;
+    transition: border-color var(--dur-fast), box-shadow var(--dur-fast), background var(--dur-fast);
     height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 14px;
     background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-md);
     color: var(--text-3);
   }
-  .search:focus-within { border-color: var(--accent); background: var(--surface-1); }
+  .search:focus-within { border-color: var(--accent); background: var(--surface-1); box-shadow: 0 0 0 4px var(--accent-dim); }
   .search input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text-1); font-size: 15px; }
   .search input::-webkit-search-cancel-button { display: none; }
   .search-clear { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
@@ -501,7 +507,9 @@
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-md);
+    transition: border-color var(--dur-fast), box-shadow var(--dur-fast);
   }
+  .capture:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border-strong)); box-shadow: var(--shadow-md), 0 0 0 4px var(--accent-dim); }
   .capture-main {
     flex: 1; height: 100%; padding: 0 14px;
     text-align: left; font-size: 15px; color: var(--text-3);
@@ -546,6 +554,8 @@
   }
   .fab .material-symbols-rounded { font-size: 30px; }
   @media (max-width: 600px) {
+    .notes-toolbar { display: flex; }
+    .search { flex: 1; }
     .capture { display: none; }
     .fab { display: flex; }
     .notes-body { gap: 18px; padding-top: 16px; }

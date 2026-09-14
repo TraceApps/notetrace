@@ -12,15 +12,17 @@
   let width = 0;
   let ro;
   const GAP = 16;
+  const CARD_MAX = 300;
 
   $: minCard = width < 560 ? 150 : 236;
   $: gap = width < 560 ? 10 : GAP;
   $: columns = Math.max(1, Math.min(6, Math.floor((width + gap) / (minCard + gap)) || 1));
   $: cols = deal(notes, columns);
 
+  // Each card keeps its list position so the entrance can ripple in order.
   function deal(list, n) {
     const out = Array.from({ length: n }, () => []);
-    list.forEach((note, i) => out[i % n].push(note));
+    list.forEach((note, i) => out[i % n].push({ note, i }));
     return out;
   }
 
@@ -32,11 +34,11 @@
   onDestroy(() => ro?.disconnect());
 </script>
 
-<div class="note-grid" bind:this={el} style="--cols:{columns}; --gap:{gap}px">
+<div class="note-grid" bind:this={el} style="--cols:{columns}; --gap:{gap}px; --card-max:{width < 560 ? '1fr' : CARD_MAX + 'px'}">
   {#each cols as col, ci (ci)}
     <div class="note-col">
-      {#each col as note (note.id)}
-        <NoteCard {note} {view} on:open on:action on:toggleItem on:menu />
+      {#each col as { note, i } (note.id)}
+        <NoteCard {note} {view} index={i} on:open on:action on:toggleItem on:menu />
       {/each}
     </div>
   {/each}
@@ -45,7 +47,8 @@
 <style>
   .note-grid {
     display: grid;
-    grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+    grid-template-columns: repeat(var(--cols), minmax(0, var(--card-max)));
+    justify-content: center;
     gap: var(--gap);
     align-items: start;
   }

@@ -14,6 +14,8 @@
   export let note;
   /** 'notes' | 'archive' | 'trash' controls which quick actions show. */
   export let view = 'notes';
+  /** Position in the list, for the staggered entrance. */
+  export let index = 0;
 
   const dispatch = createEventDispatcher();
   const PREVIEW_ITEMS = 8;
@@ -21,6 +23,8 @@
   $: preview = note.kind === 'text' ? markdownToPreview(note.body_md) : '';
   $: openItems = (note.items || []).filter(i => !i.checked);
   $: checkedCount = (note.items || []).length - openItems.length;
+  $: totalItems = (note.items || []).length;
+  $: progress = totalItems ? checkedCount / totalItems : 0;
   $: shownItems = openItems.slice(0, PREVIEW_ITEMS);
   $: hiddenOpen = openItems.length - shownItems.length;
   $: noteLabels = (note.labels || []).map(id => $labelsById.get(id)).filter(Boolean);
@@ -32,6 +36,15 @@
   $: shared = isShared(note);
 
   function open() { dispatch('open', note); }
+
+  // A soft light follows the pointer on devices that hover. Set as CSS
+  // variables straight on the element, so it never re-renders the card.
+  function spotlight(e) {
+    if (e.pointerType !== 'mouse') return;
+    const r = e.currentTarget.getBoundingClientRect();
+    e.currentTarget.style.setProperty('--mx', `${e.clientX - r.left}px`);
+    e.currentTarget.style.setProperty('--my', `${e.clientY - r.top}px`);
+  }
   function onKey(e) {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
   }
@@ -49,7 +62,10 @@
 <div
   class="note-card"
   class:note-card-empty={empty}
-  style={noteColorStyle(note.color)}
+  class:colored={!!note.color}
+  class:is-pinned={note.pinned && (view === 'notes' || view === 'reminders')}
+  style="{noteColorStyle(note.color)} --i:{Math.min(index, 18)}"
+  on:pointermove={spotlight}
   tabindex="0"
   role="button"
   aria-label={note.title || $_('notes.untitled')}
@@ -104,6 +120,12 @@
     <p class="card-body card-placeholder">{$_('notes.empty_note')}</p>
   {/if}
 
+  {#if note.kind === 'checklist' && totalItems > 1 && checkedCount > 0}
+    <div class="card-progress" role="progressbar" aria-valuemin="0" aria-valuemax={totalItems} aria-valuenow={checkedCount}
+      aria-label={$_('notes.checked_items', { values: { count: checkedCount } })}>
+      <span style="width:{Math.round(progress * 100)}%"></span>
+    </div>
+  {/if}
   {#if noteLabels.length || note.reminder_at || shared || voice.length}
     <div class="card-chips">
       {#if voice.length}
@@ -164,16 +186,83 @@
     background: var(--note-bg);
     border: 1px solid var(--note-border);
     border-radius: var(--radius-lg);
+    background:
+      linear-gradient(165deg, var(--card-sheen) 0%, transparent 42%),
+      var(--note-bg);
+    box-shadow: var(--card-rest-shadow);
     color: var(--text-1);
     cursor: pointer;
     text-align: left;
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
-    transition: box-shadow var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out), border-color var(--dur-fast);
+    isolation: isolate;
+    transition:
+      transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      box-shadow 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      border-color 200ms ease;
+    animation: card-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+    animation-delay: calc(var(--i, 0) * 28ms);
+  }
+  @keyframes card-in {
+    from { opacity: 0; transform: translateY(10px) scale(0.985); }
+    to   { opacity: 1; transform: none; }
+  }
+  /* Colored notes carry a thin glow of their color along the top edge. */
+  .note-card::before {
+    content: '';
+    position: absolute; left: 14px; right: 14px; top: -1px; height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, transparent, var(--note-glow), transparent);
+    opacity: 0;
+    transition: opacity 260ms ease;
+    pointer-events: none;
+  }
+  .note-card.colored::before { opacity: 0.45; }
+  .note-card.is-pinned { border-color: color-mix(in srgb, var(--accent) 30%, var(--note-border)); }
+  /* Pointer spotlight, tinted with the note's color. */
+  .note-card::after {
+    content: '';
+    position: absolute; inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(260px circle at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, var(--note-glow) 14%, transparent), transparent 70%);
+    opacity: 0;
+    transition: opacity 260ms ease;
+    pointer-events: none;
+    z-index: -1;
   }
   @media (hover: hover) {
-    .note-card:hover { box-shadow: var(--shadow-md); border-color: var(--border-strong); }
+    .note-card:hover {
+      transform: translateY(-4px);
+      border-color: color-mix(in srgb, var(--note-glow) 45%, var(--note-border));
+      box-shadow:
+        var(--card-lift-shadow),
+        0 10px 30px -18px color-mix(in srgb, var(--note-glow) 70%, transparent);
+    }
+    .note-card:hover::before { opacity: 0.9; }
+    .note-card:hover::after { opacity: 1; }
+    .note-card:hover :global(.grid img) { transform: scale(1.035); }
+  }
+  .note-card :global(.grid img) { transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .note-card:active { transform: translateY(-1px) scale(0.99); transition-duration: 120ms; }
+  @media (prefers-reduced-motion: reduce) {
+    .note-card { animation: none; transition: box-shadow 160ms ease, border-color 160ms ease; }
+    .note-card:hover, .note-card:active { transform: none; }
+    .note-card:hover :global(.grid img) { transform: none; }
+  }
+  :global(html.no-animations) .note-card { animation: none; }
+  :global(html.no-animations) .note-card:hover,
+  :global(html.no-animations) .note-card:active { transform: none; }
+
+  .card-progress {
+    height: 3px; border-radius: 3px; overflow: hidden;
+    background: color-mix(in srgb, var(--text-1) 9%, transparent);
+    margin-top: -2px;
+  }
+  .card-progress span {
+    display: block; height: 100%; border-radius: inherit;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--note-glow) 70%, var(--accent)), var(--note-glow));
+    transition: width 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   .note-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
