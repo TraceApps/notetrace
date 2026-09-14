@@ -123,6 +123,11 @@ router.post('/:id/attachments', wrap((req, res) => {
   return note ? res.status(201).json(note) : notFound(res);
 }));
 
+router.patch('/:id/attachments/:uuid', wrap((req, res) => {
+  const note = Notes.updateAttachment(uid(req), idParam(req), req.params.uuid, req.body || {});
+  return note ? res.json(note) : res.status(404).json({ error: 'Attachment not found' });
+}));
+
 router.delete('/:id/attachments/:uuid', wrap((req, res) => {
   const note = Notes.deleteAttachment(uid(req), idParam(req), req.params.uuid);
   return note ? res.json(note) : notFound(res);

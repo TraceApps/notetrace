@@ -59,7 +59,7 @@ async function _hydrate(rows) {
     `SELECT note_id, uuid, text, checked, position FROM checklist_items
       WHERE note_id IN (${ph}) AND deleted_at IS NULL ORDER BY position ASC, id ASC`, ids);
   const files = await _q(
-    `SELECT note_id, uuid, url, mime, width, height, position FROM note_attachments
+    `SELECT note_id, uuid, url, mime, width, height, position, duration_ms, extracted_text FROM note_attachments
       WHERE note_id IN (${ph}) AND deleted_at IS NULL AND url != '' ORDER BY position ASC, id ASC`, ids);
   const links = await _q(
     `SELECT nl.note_id, nl.label_id FROM note_labels nl
@@ -73,7 +73,7 @@ async function _hydrate(rows) {
   const fileMap = new Map();
   for (const a of files) {
     if (!fileMap.has(a.note_id)) fileMap.set(a.note_id, []);
-    fileMap.get(a.note_id).push({ uuid: a.uuid, url: a.url, mime: a.mime, width: a.width, height: a.height, position: a.position });
+    fileMap.get(a.note_id).push({ uuid: a.uuid, url: a.url, mime: a.mime, width: a.width, height: a.height, position: a.position, duration_ms: a.duration_ms, extracted_text: a.extracted_text });
   }
   const labelMap = new Map();
   for (const l of links) {
@@ -124,8 +124,9 @@ function _searchClause(q) {
   for (const w of words.slice(0, 12)) {
     const like = `%${w.replace(/[%_]/g, '')}%`;
     parts.push(`(n.title LIKE ? OR n.body_md LIKE ? OR EXISTS (
-      SELECT 1 FROM checklist_items ci WHERE ci.note_id = n.id AND ci.deleted_at IS NULL AND ci.text LIKE ?))`);
-    args.push(like, like, like);
+      SELECT 1 FROM checklist_items ci WHERE ci.note_id = n.id AND ci.deleted_at IS NULL AND ci.text LIKE ?) OR EXISTS (
+      SELECT 1 FROM note_attachments na WHERE na.note_id = n.id AND na.deleted_at IS NULL AND na.extracted_text LIKE ?))`);
+    args.push(like, like, like, like);
   }
   return { sql: ' AND ' + parts.join(' AND '), args };
 }
@@ -221,9 +222,10 @@ async function _addAttachments(noteId, list, ts) {
       await _run(`UPDATE note_attachments SET deleted_at = NULL, updated_at = ?, sync_status = 'pending' WHERE id = ?`, [ts, existing.id]);
     } else {
       await _run(
-        `INSERT INTO note_attachments (uuid, user_id, note_id, url, mime, width, height, position, created_at, updated_at, sync_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
-        [uuid, LOCAL_USER_ID, noteId, String(a.url), a.mime || null, num(a.width), num(a.height), max + added + 1, ts, ts]);
+        `INSERT INTO note_attachments (uuid, user_id, note_id, url, mime, width, height, position, duration_ms, extracted_text, created_at, updated_at, sync_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+        [uuid, LOCAL_USER_ID, noteId, String(a.url), a.mime || null, num(a.width), num(a.height), max + added + 1, num(a.duration_ms),
+         typeof a.extracted_text === 'string' && a.extracted_text.trim() ? a.extracted_text : null, ts, ts]);
     }
     added++;
   }
@@ -519,6 +521,15 @@ export const NotesNative = {
   // Local mode: imports create local notes, so their images are local too.
   async importAddAttachments(noteId, list = []) {
     return NotesNative.addAttachments(noteId, list);
+  },
+
+  async updateAttachment(noteId, uuid, patch = {}) {
+    noteId = Number(noteId);
+    if ('extracted_text' in patch) {
+      await _run(`UPDATE note_attachments SET extracted_text = ?, updated_at = ?, sync_status = 'pending' WHERE uuid = ? AND note_id = ? AND deleted_at IS NULL`,
+        [typeof patch.extracted_text === 'string' ? patch.extracted_text : null, _now(), uuid, noteId]);
+    }
+    return _note(noteId);
   },
 
   async deleteAttachment(noteId, uuid) {

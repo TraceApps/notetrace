@@ -72,6 +72,7 @@ const router = express.Router();
 router.use('/api/data/import', express.json({ limit: '25mb' }));
 router.use('/api/sync/push',   express.json({ limit: '25mb' }));
 router.use('/api/notes/import', express.json({ limit: '25mb' }));
+router.use('/api/ai/read-image', express.json({ limit: '12mb' }));
 // Global cap: 1 MB. Prevents a single authed user from filling memory with
 // repeated large requests. Anything above belongs on a per-route opt-in.
 router.use(express.json({ limit: '1mb' }));

@@ -33,6 +33,11 @@
   import { ensureReminderPermission, rescheduleReminders } from '../../lib/note-reminders.js';
   import ShareDialog from './ShareDialog.svelte';
   import TraceActions from './TraceActions.svelte';
+  import VoiceRecorder from './VoiceRecorder.svelte';
+  import VoiceNotes from './VoiceNotes.svelte';
+  import { recordingSupported, uploadVoiceNote } from '../../lib/voice-recorder.js';
+  import { extractSupport, transcribeAudio, readImageText, fetchAttachmentBlob, isAudio, isImage } from '../../lib/ai-extract.js';
+  import { autoTranscribe, autoReadImages } from '../../stores/settings.js';
   import { traceReady } from '../../lib/trace-run.js';
   import AttachmentGrid from './AttachmentGrid.svelte';
   import ImageViewer from './ImageViewer.svelte';
@@ -85,8 +90,8 @@
   let queue = Promise.resolve();
   let saving = false;
   let showHistory = false;
-  let colorOpen = false, labelsOpen = false, reminderOpen = false, shareOpen = false, traceOpen = false;
-  let colorAnchor = null, labelsAnchor = null, reminderAnchor = null, shareAnchor = null, traceAnchor = null;
+  let colorOpen = false, labelsOpen = false, reminderOpen = false, shareOpen = false, traceOpen = false, recordOpen = false;
+  let colorAnchor = null, labelsAnchor = null, reminderAnchor = null, shareAnchor = null, traceAnchor = null, recordAnchor = null;
   let narrow = typeof window !== 'undefined' && window.innerWidth < 600;
 
   $: readOnly = trashed;
@@ -207,6 +212,75 @@
     });
   }
 
+  // ── Voice notes and text in images ────────────────────────────────
+  $: imageAttachments = attachments.filter(isImage);
+  $: voiceNotes = attachments.filter(isAudio);
+  let extracting = {};
+  const canRecord = recordingSupported();
+
+  function openRecorder(e) {
+    recordAnchor = e.currentTarget.getBoundingClientRect();
+    recordOpen = true;
+  }
+
+  async function onRecorded(e) {
+    recordOpen = false;
+    const rec = e.detail;
+    touched = true;
+    showInfo($_('voice.saving'));
+    let att;
+    try {
+      att = await uploadVoiceNote(rec);
+    } catch (err) {
+      showError(err.message || $_('notes.save_failed'));
+      return;
+    }
+    attachments = [...attachments, att];
+    await enqueue(async () => {
+      if (!noteId) { await ensureNote(); return; }
+      apply(await NoteApi.addAttachments(noteId, [att]));
+    });
+    if ($autoTranscribe && $extractSupport.transcribe) extractText(att, rec.blob);
+  }
+
+  /** Transcribe a voice note or read an image's text, then save it on the attachment. */
+  async function extractText(att, blob = null) {
+    if (extracting[att.uuid]) return;
+    extracting = { ...extracting, [att.uuid]: true };
+    try {
+      const file = blob || await fetchAttachmentBlob(att.url);
+      const text = isAudio(att) ? await transcribeAudio(file, att.mime || file.type) : await readImageText(file);
+      if (!text) { showInfo(isAudio(att) ? $_('trace_extract.no_speech') : $_('trace_extract.no_text')); return; }
+      attachments = attachments.map(a => a.uuid === att.uuid ? { ...a, extracted_text: text } : a);
+      await enqueue(async () => {
+        if (!noteId) return;
+        await NoteApi.updateAttachment(noteId, att.uuid, { extracted_text: text });
+      });
+    } catch (err) {
+      showError($_('trace_extract.failed', { values: { error: err.message || '' } }));
+    } finally {
+      const { [att.uuid]: _done, ...rest } = extracting;
+      extracting = rest;
+    }
+  }
+
+  /** Put a transcript or image text into the note: a paragraph, or checklist items. */
+  function addTextToNote(text) {
+    const clean = String(text || '').trim();
+    if (!clean || contentLocked) return;
+    viewerIndex = null;
+    if (kind === 'checklist') {
+      for (const line of clean.split('\n').map(l => l.trim()).filter(Boolean)) {
+        onItemAdd({ detail: { uuid: crypto.randomUUID?.() || String(Math.random()), text: line, position: (items.at(-1)?.position || 0) + 1 } });
+      }
+      editorKey++;
+      return;
+    }
+    body = body.trim() ? `${body.replace(/\s+$/, '')}\n\n${clean}` : clean;
+    editorKey++;
+    scheduleText();
+  }
+
   // ── Images ────────────────────────────────────────────────────────
   async function addImages(fileList) {
     const files = [...(fileList || [])].filter(isImageFile);
@@ -226,6 +300,9 @@
       if (!noteId) { await ensureNote(); return; }
       apply(await NoteApi.addAttachments(noteId, result.attachments));
     });
+    if ($autoReadImages && $extractSupport.readImages) {
+      for (const att of result.attachments) extractText(att);
+    }
   }
   function removeImage(e) {
     const uuid = e.detail;
@@ -427,7 +504,7 @@
   }
 
   function onKey(e) {
-    if (e.key === 'Escape' && viewerIndex == null && !colorOpen && !labelsOpen && !reminderOpen && !shareOpen && !traceOpen) {
+    if (e.key === 'Escape' && viewerIndex == null && !colorOpen && !labelsOpen && !reminderOpen && !shareOpen && !traceOpen && !recordOpen) {
       e.preventDefault();
       if (showHistory) showHistory = false;
       else close();
@@ -512,12 +589,14 @@
       </header>
 
       <div class="editor-scroll">
-        {#if attachments.length || uploading}
+        {#if imageAttachments.length || uploading}
           <div class="editor-images">
-            <AttachmentGrid {attachments} pending={uploading} editable={!contentLocked}
+            <AttachmentGrid attachments={imageAttachments} pending={uploading} editable={!contentLocked}
               on:open={(e) => viewerIndex = e.detail} on:remove={removeImage} />
           </div>
         {/if}
+        <VoiceNotes notes={voiceNotes} editable={!contentLocked} canTranscribe={$extractSupport.transcribe} busy={extracting}
+          on:remove={removeImage} on:transcribe={(e) => extractText(e.detail)} on:addtext={(e) => addTextToNote(e.detail)} />
         {#key editorKey}
           {#if kind === 'text'}
             <TipTapEditor bind:this={bodyRef} bind:value={body} editable={!contentLocked}
@@ -602,6 +681,11 @@
               <button class="icon-btn" on:click={() => imageInput.click()} title={$_('attachments.add_image')} aria-label={$_('attachments.add_image')}>
                 <span class="material-symbols-rounded">add_photo_alternate</span>
               </button>
+              {#if canRecord}
+                <button class="icon-btn" on:click={openRecorder} title={$_('voice.record')} aria-label={$_('voice.record')}>
+                  <span class="material-symbols-rounded">mic</span>
+                </button>
+              {/if}
               <button class="icon-btn" on:click={openColor} title={$_('notes.color')} aria-label={$_('notes.color')}>
                 <span class="material-symbols-rounded">palette</span>
               </button>
@@ -648,7 +732,9 @@
 <input bind:this={imageInput} class="note-image-input" type="file" accept="image/*" multiple hidden
   on:change={(e) => { addImages(e.target.files); e.target.value = ''; }} />
 {#if viewerIndex != null}
-  <ImageViewer {attachments} index={viewerIndex} on:close={() => viewerIndex = null} />
+  <ImageViewer attachments={imageAttachments} index={viewerIndex} canRead={$extractSupport.readImages && !contentLocked}
+    canAdd={!contentLocked} busy={extracting}
+    on:read={(e) => extractText(e.detail)} on:addtext={(e) => addTextToNote(e.detail)} on:close={() => viewerIndex = null} />
 {/if}
 
 <Popover bind:open={colorOpen} anchor={colorAnchor}>
@@ -657,6 +743,11 @@
 <Popover bind:open={reminderOpen} anchor={reminderAnchor}>
   <ReminderPicker reminderAt={reminderAt} repeat={reminderRepeat} tz={reminderTz}
     on:set={(e) => setReminder(e.detail)} on:clear={clearReminder} />
+</Popover>
+<Popover bind:open={recordOpen} anchor={recordAnchor}>
+  {#if recordOpen}
+    <VoiceRecorder on:done={onRecorded} on:cancel={() => recordOpen = false} />
+  {/if}
 </Popover>
 <Popover bind:open={traceOpen} anchor={traceAnchor}>
   {#if traceOpen}

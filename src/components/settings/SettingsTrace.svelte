@@ -1,6 +1,6 @@
 <script>
   import { _ } from 'svelte-i18n';
-  import { aiEnabled, aiProvider, aiApiKey, aiModel, aiBaseUrl, aiAssistantName, aiKeyVerified, smartLogEnabled, envLocks as envLocksStore } from '../../stores/settings.js';
+  import { aiEnabled, aiProvider, aiApiKey, aiModel, aiBaseUrl, aiAssistantName, aiKeyVerified, smartLogEnabled, autoTranscribe, autoReadImages, aiTranscribeModel, envLocks as envLocksStore } from '../../stores/settings.js';
   import { AI_PROVIDERS, AI_DEFAULT_MODELS, AI_MODELS, AI_MODEL_CUSTOM, callAI, callAIProxy } from '../../lib/aiChat.js';
   import { showError, showSuccess } from '../../stores/toast.js';
   import ConnectionStatus from './ConnectionStatus.svelte';
@@ -311,6 +311,35 @@
         on:change={e => smartLogEnabled.set(e.target.checked)} />
     </div>
 
+    <!-- Voice notes and images -->
+    <div class="setting-divider"></div>
+    <div class="setting-row">
+      <div>
+        <span class="setting-label">{$_('trace_extract.auto_transcribe')}</span>
+        <span class="setting-desc">{$_('trace_extract.auto_transcribe_desc')}</span>
+      </div>
+      <input type="checkbox" class="toggle-cb" checked={$autoTranscribe} on:change={e => autoTranscribe.set(e.target.checked)} />
+    </div>
+    {#if $aiProvider === 'custom' || $aiProvider === 'openai'}
+      <div class="setting-row">
+        <div>
+          <span class="setting-label">{$_('trace_extract.transcribe_model')}</span>
+          <span class="setting-desc">{$_('trace_extract.transcribe_model_desc')}</span>
+        </div>
+        <input class="input model-input" type="text" spellcheck="false" autocapitalize="none"
+          placeholder={$aiProvider === 'openai' ? 'gpt-4o-mini-transcribe' : 'whisper-1'}
+          value={$aiTranscribeModel} on:change={e => aiTranscribeModel.set(e.target.value.trim())} />
+      </div>
+    {/if}
+    <div class="setting-divider"></div>
+    <div class="setting-row">
+      <div>
+        <span class="setting-label">{$_('trace_extract.auto_read_images')}</span>
+        <span class="setting-desc">{$_('trace_extract.auto_read_images_desc')}</span>
+      </div>
+      <input type="checkbox" class="toggle-cb" checked={$autoReadImages} on:change={e => autoReadImages.set(e.target.checked)} />
+    </div>
+
     <!-- Status row — Save runs the test on each click, so this is a
          The connection status banner at the top of this card is the
          single source of truth for AI connection state — Re-test lives
@@ -358,6 +387,7 @@
   .key-row { display: flex; gap: 6px; align-items: center; }
   .key-row > * { height: 40px; box-sizing: border-box; }
   .key-row .input { flex: 1; font-family: monospace; }
+  .model-input { width: 200px; max-width: 45%; }
   .save-btn {
     font-size: 13px;
     white-space: nowrap;

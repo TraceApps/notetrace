@@ -90,6 +90,8 @@ const SCHEMA = `
     width       INTEGER,
     height      INTEGER,
     position    REAL NOT NULL DEFAULT 0,
+    duration_ms INTEGER,
+    extracted_text TEXT,
     created_at  TEXT DEFAULT (datetime('now')),
     updated_at  TEXT DEFAULT (datetime('now')),
     deleted_at  TEXT DEFAULT NULL,
@@ -244,6 +246,10 @@ async function _migrateShareColumns() {
     if (!have.has('share_role')) await db.run(`ALTER TABLE notes ADD COLUMN share_role TEXT DEFAULT 'owner'`);
     if (!have.has('share_owner')) await db.run(`ALTER TABLE notes ADD COLUMN share_owner TEXT`);
     if (!have.has('share_count')) await db.run(`ALTER TABLE notes ADD COLUMN share_count INTEGER DEFAULT 0`);
+    const att = await db.query(`PRAGMA table_info(note_attachments)`);
+    const attCols = new Set((att?.values || []).map(c => c.name));
+    if (attCols.size && !attCols.has('duration_ms')) await db.run(`ALTER TABLE note_attachments ADD COLUMN duration_ms INTEGER`);
+    if (attCols.size && !attCols.has('extracted_text')) await db.run(`ALTER TABLE note_attachments ADD COLUMN extracted_text TEXT`);
   } catch { /* best-effort */ }
 }
 

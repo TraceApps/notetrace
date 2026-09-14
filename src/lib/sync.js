@@ -295,7 +295,12 @@ async function _uploadFromFileUri(fileUri) {
   if (!blob) return null;
   const nameMatch = fileUri.match(/[^/]+$/);
   const name = nameMatch ? nameMatch[0] : 'photo.jpg';
-  const file = new File([blob], name, { type: blob.type });
+  // The file reader often reports no type; the server only accepts images,
+  // audio (voice notes), and video, so infer it from the extension.
+  const ext = (name.split('.').pop() || '').toLowerCase();
+  const byExt = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic',
+    webm: 'audio/webm', ogg: 'audio/ogg', m4a: 'audio/mp4', mp4: 'audio/mp4', mp3: 'audio/mpeg', wav: 'audio/wav', aac: 'audio/aac' };
+  const file = new File([blob], name, { type: blob.type || byExt[ext] || 'application/octet-stream' });
   // Hit /api/upload directly (bypassing NoteApi.uploadImage's local
   // fallback — we don't want the fallback here because the whole
   // point is to promote a local URL to a portable server one; a

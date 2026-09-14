@@ -21,7 +21,7 @@ import { parseMarkdownNote, noteToMarkdown, exportFileName } from './markdown.js
 const BATCH = 200;
 const MD_RE = /\.(md|markdown|txt)$/i;
 const MIME_BY_EXT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', heic: 'image/heic', heif: 'image/heif', avif: 'image/avif' };
-const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'image/bmp': 'bmp', 'image/heic': 'heic', 'image/avif': 'avif' };
+const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'image/bmp': 'bmp', 'image/heic': 'heic', 'image/avif': 'avif', 'audio/webm': 'webm', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/wav': 'wav' };
 
 async function _jszip() {
   const mod = await import('jszip');
@@ -209,15 +209,23 @@ export async function buildMarkdownExport(onProgress) {
   for (const [folder, note] of all) {
     const names = (note.labels || []).map(id => labelName.get(id)).filter(Boolean);
     const imagePaths = [];
+    const voiceLines = [];
     for (const a of note.attachments || []) {
       const blob = await _fetchImage(a.url);
       if (!blob) { imagesMissing++; continue; }
-      const ext = EXT_BY_MIME[a.mime || blob.type] || (String(a.url).split('.').pop() || 'img').replace(/[^a-z0-9]/gi, '').slice(0, 5);
+      const ext = EXT_BY_MIME[(a.mime || blob.type || '').split(';')[0]] || (String(a.url).split('.').pop() || 'bin').replace(/[^a-z0-9]/gi, '').slice(0, 5);
       const file = `${a.uuid}.${ext}`;
       zip.file(`NoteTrace/attachments/${file}`, blob);
-      imagePaths.push(`../attachments/${file}`);
+      if (/^audio\//i.test(a.mime || blob.type)) {
+        // Voice notes: a link to the recording, with its transcript quoted below.
+        voiceLines.push(`[Voice note](../attachments/${encodeURI(file)})${a.extracted_text ? `\n\n${a.extracted_text.split('\n').map(l => `> ${l}`).join('\n')}` : ''}`);
+      } else {
+        imagePaths.push(`../attachments/${file}`);
+      }
     }
-    zip.file(`NoteTrace/${folder}/${exportFileName(note, used[folder])}`, noteToMarkdown(note, names, imagePaths));
+    let md = noteToMarkdown(note, names, imagePaths);
+    if (voiceLines.length) md = `${md.replace(/\n+$/, '')}\n\n${voiceLines.join('\n\n')}\n`;
+    zip.file(`NoteTrace/${folder}/${exportFileName(note, used[folder])}`, md);
     count++;
     onProgress?.(count, all.length);
   }

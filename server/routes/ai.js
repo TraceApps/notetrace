@@ -5,6 +5,8 @@ import { getAiConfig } from '../ai.js';
 import { makeRateLimiter } from '../middleware/rate-limit.js';
 import { getOpenAIChatParams } from '../lib/openai-chat-params.js';
 import db from '../db.js';
+import multer from 'multer';
+import { transcribeAudio, readImageText } from '../lib/ai-extract.js';
 
 const router = Router();
 const aiChatLimit = makeRateLimiter({ max: 30, windowMs: 60_000, label: 'ai' });
@@ -96,6 +98,45 @@ function _normaliseImagePartsToOpenAI(msg) {
   });
   return { ...msg, content: normalised };
 }
+
+// Transcription and image text through the server's provider, for installs
+// where Trace is set by environment variables. The browser calls the user's
+// own provider directly otherwise (src/lib/ai-extract.js).
+function _serverCfg() {
+  const cfg = getAiConfig();
+  const provider = cfg.ai_provider || 'claude';
+  return {
+    provider,
+    apiKey: cfg.ai_api_key,
+    model: cfg.ai_model || AI_DEFAULT_MODELS[provider] || '',
+    baseUrl: cfg.ai_base_url,
+    transcribeModel: process.env.AI_TRANSCRIBE_MODEL || '',
+  };
+}
+const _audioUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
+router.post('/transcribe', requireAuth, aiChatLimit, (req, res, next) => {
+  _audioUpload.single('file')(req, res, async (err) => {
+    try {
+      if (err) return res.status(413).json({ error: 'Voice notes up to 25 MB can be transcribed.' });
+      if (!req.file || !/^audio\//.test(req.file.mimetype)) return res.status(400).json({ error: 'An audio file is required' });
+      const text = await transcribeAudio(_serverCfg(), { buffer: req.file.buffer, mime: req.file.mimetype, filename: req.file.originalname || 'voice-note.webm' });
+      res.json({ text });
+    } catch (e) {
+      res.status(502).json({ error: e.message || 'Transcription failed' });
+    }
+  });
+});
+
+router.post('/read-image', requireAuth, aiChatLimit, wrap(async (req, res) => {
+  const { base64, mime } = req.body || {};
+  if (typeof base64 !== 'string' || !/^image\/[a-z0-9.+-]+$/i.test(String(mime))) return res.status(400).json({ error: 'base64 and an image mime are required' });
+  try {
+    res.json({ text: await readImageText(_serverCfg(), { base64, mime }) });
+  } catch (e) {
+    res.status(502).json({ error: e.message || 'Reading the image failed' });
+  }
+}));
 
 router.post('/chat', requireAuth, aiChatLimit, wrap(async (req, res) => {
   const { messages: rawMessages, systemPrompt } = req.body;

@@ -7,6 +7,8 @@
   import { longpress } from '../../lib/long-press.js';
   import ReminderChip from './ReminderChip.svelte';
   import AttachmentGrid from './AttachmentGrid.svelte';
+  import { isAudio, isImage } from '../../lib/ai-extract.js';
+  import { formatDuration } from '../../lib/voice-recorder.js';
   import { isOwner, canEdit, isShared } from '../../lib/note-sharing.js';
 
   export let note;
@@ -22,8 +24,9 @@
   $: shownItems = openItems.slice(0, PREVIEW_ITEMS);
   $: hiddenOpen = openItems.length - shownItems.length;
   $: noteLabels = (note.labels || []).map(id => $labelsById.get(id)).filter(Boolean);
-  $: images = note.attachments || [];
-  $: empty = !note.title && !preview && !(note.items || []).length && !images.length;
+  $: images = (note.attachments || []).filter(isImage);
+  $: voice = (note.attachments || []).filter(isAudio);
+  $: empty = !note.title && !preview && !(note.items || []).length && !images.length && !voice.length;
   $: owner = isOwner(note);
   $: editable = canEdit(note);
   $: shared = isShared(note);
@@ -101,8 +104,11 @@
     <p class="card-body card-placeholder">{$_('notes.empty_note')}</p>
   {/if}
 
-  {#if noteLabels.length || note.reminder_at || shared}
+  {#if noteLabels.length || note.reminder_at || shared || voice.length}
     <div class="card-chips">
+      {#if voice.length}
+        <span class="chip"><span class="material-symbols-rounded chip-icon">mic</span>{voice.length > 1 ? `${voice.length} · ` : ''}{formatDuration(voice.reduce((t, a) => t + (a.duration_ms || 0), 0))}</span>
+      {/if}
       {#if shared}
         <span class="chip" title={owner ? $_('sharing.shared_with', { values: { count: note.share_count } }) : $_('sharing.shared_by', { values: { name: note.share_owner || '' } })}>
           <span class="material-symbols-rounded chip-icon">group</span>{owner ? note.share_count : (note.share_owner || '')}

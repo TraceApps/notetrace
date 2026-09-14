@@ -79,14 +79,14 @@ function _attachmentsFor(noteIds) {
   if (!noteIds.length) return new Map();
   const ph = noteIds.map(() => '?').join(',');
   const rows = db.prepare(
-    `SELECT note_id, uuid, url, mime, width, height, position FROM note_attachments
+    `SELECT note_id, uuid, url, mime, width, height, position, duration_ms, extracted_text FROM note_attachments
       WHERE note_id IN (${ph}) AND deleted_at IS NULL AND url != ''
       ORDER BY position ASC, id ASC`
   ).all(...noteIds);
   const map = new Map();
   for (const r of rows) {
     if (!map.has(r.note_id)) map.set(r.note_id, []);
-    map.get(r.note_id).push({ uuid: r.uuid, url: r.url, mime: r.mime, width: r.width, height: r.height, position: r.position });
+    map.get(r.note_id).push({ uuid: r.uuid, url: r.url, mime: r.mime, width: r.width, height: r.height, position: r.position, duration_ms: r.duration_ms, extracted_text: r.extracted_text });
   }
   return map;
 }
@@ -646,12 +646,13 @@ function _addAttachments(ownerOrU, noteId, list, ts) {
     const uuid = typeof a.uuid === 'string' && a.uuid ? a.uuid.slice(0, 64) : randomUUID();
     const num = v => (Number.isFinite(+v) && +v > 0 ? Math.round(+v) : null);
     db.prepare(
-      `INSERT INTO note_attachments (uuid, user_id, note_id, url, mime, width, height, position, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO note_attachments (uuid, user_id, note_id, url, mime, width, height, position, duration_ms, extracted_text, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(uuid) DO UPDATE SET deleted_at = NULL, updated_at = excluded.updated_at
        WHERE note_attachments.note_id = excluded.note_id`
     ).run(uuid, owner, noteId, url, typeof a.mime === 'string' ? a.mime.slice(0, 100) : null,
-          num(a.width), num(a.height), max + added + 1, ts, ts);
+          num(a.width), num(a.height), max + added + 1, num(a.duration_ms),
+          typeof a.extracted_text === 'string' && a.extracted_text.trim() ? a.extracted_text.slice(0, 50000) : null, ts, ts);
     added++;
   }
   return added;
@@ -664,6 +665,17 @@ export const addAttachments = db.transaction((u, noteId, list) => {
   const ts = now();
   if (_addAttachments(u, noteId, list, ts)) _touch(noteId, ts);
   return getNote(u, noteId);
+});
+
+/** Save a voice note's transcript or an image's text (owner or edit member). */
+export const updateAttachment = db.transaction((u, noteId, uuid, patch = {}) => {
+  const row = _editableRow(u, noteId);
+  if (!row) return null;
+  if (!('extracted_text' in patch)) return getNote(u, noteId);
+  const text = typeof patch.extracted_text === 'string' ? patch.extracted_text.slice(0, 50000) : null;
+  const r = db.prepare(`UPDATE note_attachments SET extracted_text = ?, updated_at = ? WHERE uuid = ? AND note_id = ? AND deleted_at IS NULL`)
+    .run(text, now(), uuid, noteId);
+  return r.changes ? getNote(u, noteId) : null;
 });
 
 export const deleteAttachment = db.transaction((u, noteId, uuid) => {

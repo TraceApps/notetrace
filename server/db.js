@@ -315,6 +315,42 @@ function columnExists(table, col) {
   return db.prepare(`PRAGMA table_info(${table})`).all().some(r => r.name === col);
 }
 
+// Voice notes and text read out of images: extracted_text is a voice note's
+// transcript or an image's text (searchable); duration_ms is a voice note's length.
+if (!columnExists('note_attachments', 'duration_ms')) db.exec(`ALTER TABLE note_attachments ADD COLUMN duration_ms INTEGER`);
+if (!columnExists('note_attachments', 'extracted_text')) db.exec(`ALTER TABLE note_attachments ADD COLUMN extracted_text TEXT`);
+
+// Search covers transcripts and image text too.
+{
+  const refresh = (noteIdExpr) => `
+    DELETE FROM notes_fts WHERE rowid = ${noteIdExpr};
+    INSERT INTO notes_fts (rowid, title, body, items)
+      SELECT n.id, n.title, n.body_md,
+             COALESCE((SELECT group_concat(ci.text, ' ') FROM checklist_items ci
+                        WHERE ci.note_id = n.id AND ci.deleted_at IS NULL), '') || ' ' ||
+             COALESCE((SELECT group_concat(na.extracted_text, ' ') FROM note_attachments na
+                        WHERE na.note_id = n.id AND na.deleted_at IS NULL AND na.extracted_text IS NOT NULL), '')
+        FROM notes n WHERE n.id = ${noteIdExpr} AND n.deleted_at IS NULL;`;
+  // Recreated every start (not IF NOT EXISTS) so databases made before this
+  // column get the index rows that include it.
+  db.exec(`
+    DROP TRIGGER IF EXISTS trg_notes_fts_ins;
+    DROP TRIGGER IF EXISTS trg_notes_fts_upd;
+    DROP TRIGGER IF EXISTS trg_items_fts_ins;
+    DROP TRIGGER IF EXISTS trg_items_fts_upd;
+    DROP TRIGGER IF EXISTS trg_items_fts_del;
+    DROP TRIGGER IF EXISTS trg_attachments_fts_ins;
+    DROP TRIGGER IF EXISTS trg_attachments_fts_upd;
+    CREATE TRIGGER trg_notes_fts_ins AFTER INSERT ON notes BEGIN ${refresh('NEW.id')} END;
+    CREATE TRIGGER trg_notes_fts_upd AFTER UPDATE OF title, body_md, deleted_at ON notes BEGIN ${refresh('NEW.id')} END;
+    CREATE TRIGGER trg_items_fts_ins AFTER INSERT ON checklist_items BEGIN ${refresh('NEW.note_id')} END;
+    CREATE TRIGGER trg_items_fts_upd AFTER UPDATE OF text, note_id, deleted_at ON checklist_items BEGIN ${refresh('NEW.note_id')} END;
+    CREATE TRIGGER trg_items_fts_del AFTER DELETE ON checklist_items BEGIN ${refresh('OLD.note_id')} END;
+    CREATE TRIGGER trg_attachments_fts_ins AFTER INSERT ON note_attachments WHEN NEW.extracted_text IS NOT NULL BEGIN ${refresh('NEW.note_id')} END;
+    CREATE TRIGGER trg_attachments_fts_upd AFTER UPDATE OF extracted_text, deleted_at ON note_attachments BEGIN ${refresh('NEW.note_id')} END;
+  `);
+}
+
 // Reminder repeats are evaluated in the timezone the reminder was set in,
 // so "daily at 8:00" stays at 8:00 across daylight-saving changes.
 if (!columnExists('notes', 'reminder_tz')) db.exec(`ALTER TABLE notes ADD COLUMN reminder_tz TEXT`);

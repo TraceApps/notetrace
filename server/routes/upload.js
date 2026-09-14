@@ -29,7 +29,8 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) return cb(null, true);
     if (file.mimetype.startsWith('video/')) return cb(null, true);
-    cb(new Error('Images or videos only'));
+    if (file.mimetype.startsWith('audio/')) return cb(null, true);
+    cb(new Error('Images, audio, or videos only'));
   },
 });
 
@@ -45,7 +46,7 @@ router.post('/', uploadLimit, (req, res, next) => {
     // gated and the MIME prefix already filtered for video/*; magic-byte
     // identification across mp4/webm/mov/m4v variants is messy enough
     // that we trust the (authenticated) client here.
-    if ((req.file.mimetype || '').startsWith('video/')) {
+    if (/^(video|audio)\//.test(req.file.mimetype || '')) {
       return res.json({ url: `/uploads/${req.file.filename}` });
     }
 
