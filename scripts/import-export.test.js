@@ -236,3 +236,84 @@ test('memos: other people\'s memos, comments, and old-API resources', () => {
   assert.equal(memosBaseUrl('memos.home.lan/'), 'https://memos.home.lan');
   assert.equal(memosBaseUrl('http://10.0.0.5:5230//'), 'http://10.0.0.5:5230');
 });
+
+import { createHash } from 'node:crypto';
+import { DOMParser as XmlDomParser } from '@xmldom/xmldom';
+import { md5Hex, base64ToBytes } from '../src/lib/import-export/md5.js';
+import { parseEnex, enexDate, notebookFromFileName } from '../src/lib/import-export/evernote.js';
+
+const parseXml = (s, mime) => new XmlDomParser({ onError: () => {} }).parseFromString(s, mime);
+const PNG_B64 = 'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEklEQVR4nGP4z8DwnwEIGGEMAB3gA/1cYUXVAAAAAElFTkSuQmCC';
+
+test('md5 matches node crypto', () => {
+  for (const s of ['', 'a', 'The quick brown fox jumps over the lazy dog', 'x'.repeat(1000)]) {
+    assert.equal(md5Hex(new TextEncoder().encode(s)), createHash('md5').update(s).digest('hex'));
+  }
+  const png = base64ToBytes(PNG_B64);
+  assert.equal(md5Hex(png), createHash('md5').update(Buffer.from(PNG_B64, 'base64')).digest('hex'));
+});
+
+const pngHash = createHash('md5').update(Buffer.from(PNG_B64, 'base64')).digest('hex');
+const enex = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE en-export SYSTEM "http://xml.evernote.com/pub/evernote-export4.dtd">
+<en-export export-date="20260901T120000Z" application="Evernote" version="10.100">
+  <note>
+    <title>Kitchen reno &amp; budget</title>
+    <created>20250115T103000Z</created>
+    <updated>20250220T081500Z</updated>
+    <tag>Home</tag><tag>Projects</tag>
+    <note-attributes>
+      <source-url>https://example.com/cabinets</source-url>
+      <reminder-time>20990101T090000Z</reminder-time>
+    </note-attributes>
+    <content><![CDATA[<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd">
+<en-note><div>Quote from <b>Acme</b>:&nbsp;<a href="https://acme.test/q">see quote</a></div><div>Total 5 * 3 = 15_000</div><div><br/></div><en-media hash="${pngHash}" type="image/png"/><ul><li>Cabinets</li><li>Counters<ul><li>Quartz</li></ul></li></ul><div><en-todo checked="true"/>Measure</div><div><en-todo checked="false"/>Order tiles</div><table><tr><td>Item</td><td>Cost</td></tr><tr><td>Sink</td><td>$300</td></tr></table></en-note>]]></content>
+    <resource>
+      <data encoding="base64">${PNG_B64.replace(/(.{20})/g, '$1\n')}</data>
+      <mime>image/png</mime><width>2</width><height>2</height>
+      <resource-attributes><file-name>sketch.png</file-name></resource-attributes>
+    </resource>
+    <resource>
+      <data encoding="base64">JVBERi0xLjQK</data>
+      <mime>application/pdf</mime>
+      <resource-attributes><file-name>quote.pdf</file-name></resource-attributes>
+    </resource>
+  </note>
+  <note>
+    <title>Packing</title>
+    <created>20250301T000000Z</created>
+    <content><![CDATA[<en-note><ul style="--en-todo:true;"><li style="--en-checked:true;"><div>Passport</div></li><li style="--en-checked:false;"><div>Charger</div></li></ul></en-note>]]></content>
+    <task><title>Book taxi</title><taskStatus>open</taskStatus></task>
+  </note>
+  <note>
+    <title>Old reminder</title>
+    <content><![CDATA[<en-note><div>text</div></en-note>]]></content>
+    <note-attributes><reminder-time>20200101T090000Z</reminder-time></note-attributes>
+  </note>
+</en-export>`;
+
+test('evernote: text, formatting, lists, todos, tables, images by hash, tags, notebook, reminder', () => {
+  const r = parseEnex(enex, { parseXml, notebook: notebookFromFileName('exports/Home Projects.enex') });
+  assert.equal(r.notes.length, 3);
+  assert.equal(r.attachments, 1, 'the PDF is counted');
+  const [a, b, c] = r.notes;
+  assert.equal(a.title, 'Kitchen reno & budget');
+  assert.equal(a.kind, 'text');
+  assert.equal(a.created_at, '2025-01-15 10:30:00');
+  assert.equal(a.updated_at, '2025-02-20 08:15:00');
+  assert.deepEqual(a.labels, ['Home', 'Projects', 'Home Projects']);
+  assert.equal(a.reminder_at, '2099-01-01 09:00:00');
+  assert.deepEqual(a.files.map(f => f.name), ['sketch.png']);
+  assert.equal(a.body_md, [
+    'Quote from **Acme**: [see quote](https://acme.test/q)  \nTotal 5 \\* 3 = 15\\_000',
+    '- Cabinets\n- Counters\n  - Quartz\n- [x] Measure\n- [ ] Order tiles',
+    'Item | Cost  \nSink | $300',
+    'https://example.com/cabinets',
+  ].join('\n\n'));
+  assert.equal(b.kind, 'checklist');
+  assert.deepEqual(b.items, [{ text: 'Passport', checked: true }, { text: 'Charger', checked: false }, { text: 'Book taxi', checked: false }]);
+  assert.equal(c.reminder_at, null, 'past reminders are dropped');
+  assert.equal(enexDate('20250115T103000Z'), '2025-01-15 10:30:00');
+  assert.equal(notebookFromFileName('Evernote.enex'), '');
+});

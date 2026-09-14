@@ -122,7 +122,7 @@ back any row that still points at a device-local file.
 
 ### Imports parse on the client
 
-Google Keep, Blinko, Memos, and Markdown imports are read and parsed in
+Google Keep, Evernote, Blinko, Memos, and Markdown imports are read and parsed in
 the browser or WebView (`src/lib/import-export/`, pure modules with
 tests) and sent in batches to `POST /api/notes/import`, or written
 straight to the on-device database in Android local mode. Memos is read

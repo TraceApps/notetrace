@@ -1,6 +1,6 @@
 /**
- * import-export/index.js: import notes from Google Keep (Takeout), Blinko,
- * or Markdown files, and export every note as a Markdown ZIP.
+ * import-export/index.js: import notes from Google Keep (Takeout), Evernote,
+ * Blinko, or Markdown files, and export every note as a Markdown ZIP.
  *
  * Files are read in the browser / WebView (JSZip), parsed by the pure
  * modules next to this one, and handed to NoteApi.importNotes in
@@ -14,6 +14,8 @@ import { isNative, getServerUrl, resolveAssetUrl } from '../platform.js';
 import { uploadNoteImages } from '../note-images.js';
 import { parseKeepNote } from './keep.js';
 import { parseBlinkoBackup, isBlinkoBackup } from './blinko.js';
+import { parseEnex, notebookFromFileName } from './evernote.js';
+import { base64ToBytes } from './md5.js';
 import { parseMarkdownNote, noteToMarkdown, exportFileName } from './markdown.js';
 
 const BATCH = 200;
@@ -32,8 +34,8 @@ const _isZip = (file) => /\.(zip|bko)$/i.test(file.name) || file.type === 'appli
 
 /**
  * Parse an import file without saving anything.
- *   source: 'keep' | 'markdown' | 'blinko'
- *   options: { includeTrashed, tagsToLabels }
+ *   source: 'keep' | 'markdown' | 'blinko' | 'evernote'
+ *   options: { includeTrashed, tagsToLabels, username, labelNotebook }
  * Returns { notes, attachments, unreadable, trashedSkipped, readFile }.
  * readFile(ref) resolves an image a note refers to as a File, or null.
  */
@@ -63,6 +65,14 @@ export async function parseImportFile(file, source, options = {}) {
       if (r.note.trashed && !options.includeTrashed) { trashedSkipped++; continue; }
       notes.push(r.note);
     }
+  } else if (source === 'evernote') {
+    const parseXml = (s, mime) => new DOMParser().parseFromString(s, mime);
+    for (const { path, text } of await texts(p => /\.enex$/i.test(p))) {
+      const r = parseEnex(text, { parseXml, notebook: notebookFromFileName(path), labelNotebook: options.labelNotebook !== false });
+      notes.push(...r.notes);
+      attachments += r.attachments;
+      unreadable += r.unreadable;
+    }
   } else if (source === 'blinko') {
     const [backup] = await texts(p => /(^|\/)bak\.json$/i.test(p));
     if (!backup) return { notes, attachments, unreadable, trashedSkipped, readFile: async () => null, notBlinko: true };
@@ -87,7 +97,13 @@ export async function parseImportFile(file, source, options = {}) {
   }
 
   async function readFile(ref) {
-    if (!zip || !ref) return null;
+    if (!ref) return null;
+    // Evernote carries attachments inside the file as base64.
+    if (ref.data) {
+      try { return new File([base64ToBytes(ref.data)], ref.name || 'image', { type: ref.mime || 'image/jpeg' }); }
+      catch { return null; }
+    }
+    if (!zip) return null;
     const entry = (ref.path && byPath.get(ref.path)) || byName.get(String(ref.name || ref.path || '').split('/').pop().toLowerCase());
     if (!entry) return null;
     const blob = await entry.async('blob');

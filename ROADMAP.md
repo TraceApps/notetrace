@@ -40,6 +40,7 @@ Items marked ~~strikethrough~~ have been implemented.
 - ~~Google Takeout import (Google Keep notes, checklists, images, drawings, labels, colors, links)~~
 - ~~Markdown import (Obsidian, Joplin, and other Markdown exports), with images~~
 - ~~Memos import from a Memos server~~
+- ~~Evernote import (.enex, with images, checklists, tags, and reminders)~~
 - ~~Blinko backup import~~
 - ~~Markdown ZIP export, with images~~
 - ~~Image attachments on notes~~

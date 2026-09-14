@@ -199,7 +199,7 @@
     ai:            ['ai','trace','assistant','provider','model','custom model','model id','api key','chat','claude','openai','gemini','sonnet','opus','haiku','gpt','gemini 3','base url','artificial intelligence','smart log','smartlog','quick log','voice','dictate','hold to record','mic'],
     notifications: ['notifications','reminders','cook day','thaw','alerts','push','apprise','gotify','ntfy','expiration','expiry','expires','expiring','pantry expiry','digest','weekly summary','shopping nudge'],
     email:         ['email','smtp','mail','password reset','invite','from address','tls','outgoing','send test','test email','recipient','test recipient','connection status','change password','change smtp'],
-    importexport:  ['import','export','google keep','keep','takeout','markdown','obsidian','memos','joplin','blinko','bko','usememos','zip','migrate','move from','images'],
+    importexport:  ['import','export','google keep','keep','takeout','markdown','obsidian','memos','joplin','blinko','bko','usememos','evernote','enex','zip','migrate','move from','images'],
     backup:        ['backup','export','import','restore','json','full backup','reset','danger zone'],
     users:         ['users','user management','accounts','login','admin','register','invite'],
     auth:          ['authentication','auth','sso','single sign-on','single sign on','oidc','openid','authentik','keycloak','authelia','password login'],

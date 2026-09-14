@@ -37,7 +37,7 @@ NoteTrace connects to the following external services **only when you explicitly
 - **Webhooks.** Optional and off by default. If an admin enables them, event payloads are sent to the URLs you configure.
 - **GitHub Releases.** The in-app update check reads public release information from GitHub. No account data is sent.
 
-Google Keep (Takeout), Blinko, and Markdown imports are read on your own device or browser and saved only to your own server or on-device database. A Memos import connects from your browser or phone directly to the Memos server you enter, using the access token you paste; the token isn't stored.
+Google Keep (Takeout), Evernote, Blinko, and Markdown imports are read on your own device or browser and saved only to your own server or on-device database. A Memos import connects from your browser or phone directly to the Memos server you enter, using the access token you paste; the token isn't stored.
 
 ## Data Retention
 

@@ -14,7 +14,8 @@
   let busy = null;          // 'keep' | 'markdown' | 'export'
   let progress = '';
   let summary = null;       // { source, imported, skipped, labels_created, images, imagesMissing, imagesFailed, attachments, unreadable, trashedSkipped }
-  let keepInput, mdInput, blinkoInput;
+  let keepInput, mdInput, blinkoInput, evernoteInput;
+  let labelNotebook = true;
   let memosUrl = '';
   let memosToken = '';
 
@@ -57,6 +58,7 @@
         includeTrashed,
         tagsToLabels,
         username: $currentUser?.username || '',
+        labelNotebook,
       });
       if (parsed.blinkoAccounts) {
         showError($_('import_export.blinko_accounts', { values: { names: parsed.blinkoAccounts.join(', ') } }));
@@ -81,6 +83,7 @@
       if (keepInput) keepInput.value = '';
       if (mdInput) mdInput.value = '';
       if (blinkoInput) blinkoInput.value = '';
+      if (evernoteInput) evernoteInput.value = '';
     }
   }
 
@@ -124,6 +127,25 @@
         <span class="setting-label">{$_('import_export.include_trashed')}</span>
       </div>
       <input type="checkbox" class="toggle-cb" bind:checked={includeTrashed} disabled={!!busy} />
+    </div>
+    <div class="setting-divider"></div>
+    <div class="setting-row">
+      <div>
+        <span class="setting-label">{$_('import_export.evernote_title')}</span>
+        <span class="setting-desc">{$_('import_export.evernote_desc')}</span>
+      </div>
+      <button class="btn btn-secondary" on:click={() => evernoteInput.click()} disabled={!!busy}>
+        <span class="material-symbols-rounded">upload_file</span>
+        {busy === 'evernote' ? $_('import_export.importing') : $_('import_export.choose_file')}
+      </button>
+      <input bind:this={evernoteInput} type="file" accept=".enex,.zip,application/zip,application/xml,text/xml" hidden
+        on:change={(e) => runImport('evernote', e.target.files?.[0])} />
+    </div>
+    <div class="setting-row sub">
+      <div>
+        <span class="setting-label">{$_('import_export.label_notebook')}</span>
+      </div>
+      <input type="checkbox" class="toggle-cb" bind:checked={labelNotebook} disabled={!!busy} />
     </div>
     <div class="setting-divider"></div>
     <div class="setting-row">
