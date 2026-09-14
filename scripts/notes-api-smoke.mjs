@@ -5,7 +5,7 @@
  * Run ONLY against a throwaway instance: it registers an admin account,
  * creates data, and restores a backup over the database.
  *
- *   docker run -d -p 3004:3001 -e JWT_SECRET=... <image>
+ *   docker run -d -p 3004:3004 -e JWT_SECRET=... <image>
  *   NOTETRACE_URL=http://localhost:3004 node scripts/notes-api-smoke.mjs
  */
 const B = process.env.NOTETRACE_URL || 'http://localhost:3004';

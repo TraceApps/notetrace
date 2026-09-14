@@ -8,7 +8,7 @@
  * Run inside the NoteTrace image (it ships better-sqlite3), against a
  * THROWAWAY server with no accounts yet:
  *
- *   docker run -d --name nt-test -p 3004:3001 -e JWT_SECRET=... <image>
+ *   docker run -d --name nt-test -p 3004:3004 -e JWT_SECRET=... <image>
  *   docker run --rm --network host -v "$PWD":/repo -w /repo --entrypoint sh <image> \
  *     -c "node scripts/sync-smoke/prepare.mjs && node scripts/sync-smoke/scenario.mjs"
  */

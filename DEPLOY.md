@@ -94,7 +94,7 @@ Optional integrations:
 
 ## Reverse proxy
 
-NoteTrace listens on port 3001 inside the container, exposed on host port
+NoteTrace listens on port 3004 inside the container, exposed on host port
 3004 by default (family host-port sequence is NutriTrace 3001, LiftTrace
 3002, CookTrace 3003, NoteTrace 3004, all avoiding the common `:3000` default). Front with
 Caddy / Nginx / Traefik on 443.

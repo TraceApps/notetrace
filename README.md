@@ -86,7 +86,7 @@ services:
     image: ghcr.io/traceapps/notetrace:latest
     container_name: notetrace
     ports:
-      - "3004:3001"
+      - "3004:3004"
     volumes:
       - ./data/db:/data/db
       - ./data/uploads:/data/uploads
@@ -114,7 +114,7 @@ Open `http://localhost:3004` and a first-run wizard walks you through creating a
 | `JWT_SECRET` | - | Signing key for auth tokens. Required when user management is on. |
 | `DB_PATH` | `/data/db/notetrace.db` | SQLite file inside the container. |
 | `UPLOADS_PATH` | `/data/uploads` | Uploaded images and server-side backups. |
-| `PORT` | `3001` | Port the server listens on inside the container. |
+| `PORT` | `3004` | Port the server listens on inside the container. |
 | `BASE_URL` | - | Mount at a subpath, e.g. `/notetrace`. |
 | `LOG_LEVEL` | `info` | `error` \| `warn` \| `info` \| `debug`. |
 | `INSECURE_COOKIES` | unset | Set to `1` on plain-HTTP LAN deployments so the auth cookie isn't dropped. |
