@@ -525,7 +525,7 @@
   }
 
   function onKey(e) {
-    if (e.key === 'Escape' && viewerIndex == null && !colorOpen && !labelsOpen && !reminderOpen && !shareOpen && !traceOpen && !recordOpen && !cookOpen) {
+    if (e.key === 'Escape' && viewerIndex == null && !colorOpen && !labelsOpen && !reminderOpen && !shareOpen && !traceOpen && !recordOpen && !cookOpen && !addOpen && !moreOpen) {
       e.preventDefault();
       if (showHistory) showHistory = false;
       else close();
@@ -533,11 +533,37 @@
   }
   function onResize() { narrow = window.innerWidth < 600; }
 
+  // ── Phone editor bar ──────────────────────────────────────────────
+  // On a phone the bar sits on top of the on-screen keyboard (the visual
+  // viewport shrinks while it's up; the Android app resizes the WebView
+  // itself, so this stays 0 there), holds a short row of actions, and
+  // tucks the rest into Add and More sheets.
+  let kb = 0;
+  function onViewport() {
+    const vv = window.visualViewport;
+    kb = vv ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0;
+  }
+  let addOpen = false, moreOpen = false, addAnchor = null, moreAnchor = null;
+  let fmtMode = false;
+  let formats = {};
+  $: fmtTools = bodyRef?.formatTools?.() || [];
+  $: if (kind !== 'text' || contentLocked) fmtMode = false;
+  function openAdd(e) { addAnchor = e.currentTarget.getBoundingClientRect(); addOpen = true; }
+  function openMore(e) { moreAnchor = e.currentTarget.getBoundingClientRect(); moreOpen = true; }
+  // Run a sheet item once its sheet has closed, anchored where the sheet's button was.
+  function fromSheet(fn, anchorRect) {
+    addOpen = false; moreOpen = false;
+    const fake = { currentTarget: { getBoundingClientRect: () => anchorRect } };
+    tick().then(() => fn(fake));
+  }
+
   onMount(async () => {
     loadLinks();
     loadCooktraceLink();
     window.addEventListener('keydown', onKey);
     window.addEventListener('resize', onResize);
+    window.visualViewport?.addEventListener('resize', onViewport);
+    window.visualViewport?.addEventListener('scroll', onViewport);
     await tick();
     if (!noteId) {
       if (prefill?.title || prefill?.body_md) scheduleText(); // shared content saves without needing an edit
@@ -548,6 +574,8 @@
   onDestroy(() => {
     window.removeEventListener('keydown', onKey);
     window.removeEventListener('resize', onResize);
+    window.visualViewport?.removeEventListener('resize', onViewport);
+    window.visualViewport?.removeEventListener('scroll', onViewport);
     clearTimeout(textTimer);
   });
 
@@ -575,7 +603,7 @@
      first node, closing the editor left its other top-level nodes behind. -->
 <div class="editor-host">
 <div use:portal class="editor-backdrop" on:click|self={() => close()} transition:fade={{ duration: 160 }}>
-  <div class="editor-panel" class:narrow class:drag-over={dragOver} style={noteColorStyle(color)}
+  <div class="editor-panel" class:narrow class:kb-open={narrow && kb > 0} class:drag-over={dragOver} style="{noteColorStyle(color)} --kb:{narrow ? kb : 0}px"
     on:paste={onPaste} on:dragover={onDragOver} on:dragleave={() => dragOver = false} on:drop={onDrop}
     role="dialog" aria-modal="true" aria-label={title || $_('notes.untitled')}
     in:fly={{ y: narrow ? 30 : 16, duration: 220, easing: cubicOut }}>
@@ -621,7 +649,8 @@
           on:remove={removeImage} on:transcribe={(e) => extractText(e.detail)} on:addtext={(e) => addTextToNote(e.detail)} />
         {#key editorKey}
           {#if kind === 'text'}
-            <TipTapEditor bind:this={bodyRef} bind:value={body} editable={!contentLocked}
+            <TipTapEditor bind:this={bodyRef} bind:value={body} editable={!contentLocked} showToolbar={!narrow}
+              on:formats={(e) => formats = e.detail}
               linkTitles={linkTitles.filter(t => t.toLowerCase() !== title.trim().toLowerCase())}
               placeholder={$_('notes.body_placeholder')} on:change={scheduleText} on:openlink={(e) => openLinked(e.detail)} />
           {:else}
@@ -682,6 +711,48 @@
             <span class="material-symbols-rounded">restore_from_trash</span>{$_('notes.restore')}
           </button>
           <button class="btn btn-danger" on:click={deleteForever}>{$_('notes.delete_forever')}</button>
+        {:else if narrow && fmtMode}
+          <div class="phone-bar fmt-row" role="toolbar" aria-label={$_('notes.formatting')}>
+            <button class="icon-btn" on:mousedown|preventDefault on:click={() => fmtMode = false} aria-label={$_('notes.close_formatting')}>
+              <span class="material-symbols-rounded">close</span>
+            </button>
+            <div class="fmt-scroll">
+              {#each fmtTools as t (t.key)}
+                <button class="icon-btn" class:on={formats[t.key]} aria-pressed={!!formats[t.key]} aria-label={$_(t.label)}
+                  on:mousedown|preventDefault on:click={() => bodyRef?.format(t.key)}>
+                  <span class="material-symbols-rounded">{t.icon}</span>
+                </button>
+              {/each}
+            </div>
+          </div>
+        {:else if narrow}
+          <div class="phone-bar">
+            {#if !contentLocked}
+              <button class="icon-btn" on:mousedown|preventDefault on:click={openAdd} aria-label={$_('notes.add_to_note')} title={$_('notes.add_to_note')}>
+                <span class="material-symbols-rounded">add_box</span>
+              </button>
+              {#if kind === 'text'}
+                <button class="icon-btn" on:mousedown|preventDefault on:click={() => fmtMode = true} aria-label={$_('notes.formatting')} title={$_('notes.formatting')}>
+                  <span class="material-symbols-rounded">text_format</span>
+                </button>
+              {/if}
+              <button class="icon-btn" on:mousedown|preventDefault on:click={openColor} aria-label={$_('notes.color')} title={$_('notes.color')}>
+                <span class="material-symbols-rounded">palette</span>
+              </button>
+            {/if}
+            {#if isOwner}
+              <button class="icon-btn" on:mousedown|preventDefault on:click={openReminder} aria-label={$_('reminders.remind_me')} title={$_('reminders.remind_me')}>
+                <span class="material-symbols-rounded">notification_add</span>
+              </button>
+            {/if}
+            <span class="spacer"></span>
+            <span class="edited phone-edited" aria-live="polite">
+              {#if saving}{$_('notes.saving')}{:else if updatedAt}{$_('notes.edited', { values: { when: relativeTime(updatedAt).toLowerCase() } })}{/if}
+            </span>
+            <button class="icon-btn" on:mousedown|preventDefault on:click={openMore} aria-label={$_('notes.more_options')} title={$_('notes.more_options')}>
+              <span class="material-symbols-rounded">more_vert</span>
+            </button>
+          </div>
         {:else}
           <div class="bar-actions">
             {#if isOwner}
@@ -764,6 +835,56 @@
     on:read={(e) => extractText(e.detail)} on:addtext={(e) => addTextToNote(e.detail)} on:close={() => viewerIndex = null} />
 {/if}
 
+<Popover bind:open={addOpen} anchor={addAnchor}>
+  <div class="sheet-menu">
+    <button class="sheet-item" on:click={() => fromSheet(() => imageInput.click(), addAnchor)}>
+      <span class="material-symbols-rounded">add_photo_alternate</span>{$_('attachments.add_image')}
+    </button>
+    {#if canRecord}
+      <button class="sheet-item" on:click={() => fromSheet(openRecorder, addAnchor)}>
+        <span class="material-symbols-rounded">mic</span>{$_('voice.record')}
+      </button>
+    {/if}
+    <button class="sheet-item" on:click={() => fromSheet(convert, addAnchor)}>
+      <span class="material-symbols-rounded">{kind === 'text' ? 'checklist' : 'notes'}</span>{kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}
+    </button>
+  </div>
+</Popover>
+<Popover bind:open={moreOpen} anchor={moreAnchor}>
+  <div class="sheet-menu">
+    <button class="sheet-item" on:click={() => fromSheet(openLabels, moreAnchor)}>
+      <span class="material-symbols-rounded">label</span>{$_('notes.labels')}
+    </button>
+    {#if $sharingAvailable}
+      <button class="sheet-item" on:click={() => fromSheet(openShare, moreAnchor)}>
+        <span class="material-symbols-rounded">person_add</span>{$_('sharing.share')}
+      </button>
+    {/if}
+    {#if $traceReady && kind === 'text' && !contentLocked && body.trim()}
+      <button class="sheet-item" on:click={() => fromSheet(openTrace, moreAnchor)}>
+        <span class="material-symbols-rounded">auto_awesome</span>{$_('trace_actions.title')}
+      </button>
+    {/if}
+    {#if $cooktraceLink?.connected && kind === 'checklist'}
+      <button class="sheet-item" on:click={() => fromSheet(openCooktrace, moreAnchor)}>
+        <span class="material-symbols-rounded">add_shopping_cart</span>{$_('cooktrace.send')}
+      </button>
+    {/if}
+    <button class="sheet-item" on:click={() => fromSheet(archive, moreAnchor)}>
+      <span class="material-symbols-rounded">{archived ? 'unarchive' : 'archive'}</span>{archived ? $_('notes.unarchive') : $_('notes.archive')}
+    </button>
+    {#if noteId}
+      <button class="sheet-item" on:click={() => fromSheet(async () => { await flushAll(); showHistory = true; }, moreAnchor)}>
+        <span class="material-symbols-rounded">history</span>{$_('notes.version_history')}
+      </button>
+    {/if}
+    {#if isOwner}
+      <button class="sheet-item danger" on:click={() => fromSheet(trash, moreAnchor)}>
+        <span class="material-symbols-rounded">delete</span>{$_('notes.move_to_trash')}
+      </button>
+    {/if}
+  </div>
+</Popover>
 <Popover bind:open={colorOpen} anchor={colorAnchor}>
   <ColorPalette value={color} on:select={(e) => { setColor(e.detail); colorOpen = false; }} />
 </Popover>
@@ -849,7 +970,7 @@
   .title-input::placeholder { color: var(--text-3); }
 
   .editor-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 32px 20px; display: flex; flex-direction: column; gap: 16px; }
-  .narrow .editor-scroll { padding: 8px 20px calc(88px + var(--safe-bottom)); }
+  .narrow .editor-scroll { padding: 8px 20px calc(88px + var(--safe-bottom) + var(--kb, 0px)); }
 
   .editor-chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip {
@@ -875,8 +996,12 @@
   }
   .narrow .editor-bar {
     position: fixed; left: 0; right: 0; bottom: 0;
+    bottom: var(--kb, 0px);
     padding: 6px 8px calc(6px + var(--safe-bottom));
     background: var(--glass-surface);
+    border-top-color: color-mix(in srgb, var(--note-glow, var(--accent)) 25%, var(--note-border));
+    box-shadow: 0 -8px 24px -16px rgba(0, 0, 0, 0.6);
+    z-index: 5;
     backdrop-filter: blur(24px) saturate(180%);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
   }
@@ -884,6 +1009,20 @@
   .spacer { flex: 1; }
   .edited { font-size: 12px; color: var(--text-3); white-space: nowrap; }
   .narrow .edited { display: none; }
+  .kb-open .editor-bar { padding-bottom: 6px; }
+  .phone-bar { display: flex; align-items: center; gap: 2px; width: 100%; min-width: 0; }
+  .narrow .phone-edited { display: block; overflow: hidden; text-overflow: ellipsis; min-width: 0; padding: 0 4px; font-size: 11px; }
+  .fmt-row .fmt-scroll { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; flex: 1; min-width: 0; }
+  .fmt-row .fmt-scroll::-webkit-scrollbar { display: none; }
+  .fmt-row > .icon-btn { border-right: 1px solid var(--note-border); border-radius: 12px 0 0 12px; margin-right: 4px; }
+  .sheet-menu { display: flex; flex-direction: column; min-width: 220px; }
+  .sheet-item {
+    display: flex; align-items: center; gap: 14px; min-height: 50px; padding: 0 12px;
+    border-radius: 12px; font-size: 15px; color: var(--text-1); text-align: left;
+  }
+  .sheet-item .material-symbols-rounded { color: var(--text-2); font-size: 22px; }
+  .sheet-item:hover { background: color-mix(in srgb, var(--text-1) 7%, transparent); }
+  .sheet-item.danger, .sheet-item.danger .material-symbols-rounded { color: var(--danger); }
   .done { height: 40px; }
 
   .icon-btn {

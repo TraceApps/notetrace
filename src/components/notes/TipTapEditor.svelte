@@ -151,9 +151,14 @@
       quote: editor.isActive('blockquote'),
       code: editor.isActive('code'),
     };
+    dispatch('formats', active);
   }
 
   export function focus() { editor?.commands.focus('end'); }
+
+  /** The formatting tools, for a toolbar outside this component (the phone editor bar). */
+  export function formatTools() { return tools.map(({ key, icon, label }) => ({ key, icon, label })); }
+  export function format(key) { const t = tools.find(x => x.key === key); if (t) run(t.fn); }
 
   function run(fn) {
     if (!editor) return;
