@@ -248,6 +248,12 @@
     "add_to_top":     "Add to Top",
     "history_hint":   "The current text stays in version history."
   },
+  "timeline": {
+    "show_timeline": "Timeline View",
+    "show_grid":     "Grid View",
+    "today":         "Today",
+    "yesterday":     "Yesterday"
+  },
   "note_links": {
     "suggestions":     "Link to a note",
     "link_new":        "Link to \"{title}\"",

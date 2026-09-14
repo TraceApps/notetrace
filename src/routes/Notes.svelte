@@ -25,6 +25,9 @@
   import { nextOccurrence, isPast } from '../lib/reminders.js';
   import { ensureReminderPermission, rescheduleReminders } from '../lib/note-reminders.js';
   import { isOwner, canEdit } from '../lib/note-sharing.js';
+  import { groupByDay } from '../lib/timeline.js';
+  import { notesLayout } from '../stores/settings.js';
+  import NoteCard from '../components/notes/NoteCard.svelte';
   import { pendingShare, shareToNote, takeSharedFiles } from '../lib/share-intent.js';
 
   export let params = {};
@@ -37,6 +40,16 @@
   $: labelId = path.startsWith('/label/') ? Number(params?.id) : null;
   $: activeLabel = labelId != null ? $labelsById.get(labelId) : null;
   $: canCapture = view === 'notes' || view === 'reminders';
+  // Timeline: a single column grouped by the day each note was last edited.
+  $: timeline = $notesLayout === 'timeline' && view !== 'reminders';
+  function dayLabel(day) {
+    if (day.kind === 'today') return $_('timeline.today');
+    if (day.kind === 'yesterday') return $_('timeline.yesterday');
+    const opts = day.kind === 'week' ? { weekday: 'long', month: 'short', day: 'numeric' }
+      : day.kind === 'year' ? { weekday: 'short', month: 'long', day: 'numeric' }
+      : { month: 'long', day: 'numeric', year: 'numeric' };
+    return day.date.toLocaleDateString(undefined, opts);
+  }
 
   let notes = [];
   let loading = true;
@@ -325,6 +338,13 @@
         </button>
       {/if}
     </div>
+    {#if view !== 'reminders'}
+      <button class="icon-btn layout-toggle" on:click={() => notesLayout.set(timeline ? 'grid' : 'timeline')}
+        title={timeline ? $_('timeline.show_grid') : $_('timeline.show_timeline')}
+        aria-label={timeline ? $_('timeline.show_grid') : $_('timeline.show_timeline')} aria-pressed={timeline}>
+        <span class="material-symbols-rounded">{timeline ? 'grid_view' : 'view_timeline'}</span>
+      </button>
+    {/if}
     {#if view === 'trash' && notes.length}
       <button class="btn btn-secondary empty-trash" on:click={emptyTrash}>
         <span class="material-symbols-rounded">delete_sweep</span>{$_('notes.empty_trash')}
@@ -372,6 +392,23 @@
             : $_('routes.notes.empty_body')}
         </p>
       </div>
+    {:else if timeline}
+      {#if pinned.length}
+        <section class="notes-section timeline">
+          <h2 class="section-label"><span class="material-symbols-rounded fill">keep</span>{$_('notes.pinned')}</h2>
+          <div class="timeline-list">
+            {#each pinned as n (n.id)}<NoteCard note={n} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} />{/each}
+          </div>
+        </section>
+      {/if}
+      {#each groupByDay(others) as day (day.key)}
+        <section class="notes-section timeline">
+          <h2 class="section-label"><span class="material-symbols-rounded">calendar_today</span>{dayLabel(day)}</h2>
+          <div class="timeline-list">
+            {#each day.notes as n (n.id)}<NoteCard note={n} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} />{/each}
+          </div>
+        </section>
+      {/each}
     {:else}
       {#if pinned.length}
         <section class="notes-section">
@@ -424,6 +461,12 @@
 <ActionSheet bind:open={menuOpen} title={menuNote?.title || ''} actions={menuActions} on:select={onMenuSelect} />
 
 <style>
+  .layout-toggle { width: 44px; height: 44px; flex-shrink: 0; border-radius: var(--radius-md); color: var(--text-2); display: flex; align-items: center; justify-content: center; }
+  .layout-toggle:hover { background: color-mix(in srgb, var(--text-1) 8%, transparent); color: var(--text-1); }
+  .timeline-list { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 720px; margin: 0 auto; }
+  .notes-section.timeline { width: 100%; }
+  .notes-section.timeline .section-label { max-width: 720px; margin-left: auto; margin-right: auto; }
+
   .notes-page { --notes-max: 1680px; }
   .notes-toolbar {
     display: flex; align-items: center; gap: 12px;

@@ -34,6 +34,7 @@ export const DEVICE_PREFS = new Set([
   'appLockEnabled',        // Android-only: require biometric / device credential to open the app
   'appLockTimeoutMin',     // minutes in the background before the lock re-engages (0 = immediately)
   'notifLocalEnabled',     // reminder notifications on this device (phone, or this browser while open)
+  'notesLayout',           // 'grid' or 'timeline' on the notes screens
 ]);
 
 const SERVER_SETTINGS = USER_PREFS;
@@ -249,6 +250,7 @@ export const sidebarPersistent = createSettingStore('sidebarPersistent', true);
 export const disableAnimations = createSettingStore('disableAnimations', false);
 export const biometricLoginEnabled = createSettingStore('biometricLoginEnabled', false);
 export const appLockEnabled    = createSettingStore('appLockEnabled',    false);
+export const notesLayout       = createSettingStore('notesLayout',       'grid');
 export const appLockTimeoutMin = createSettingStore('appLockTimeoutMin', 1);
 // Force-mobile layout: keep the mobile single-column pattern even on
 // wide viewports. Gates every desktop @media rule via the

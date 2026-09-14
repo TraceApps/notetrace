@@ -317,3 +317,22 @@ test('evernote: text, formatting, lists, todos, tables, images by hash, tags, no
   assert.equal(enexDate('20250115T103000Z'), '2025-01-15 10:30:00');
   assert.equal(notebookFromFileName('Evernote.enex'), '');
 });
+
+import { groupByDay } from '../src/lib/timeline.js';
+
+test('timeline groups notes by local day, newest first', () => {
+  const now = new Date(2026, 8, 14, 15, 0);           // Sep 14 2026, local
+  const at = (y, m, d, h) => new Date(y, m, d, h).toISOString();
+  const notes = [
+    { id: 1, updated_at: at(2026, 8, 14, 9) },
+    { id: 2, updated_at: at(2026, 8, 13, 22) },
+    { id: 3, updated_at: at(2026, 8, 14, 11) },
+    { id: 4, updated_at: at(2026, 8, 10, 8) },
+    { id: 5, updated_at: at(2026, 1, 2, 8) },
+    { id: 6, updated_at: at(2024, 11, 25, 8) },
+  ];
+  const g = groupByDay(notes, { now });
+  assert.deepEqual(g.map(x => x.kind), ['today', 'yesterday', 'week', 'year', 'older']);
+  assert.deepEqual(g[0].notes.map(n => n.id), [3, 1]);
+  assert.equal(groupByDay([{ id: 7, updated_at: '2026-09-14 12:00:00' }], { now })[0].notes.length, 1);
+});
