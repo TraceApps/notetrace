@@ -43,7 +43,7 @@
   export let initialKind = 'text';
   /** Labels to apply to a new note (e.g. when created from a label view). */
   export let initialLabels = [];
-  /** Content for a new note, e.g. from the share sheet: { title, body_md }. */
+  /** Content for a new note, e.g. from the share sheet: { title, body_md, images: File[] }. */
   export let prefill = null;
 
   const dispatch = createEventDispatcher();
@@ -383,7 +383,8 @@
     window.addEventListener('resize', onResize);
     await tick();
     if (!noteId) {
-      if (prefill) scheduleText(); // shared content saves without needing an edit
+      if (prefill?.title || prefill?.body_md) scheduleText(); // shared content saves without needing an edit
+      if (prefill?.images?.length) addImages(prefill.images);
       else if (kind === 'text') titleEl?.focus();
     }
   });

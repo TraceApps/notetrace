@@ -98,3 +98,11 @@ test('Android reminders are native exact alarms, re-armed after reboot', () => {
   assert.match(sched, /"notetrace_localSQLite\.db"/);
   assert.doesNotMatch(js, /LocalNotifications\.schedule\(/, 'JS must not schedule reminders alongside the native alarms');
 });
+
+test('Android share sheet accepts text and images, single and multiple', () => {
+  const manifest = read('../android/app/src/main/AndroidManifest.xml');
+  assert.match(manifest, /action\.SEND"[\s\S]*?mimeType="text\/plain"/);
+  assert.match(manifest, /action\.SEND"[\s\S]*?mimeType="image\/\*"/);
+  assert.match(manifest, /action\.SEND_MULTIPLE"[\s\S]*?mimeType="image\/\*"/);
+  assert.match(read('../src/components/notes/NoteEditor.svelte'), /prefill\?\.images\?\.length\) addImages\(prefill\.images\)/);
+});
