@@ -53,6 +53,11 @@ Items marked ~~strikethrough~~ have been implemented.
 - ~~`[[Note title]]` links with a Linked From section~~
 - ~~Timeline view alongside the grid~~
 - ~~Voice notes with transcription~~
+- ~~Quick voice notes (capture bar, hold +, home screen shortcuts) with suggested titles~~
+- ~~Recorder pause and level meter; waveform player with speed and resume~~
+- ~~Voice notes from audio files, shared audio, and Google Keep recordings~~
+- ~~Timestamped transcripts and long recordings split for transcription~~
+- ~~Android recording with the screen off, up to 3 hours~~
 - ~~Text search inside images~~
 - ~~Trace AI note tools: tidy, summarize, ask your notes~~
 - ~~Note webhook events~~

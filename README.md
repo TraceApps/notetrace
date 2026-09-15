@@ -41,18 +41,20 @@ It runs as a single Docker container on your own hardware, with a PWA for the br
 
 NoteTrace is in active development toward its first release candidate. Working today:
 
-- **Notes and checklists.** Card grid with a pinned section and quick capture, a rich editor that stores Markdown, checklists with drag to reorder, images on any note, labels and colors, archive, trash with a 30-day purge, full-text search (Ctrl+K), and version history.
+- **Notes and checklists.** Card grid with a pinned section and quick capture, a rich editor that stores Markdown, checklists with drag to reorder, images on any note, labels with colors and icons, sixteen note colors, archive, trash with a 30-day purge, full-text search (Ctrl+K), and version history.
 - **Reminders.** One-off or repeating (daily, weekly, monthly, yearly), kept at the same local time across daylight saving. Android fires them as exact alarms even with the app closed, the browser shows them while NoteTrace is open, and the server delivers them through your push service and a `reminder.fired` webhook.
 - **Sharing.** Share a note or list with other accounts on your server, with view or edit access. Pin, archive, labels, and reminders stay personal.
 - **Import and export.** Google Keep (Google Takeout, images included), Evernote (.enex), Memos (straight from your Memos server), Blinko backups, and Markdown files (Obsidian, Joplin, and other Markdown exports). Export everything as a Markdown ZIP with images.
 - **Links and timeline.** `[[Note title]]` links with suggestions as you type and a Linked From section on the linked note; renaming a note updates the links. Switch the grid to a timeline grouped by day.
-- **Voice notes and image text.** Record voice notes on any note, transcribed by Trace and searchable. Trace can also read the text in images, so a photo of a receipt or a whiteboard turns up in search.
+- **Voice notes.** Start one from Take a note, the + button, a home screen shortcut, or `v`. Pause while recording, with a level meter; the Android app keeps recording with the screen off, for up to 3 hours. Scrub the waveform, change the play speed, and pick up where you left off. Audio files, shared recordings, and Google Keep's voice recordings come in too (converted by the server's built-in ffmpeg when needed). Trace transcribes each one with timestamps you can tap, splitting long recordings to fit the provider.
+- **Image text.** Trace reads the text in images, so a photo of a receipt or a whiteboard turns up in search.
 - **Trace in your notes.** Tidy Up, Summarize, and Make a Checklist from the editor, and a Trace chat that can find, create, and update notes, check items off, and set reminders. The same note tools are on the MCP endpoint for external AI agents.
-- **Tasks and List layout.** A Tasks view of every open checklist item across your notes, grouped by due date or list, with due dates on any checklist item. A List layout with grouping by label, color, or date that opens the note beside the list on wide screens.
+- **Tasks and List layout.** A Tasks view of checklist items with due dates and of checklists you choose to show there, grouped by due date or list, with a daily Tasks Due notification. A List layout with grouping by label, color, or date that opens the note beside the list on wide screens.
 - **Organize fast.** Filter search by type, color, and label; select many notes and pin, color, label, remind, archive, or trash them at once; drag notes into your own order; nest labels (`Home/Garage`); a Shared with Me view; and link previews on cards, fetched by your server.
+- **Foldables and screen sizes.** Navigation that fits the screen, a layout remembered per screen, the open note moving between full screen and the side pane as you fold and unfold, and layouts that keep content off the crease when a foldable is half open.
 - **Polish.** A sidebar that collapses to icons, keyboard shortcuts (press `?`), slash commands in the editor, compact cards, swipe to archive and pull to refresh on phones, and a note that grows out of its card when opened.
 - **CookTrace.** Send a checklist's open items to your CookTrace shopping list.
-- **Share from anywhere.** Share text, links, and photos into a new note from any Android app or into the installed web app, and an optional fingerprint, face, or PIN app lock on Android.
+- **Share from anywhere.** Share text, links, photos, and audio into a new note from any Android app or into the installed web app, and an optional fingerprint, face, or PIN app lock on Android.
 
 The foundation it shares with the other Trace apps:
 
@@ -134,6 +136,7 @@ Open `http://localhost:3004` and a first-run wizard walks you through creating a
 | `WEBHOOKS_ENABLED` | unset | Outgoing signed webhooks. |
 | `ALLOW_PRIVATE_COOKTRACE_URLS` | unset | Allow Send to CookTrace to reach a CookTrace on a LAN or Docker network address. |
 | `ALLOW_PRIVATE_LINK_PREVIEWS` | unset | Show link previews for links to LAN, loopback, or Docker network addresses. |
+| `FFMPEG_PATH` / `FFPROBE_PATH` | `ffmpeg` / `ffprobe` | Audio tools for converting voice recordings and splitting long ones for transcription. The Docker image includes a small audio-only build; set these when running outside Docker. |
 
 Env values take priority over Settings-UI values and lock the field for all users. The full annotated list is in [.env.example](.env.example).
 

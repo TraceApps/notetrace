@@ -130,8 +130,10 @@ back any row that still points at a device-local file.
 
 ### Voice notes and image text are attachment text
 
-A voice note is an audio attachment with `duration_ms`; an image is an
-attachment too. Trace's transcript or the text read from an image is
+A voice note is an audio attachment with `duration_ms`, a `waveform` (64
+bar heights) and, once transcribed, `segments` (timestamped lines), both
+JSON text cleaned by `server/lib/voice-meta.js`; an image is an attachment
+too. Trace's transcript or the text read from an image is
 saved in `extracted_text` on the same row, and the full-text index
 covers it (the FTS `items` column is checklist text plus attachment
 text; `server/db.js` recreates the FTS triggers on every start, so
@@ -139,6 +141,21 @@ existing databases pick up changes). Transcription and image reading
 call the user's own AI provider from the browser or phone, like the
 Trace chat; when Trace is set by environment variables they go through
 `/api/ai/transcribe` and `/api/ai/read-image` instead.
+
+`server/lib/transcript.js` (shared with the app) turns provider replies into
+timestamped segments: Whisper-style `verbose_json`, or Gemini lines that start
+with `[m:ss]`. A recording bigger than one request's limit is split with
+`-c copy` by `server/lib/audio-tools.js` (the audio-only ffmpeg built in the
+Dockerfile) through `/api/upload/split`, or by `VoiceRecorderPlugin.splitFile`
+in Android local mode, and the pieces' segments are offset and merged.
+`/api/upload/audio?convert=1` converts formats browsers can't play (Keep's
+3GP/AMR) to M4A.
+
+Recording goes through `src/lib/voice-recorder.js`: MediaRecorder in a
+browser, and `VoiceRecorderService.java` (a microphone foreground service
+with a wake lock) in the Android app, so it survives the screen turning off.
+Both give the same handle: pause, resume, elapsed time, a live level, and a
+waveform built from the levels at stop.
 
 With Trace set by environment variables, the chat's tool loop still runs
 on the device: `/api/app-config/env-locks` reports the server's provider and
