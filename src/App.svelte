@@ -233,6 +233,8 @@
 
   $: _hasSidebar   = showNav && ($navStyle === 'sidebar' || $navStyle === 'both');
   $: sidebarPinned = _hasSidebar && _persistentAllowed && $sidebarPersistent;
+  $: hasBottomNav  = showNav && ($navStyle === 'bottom' || $navStyle === 'both');
+  $: document.documentElement.style.setProperty('--tabbar-h', hasBottomNav ? 'var(--nav-h)' : '0px');
   $: showHamburger = _hasSidebar && !sidebarPinned;
 
   // --page-top: just the device safe area (hamburger floats over banner)
@@ -675,8 +677,7 @@
   </div>
 {/key}
 
-<!-- With the sidebar pinned on a wide screen, the tab bar would duplicate it. -->
-{#if showNav && ($navStyle === 'bottom' || ($navStyle === 'both' && !sidebarPinned))}
+{#if hasBottomNav}
   <BottomNav />
 {/if}
 

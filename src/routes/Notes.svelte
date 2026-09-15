@@ -188,7 +188,8 @@
   function sizePane() {
     if (!paneEl) return;
     const top = Math.max(12, paneEl.getBoundingClientRect().top);
-    paneH = Math.max(420, Math.round(window.innerHeight - top - 12));
+    const tabbar = document.querySelector('.bottom-nav')?.offsetHeight || 0;
+    paneH = Math.max(420, Math.round(window.innerHeight - top - tabbar - 12));
   }
   onMount(() => {
     window.addEventListener('scroll', sizePane, true);
@@ -989,7 +990,7 @@
 
   .bulk-bar {
     position: fixed; z-index: 150;
-    bottom: calc(var(--safe-bottom) + 24px);
+    bottom: calc(var(--tabbar-h, 0px) + var(--safe-bottom) + 16px);
     left: calc(var(--sidebar-w, 0px) + 12px); right: 12px;
     max-width: 720px; margin: 0 auto;
     height: 52px; padding: 0 8px;

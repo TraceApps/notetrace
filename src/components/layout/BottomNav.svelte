@@ -11,6 +11,7 @@
   $: tabs = [
     { path: '/notes',    icon: 'sticky_note_2', label: $_('nav.notes')    },
     { path: '/reminders', icon: 'notifications', label: $_('nav.reminders') },
+    { path: '/tasks',    icon: 'task_alt',      label: $_('nav.tasks')    },
     { path: '/archive',  icon: 'archive',       label: $_('nav.archive')  },
     { path: '/trash',    icon: 'delete',        label: $_('nav.trash')    },
     { path: '/settings', icon: 'settings',      label: $_('nav.settings') },
@@ -75,7 +76,8 @@
   .bottom-nav {
     position: fixed;
     bottom: 0;
-    left: 0;
+    /* Beside a pinned sidebar, not under it. */
+    left: var(--sidebar-w, 0px);
     right: 0;
     height: calc(var(--nav-h) + var(--safe-bottom));
     padding-bottom: var(--safe-bottom);
