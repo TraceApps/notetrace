@@ -374,7 +374,7 @@
 
   /* Compact density (Settings, Appearance) */
   :global(html.density-compact) .note-card { padding: 11px 13px 9px; gap: 7px; border-radius: var(--radius-md); }
-  :global(html.density-compact) .card-title { font-size: 16px; padding-right: 22px; }
+  :global(html.density-compact) .card-title { font-size: 16px; }
   :global(html.density-compact) .card-body { font-size: 13px; line-height: 1.45; -webkit-line-clamp: 8; }
   :global(html.density-compact) .card-items { gap: 4px; }
   :global(html.density-compact) .card-items li { font-size: 13px; gap: 8px; }
@@ -420,15 +420,30 @@
   }
   .note-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+  /* A titled note wears its title in a band across the top, like an index
+     card: the note's own color, a touch deeper, with a hairline under it. */
   .card-title {
     font-family: var(--font-note-title);
     font-weight: 500;
     font-size: 19px;
     line-height: 1.25;
     letter-spacing: -0.005em;
-    padding-right: 26px;
     overflow-wrap: anywhere;
+    margin: -16px -18px 0;
+    padding: 12px 44px 10px 18px;
+    background: color-mix(in srgb, var(--note-glow, var(--accent)) 22%, transparent);
+    border-bottom: 1px solid color-mix(in srgb, var(--note-glow, var(--accent)) 45%, var(--note-border));
+    border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
   }
+  /* A note with no color keeps a neutral band rather than an accent tint. */
+  .note-card:not(.colored) .card-title {
+    background: color-mix(in srgb, var(--text-1) 9%, transparent);
+    border-bottom-color: var(--border-strong);
+  }
+  /* Under an image or a link preview the band isn't the top of the card. */
+  .note-card :global(.grid.card) + .card-title,
+  .card-link + .card-title { margin-top: 0; border-radius: 0; }
+  :global(html.density-compact) .card-title { margin: -11px -13px 0; padding: 8px 38px 7px 13px; border-radius: calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0 0; }
   .card-body {
     font-size: 14px;
     line-height: 1.55;
