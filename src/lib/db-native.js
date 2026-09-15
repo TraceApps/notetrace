@@ -94,6 +94,8 @@ const SCHEMA = `
     position    REAL NOT NULL DEFAULT 0,
     duration_ms INTEGER,
     extracted_text TEXT,
+    waveform    TEXT,
+    segments    TEXT,
     created_at  TEXT DEFAULT (datetime('now')),
     updated_at  TEXT DEFAULT (datetime('now')),
     deleted_at  TEXT DEFAULT NULL,
@@ -257,6 +259,8 @@ async function _migrateShareColumns() {
     const attCols = new Set((att?.values || []).map(c => c.name));
     if (attCols.size && !attCols.has('duration_ms')) await db.run(`ALTER TABLE note_attachments ADD COLUMN duration_ms INTEGER`);
     if (attCols.size && !attCols.has('extracted_text')) await db.run(`ALTER TABLE note_attachments ADD COLUMN extracted_text TEXT`);
+    if (attCols.size && !attCols.has('waveform')) await db.run(`ALTER TABLE note_attachments ADD COLUMN waveform TEXT`);
+    if (attCols.size && !attCols.has('segments')) await db.run(`ALTER TABLE note_attachments ADD COLUMN segments TEXT`);
     const itemInfo = await db.query(`PRAGMA table_info(checklist_items)`);
     const itemCols = new Set((itemInfo?.values || []).map(c => c.name));
     if (itemCols.size && !itemCols.has('due_date')) await db.run(`ALTER TABLE checklist_items ADD COLUMN due_date TEXT`);

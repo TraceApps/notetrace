@@ -86,7 +86,7 @@ const TABLES = {
     softDelete: true,
   },
   note_attachments: {
-    cols: ['uuid', 'note_id', 'url', 'mime', 'width', 'height', 'position', 'duration_ms', 'extracted_text'],
+    cols: ['uuid', 'note_id', 'url', 'mime', 'width', 'height', 'position', 'duration_ms', 'extracted_text', 'waveform', 'segments'],
     parents: { note_id: 'notes' },
     uniqueKey: ['uuid'],
     softDelete: true,

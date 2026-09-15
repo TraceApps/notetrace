@@ -318,6 +318,9 @@ function columnExists(table, col) {
 // Voice notes and text read out of images: extracted_text is a voice note's
 // transcript or an image's text (searchable); duration_ms is a voice note's length.
 if (!columnExists('note_attachments', 'duration_ms')) db.exec(`ALTER TABLE note_attachments ADD COLUMN duration_ms INTEGER`);
+// A voice note's waveform bars and timestamped transcript, as JSON text (lib/voice-meta.js).
+if (!columnExists('note_attachments', 'waveform')) db.exec(`ALTER TABLE note_attachments ADD COLUMN waveform TEXT`);
+if (!columnExists('note_attachments', 'segments')) db.exec(`ALTER TABLE note_attachments ADD COLUMN segments TEXT`);
 if (!columnExists('note_attachments', 'extracted_text')) db.exec(`ALTER TABLE note_attachments ADD COLUMN extracted_text TEXT`);
 // Optional due date on a checklist item (YYYY-MM-DD, the user's calendar day).
 if (!columnExists('checklist_items', 'due_date')) db.exec(`ALTER TABLE checklist_items ADD COLUMN due_date TEXT`);

@@ -301,6 +301,13 @@
     }
   }
 
+  /** A waveform measured for a recording saved without one. */
+  function saveWaveform({ uuid, waveform }) {
+    attachments = attachments.map(a => a.uuid === uuid ? { ...a, waveform } : a);
+    if (!noteId || contentLocked) return;
+    enqueue(async () => { await NoteApi.updateAttachment(noteId, uuid, { waveform }); });
+  }
+
   /** Put a transcript or image text into the note: a paragraph, or checklist items. */
   function addTextToNote(text) {
     const clean = String(text || '').trim();
@@ -791,7 +798,8 @@
           </div>
         {/if}
         <VoiceNotes notes={voiceNotes} editable={!contentLocked} canTranscribe={$extractSupport.transcribe} busy={extracting}
-          on:remove={removeImage} on:transcribe={(e) => extractText(e.detail)} on:addtext={(e) => addTextToNote(e.detail)} />
+          on:remove={removeImage} on:transcribe={(e) => extractText(e.detail)} on:addtext={(e) => addTextToNote(e.detail)}
+          on:waveform={(e) => saveWaveform(e.detail)} />
         {#key editorKey}
           {#if kind === 'text'}
             <TipTapEditor bind:this={bodyRef} bind:value={body} editable={!contentLocked} showToolbar={!narrow}

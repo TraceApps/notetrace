@@ -41,6 +41,7 @@ export const DEVICE_PREFS = new Set([
   'cardDensity',           // 'comfortable' or 'compact' note cards
   'labelTreeCollapsed',    // nested label groups folded in the sidebar
   'swipeToArchive',        // swipe a card sideways on a touch screen
+  'voicePlaybackRate',     // voice note play speed on this device
   'forceMobileLayout',     // per-device layout opt-out (mirrors NT/LT)
   'biometricLoginEnabled', // Android-only, per-device biometric unlock for sign-in
   'appLockEnabled',        // Android-only: require biometric / device credential to open the app
@@ -286,6 +287,7 @@ export const tasksAllChecklists = createSettingStore('tasksAllChecklists', false
 export const cardDensity       = createSettingStore('cardDensity',       'comfortable');
 export const labelTreeCollapsed = createSettingStore('labelTreeCollapsed', []);
 export const swipeToArchive    = createSettingStore('swipeToArchive',    true);
+export const voicePlaybackRate = createSettingStore('voicePlaybackRate', 1);
 export const appLockTimeoutMin = createSettingStore('appLockTimeoutMin', 1);
 // Force-mobile layout: keep the mobile single-column pattern even on
 // wide viewports. Gates every desktop @media rule via the

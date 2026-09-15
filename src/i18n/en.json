@@ -447,7 +447,12 @@
     "play":          "Play",
     "pause":         "Pause",
     "remove":        "Remove voice note",
-    "limit":         "Recordings stop at 10 minutes."
+    "limit":         "Recordings stop at 60 minutes.",
+    "paused":        "Paused",
+    "pause_recording": "Pause",
+    "resume":        "Resume",
+    "position":      "Position in the voice note",
+    "speed":         "Play speed"
   },
   "cooktrace": {
     "section":          "CookTrace",

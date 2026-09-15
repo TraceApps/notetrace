@@ -7,6 +7,7 @@
  * Merged into NoteApiNative (api-native.js).
  */
 import { cleanLabelIcon } from '../../server/lib/label-icons.js';
+import { parseWaveform, parseSegments, waveformText, segmentsText } from '../../server/lib/voice-meta.js';
 import { getDb, LOCAL_USER_ID } from './db-native.js';
 
 export const NOTE_COLORS = ['ember', 'clay', 'amber', 'sand', 'lime', 'moss', 'sage', 'mint', 'sky', 'tide', 'indigo', 'plum', 'orchid', 'rose', 'bark', 'slate'];
@@ -60,7 +61,7 @@ async function _hydrate(rows) {
     `SELECT note_id, uuid, text, checked, position, due_date FROM checklist_items
       WHERE note_id IN (${ph}) AND deleted_at IS NULL ORDER BY position ASC, id ASC`, ids);
   const files = await _q(
-    `SELECT note_id, uuid, url, mime, width, height, position, duration_ms, extracted_text FROM note_attachments
+    `SELECT note_id, uuid, url, mime, width, height, position, duration_ms, extracted_text, waveform, segments FROM note_attachments
       WHERE note_id IN (${ph}) AND deleted_at IS NULL AND url != '' ORDER BY position ASC, id ASC`, ids);
   const links = await _q(
     `SELECT nl.note_id, nl.label_id FROM note_labels nl
@@ -74,7 +75,7 @@ async function _hydrate(rows) {
   const fileMap = new Map();
   for (const a of files) {
     if (!fileMap.has(a.note_id)) fileMap.set(a.note_id, []);
-    fileMap.get(a.note_id).push({ uuid: a.uuid, url: a.url, mime: a.mime, width: a.width, height: a.height, position: a.position, duration_ms: a.duration_ms, extracted_text: a.extracted_text });
+    fileMap.get(a.note_id).push({ uuid: a.uuid, url: a.url, mime: a.mime, width: a.width, height: a.height, position: a.position, duration_ms: a.duration_ms, extracted_text: a.extracted_text, waveform: parseWaveform(a.waveform), segments: parseSegments(a.segments) });
   }
   const labelMap = new Map();
   for (const l of links) {
@@ -231,10 +232,11 @@ async function _addAttachments(noteId, list, ts) {
       await _run(`UPDATE note_attachments SET deleted_at = NULL, updated_at = ?, sync_status = 'pending' WHERE id = ?`, [ts, existing.id]);
     } else {
       await _run(
-        `INSERT INTO note_attachments (uuid, user_id, note_id, url, mime, width, height, position, duration_ms, extracted_text, created_at, updated_at, sync_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+        `INSERT INTO note_attachments (uuid, user_id, note_id, url, mime, width, height, position, duration_ms, extracted_text, waveform, segments, created_at, updated_at, sync_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
         [uuid, LOCAL_USER_ID, noteId, String(a.url), a.mime || null, num(a.width), num(a.height), max + added + 1, num(a.duration_ms),
-         typeof a.extracted_text === 'string' && a.extracted_text.trim() ? a.extracted_text : null, ts, ts]);
+         typeof a.extracted_text === 'string' && a.extracted_text.trim() ? a.extracted_text : null,
+         waveformText(a.waveform), segmentsText(a.segments), ts, ts]);
     }
     added++;
   }
@@ -537,9 +539,14 @@ export const NotesNative = {
 
   async updateAttachment(noteId, uuid, patch = {}) {
     noteId = Number(noteId);
-    if ('extracted_text' in patch) {
-      await _run(`UPDATE note_attachments SET extracted_text = ?, updated_at = ?, sync_status = 'pending' WHERE uuid = ? AND note_id = ? AND deleted_at IS NULL`,
-        [typeof patch.extracted_text === 'string' ? patch.extracted_text : null, _now(), uuid, noteId]);
+    const sets = [];
+    const args = [];
+    if ('extracted_text' in patch) { sets.push('extracted_text = ?'); args.push(typeof patch.extracted_text === 'string' ? patch.extracted_text : null); }
+    if ('waveform' in patch) { sets.push('waveform = ?'); args.push(waveformText(patch.waveform)); }
+    if ('segments' in patch) { sets.push('segments = ?'); args.push(segmentsText(patch.segments)); }
+    if (sets.length) {
+      await _run(`UPDATE note_attachments SET ${sets.join(', ')}, updated_at = ?, sync_status = 'pending' WHERE uuid = ? AND note_id = ? AND deleted_at IS NULL`,
+        [...args, _now(), uuid, noteId]);
     }
     return _note(noteId);
   },
