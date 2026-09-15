@@ -5,7 +5,19 @@
     "archive":  "Archive",
     "trash":    "Trash",
     "labels":   "Labels",
-    "settings": "Settings"
+    "settings": "Settings",
+    "shared":   "Shared with Me"
+  },
+  "sidebar": {
+    "collapse":        "Collapse Sidebar",
+    "expand":          "Expand Sidebar",
+    "show_labels":     "Show Labels",
+    "hide_labels":     "Hide Labels",
+    "due_today":       "{count, plural, one {# reminder due today} other {# reminders due today}}",
+    "synced":          "Synced {when}",
+    "syncing":         "Syncing…",
+    "offline":         "Offline",
+    "not_synced":      "Not synced yet"
   },
   "sync": {
     "retry":            "Retry",
@@ -43,6 +55,11 @@
       "title": "Trash",
       "empty_title": "Trash Is Empty",
       "empty_body": "Deleted notes stay here for 30 days before they're gone for good."
+    },
+    "shared": {
+      "title": "Shared with Me",
+      "empty_title": "Nothing Shared with You",
+      "empty_body": "Notes and lists other people share with you show up here."
     },
     "label": {
       "empty_title": "No Notes With This Label",

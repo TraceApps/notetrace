@@ -3,20 +3,29 @@
   import { cubicOut } from 'svelte/easing';
   import { location, push } from 'svelte-spa-router';
   import { _ } from 'svelte-i18n';
-  import { createEventDispatcher } from 'svelte';
-  import { resolveAssetUrl, iconUrl, isNative } from '../../lib/platform.js';
+  import { createEventDispatcher, onMount, onDestroy, tick } from 'svelte';
+  import { resolveAssetUrl, iconUrl, isNative, getNativeMode } from '../../lib/platform.js';
   import { currentUser, userMgmtActive, logout } from '../../stores/auth.js';
   import { APP_VERSION } from '../../lib/version.js';
   import { updateAvailable } from '../../lib/updates.js';
   import { pwaUpdateReady } from '../../lib/pwa-update.js';
-  import { onMount } from 'svelte';
-  import { labels, refreshLabels } from '../../stores/notes.js';
+  import { labels, refreshLabels, notesChanged } from '../../stores/notes.js';
+  import { sidebarRail, sidebarLabelsCollapsed } from '../../stores/settings.js';
   import { colorDot } from '../../lib/note-colors.js';
+  import { sharingAvailable } from '../../lib/note-sharing.js';
+  import { NoteApi } from '../../lib/api.js';
+  import { nextOccurrence } from '../../lib/reminders.js';
+  import { syncState } from '../../lib/sync.js';
+  import { relativeTime } from '../../lib/relative-time.js';
   import LabelManager from '../notes/LabelManager.svelte';
 
   export let open = false;
   export let persistent = false;
   const dispatch = createEventDispatcher();
+
+  // The icon rail only applies to the pinned desktop sidebar; the phone
+  // drawer always opens full width.
+  $: rail = persistent && $sidebarRail;
 
   async function handleLogout() {
     await logout();
@@ -35,15 +44,37 @@
   }
 
   $: navItems = [
-    { path: '/notes',    icon: 'sticky_note_2', label: $_('nav.notes')    },
-    { path: '/reminders', icon: 'notifications', label: $_('nav.reminders') },
-    { path: '/archive',  icon: 'archive',       label: $_('nav.archive')  },
-    { path: '/trash',    icon: 'delete',        label: $_('nav.trash')    },
+    { path: '/notes',     icon: 'sticky_note_2', label: $_('nav.notes') },
+    { path: '/reminders', icon: 'notifications', label: $_('nav.reminders'), badge: dueToday },
+    ...($sharingAvailable ? [{ path: '/shared', icon: 'group', label: $_('nav.shared') }] : []),
+    { path: '/archive',   icon: 'archive',       label: $_('nav.archive') },
+    { path: '/trash',     icon: 'delete',        label: $_('nav.trash') },
   ];
   $: settingsItem = { path: '/settings', icon: 'settings', label: $_('nav.settings') };
 
   let labelManagerOpen = false;
-  onMount(() => { refreshLabels(); });
+
+  // ── Reminders due today (the badge on Reminders) ──────────────────
+  let dueToday = 0;
+  let _dueTimer;
+  async function countDueToday() {
+    try {
+      const list = await NoteApi.getNotes({ view: 'reminders' });
+      const now = new Date();
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      dueToday = (list || []).filter(n => {
+        const next = nextOccurrence(n.reminder_at, n.reminder_rrule, n.reminder_tz, now);
+        return next && next >= now && next < end;
+      }).length;
+    } catch { /* keep the last count */ }
+  }
+  $: $notesChanged, countDueToday();
+
+  onMount(() => {
+    refreshLabels();
+    _dueTimer = setInterval(countDueToday, 5 * 60 * 1000);
+  });
+  onDestroy(() => clearInterval(_dueTimer));
 
   function go(path) {
     push(path);
@@ -62,14 +93,51 @@
 
   // '/' renders the Notes list, so it highlights Notes.
   $: activePath = ($location.split('?')[0] === '/') ? '/notes' : $location.split('?')[0];
-  // Prefix-match so /settings/appearance still highlights Settings,
-  // /manage/tags still highlights Manage, etc. Root '/' is exact-match
-  // only so it doesn't trigger for every nested route.
-  function isTabActive(itemPath) {
+  function isTabActive(itemPath, activePath) {
     if (itemPath === activePath) return true;
     if (itemPath === '/') return false;
     return activePath.startsWith(itemPath + '/');
   }
+
+  // ── Sliding highlight ─────────────────────────────────────────────
+  // One pill glides to the active item instead of each item lighting up.
+  let navEl;
+  let pill = { top: 0, height: 0, visible: false };
+  let pillReady = false;
+  async function placePill() {
+    await tick();
+    const el = navEl?.querySelector('.sidebar-item.active');
+    if (!el) { pill = { ...pill, visible: false }; return; }
+    pill = { top: el.offsetTop, height: el.offsetHeight, visible: true };
+    // Skip the glide on first paint so it doesn't slide in from the top.
+    if (!pillReady) requestAnimationFrame(() => { pillReady = true; });
+  }
+  $: activePath, rail, $labels, $sidebarLabelsCollapsed, navItems, open, placePill();
+  let _ro, _observed = null;
+  $: observeNav(navEl);
+  function observeNav(el) {
+    if (el === _observed || typeof ResizeObserver === 'undefined') return;
+    _ro?.disconnect();
+    _observed = el;
+    pillReady = false;
+    if (!el) return;
+    _ro = new ResizeObserver(() => placePill());
+    _ro.observe(el);
+  }
+  onDestroy(() => _ro?.disconnect());
+
+  // ── Sync status (Android app connected to a server) ───────────────
+  $: syncMode = isNative && getNativeMode() === 'server';
+  $: syncText = (_tick, !syncMode) ? ''
+    : !$syncState.online || $syncState.connectionIssue ? $_('sidebar.offline')
+    : $syncState.syncing ? $_('sidebar.syncing')
+    : $syncState.lastSync ? $_('sidebar.synced', { values: { when: relativeTime($syncState.lastSync).toLowerCase() } })
+    : $_('sidebar.not_synced');
+  $: syncBad = syncMode && (!$syncState.online || !!$syncState.connectionIssue);
+  // Refresh the "Synced 2 min ago" text now and then.
+  let _tick = 0;
+  const _tickTimer = setInterval(() => { _tick++; }, 60 * 1000);
+  onDestroy(() => clearInterval(_tickTimer));
 </script>
 
 {#if open}
@@ -88,6 +156,7 @@
   <aside
     class="sidebar-panel"
     class:sidebar-persistent={persistent}
+    class:rail
     in:fly={{ x: -280, duration: persistent ? 0 : 280, easing: cubicOut }}
     out:fly={{ x: -280, duration: persistent ? 0 : 200 }}
     aria-label="Navigation menu"
@@ -95,90 +164,134 @@
     <!-- App branding -->
     <div class="sidebar-brand">
       <img class="brand-icon" src={iconUrl('/icons/logo.png')} alt="NoteTrace" />
-      <div class="brand-text">
-        <span class="brand-name">{$_('sidebar_ct.brand')}</span>
-        <span class="brand-tagline">Trace Every Thought</span>
-      </div>
+      {#if !rail}
+        <div class="brand-text">
+          <span class="brand-name">{$_('sidebar_ct.brand')}</span>
+          <span class="brand-tagline">Trace Every Thought</span>
+        </div>
+      {/if}
+      {#if persistent}
+        <button class="rail-toggle" on:click={() => sidebarRail.set(!$sidebarRail)}
+          title={rail ? $_('sidebar.expand') : $_('sidebar.collapse')} aria-label={rail ? $_('sidebar.expand') : $_('sidebar.collapse')}
+          aria-expanded={!rail}>
+          <span class="material-symbols-rounded">{rail ? 'left_panel_open' : 'left_panel_close'}</span>
+        </button>
+      {/if}
     </div>
 
     <div class="sidebar-divider"></div>
 
     <!-- Nav items -->
-    <nav class="sidebar-nav">
-      {#each navItems as item}
+    <nav class="sidebar-nav" bind:this={navEl}>
+      <div class="nav-pill" class:visible={pill.visible} class:ready={pillReady}
+        style="transform: translateY({pill.top}px); height: {pill.height}px" aria-hidden="true"></div>
+
+      {#each navItems as item (item.path)}
         <button
           class="sidebar-item"
-          class:active={isTabActive(item.path)}
+          class:active={isTabActive(item.path, activePath)}
           on:click={() => go(item.path)}
+          title={rail ? (item.badge ? `${item.label}: ${$_('sidebar.due_today', { values: { count: item.badge } })}` : item.label) : undefined}
+          aria-label={rail ? item.label : undefined}
         >
           <span class="material-symbols-rounded sidebar-icon">
             {item.icon}
-            {#if item.path === '/settings' && ($updateAvailable.available || $pwaUpdateReady)}
-              <span class="nav-update-dot" aria-label="Update available"></span>
-            {/if}
+            {#if rail && item.badge}<span class="nav-count-dot" aria-hidden="true"></span>{/if}
           </span>
-          <span class="sidebar-label">{item.label}</span>
-          {#if isTabActive(item.path)}
+          {#if !rail}
+            <span class="sidebar-label">{item.label}</span>
+            {#if item.badge}
+              <span class="nav-badge" title={$_('sidebar.due_today', { values: { count: item.badge } })}>{item.badge > 99 ? '99+' : item.badge}</span>
+            {/if}
+          {/if}
+          {#if isTabActive(item.path, activePath)}
             <div class="active-indicator"></div>
           {/if}
         </button>
       {/each}
 
-      <div class="sidebar-group">
-        <span class="sidebar-group-label">{$_('nav.labels')}</span>
-        <button class="sidebar-group-action" on:click={() => labelManagerOpen = true}
-          title={$_('labels.edit_labels')} aria-label={$_('labels.edit_labels')}>
-          <span class="material-symbols-rounded">edit</span>
-        </button>
-      </div>
-      {#each $labels as l (l.id)}
-        <button class="sidebar-item sidebar-label-item" class:active={activePath === `/label/${l.id}`} on:click={() => go(`/label/${l.id}`)}>
-          <span class="label-dot-wrap"><span class="label-dot" style="background:{colorDot(l.color)}"></span></span>
-          <span class="sidebar-label">{l.name}</span>
-          {#if l.note_count}<span class="label-count">{l.note_count}</span>{/if}
-          {#if activePath === `/label/${l.id}`}<div class="active-indicator"></div>{/if}
-        </button>
-      {/each}
-      {#if !$labels.length}
-        <button class="sidebar-item sidebar-label-item muted" on:click={() => labelManagerOpen = true}>
-          <span class="material-symbols-rounded sidebar-icon">new_label</span>
-          <span class="sidebar-label">{$_('labels.create')}</span>
-        </button>
+      {#if rail}
+        <div class="sidebar-divider nav-divider"></div>
+        {#each $labels as l (l.id)}
+          <button class="sidebar-item rail-label" class:active={activePath === `/label/${l.id}`} on:click={() => go(`/label/${l.id}`)}
+            title={l.name} aria-label={l.name}>
+            <span class="sidebar-icon label-dot-wrap"><span class="label-dot" style="background:{colorDot(l.color)}"></span></span>
+          </button>
+        {/each}
+      {:else}
+        <div class="sidebar-group">
+          <button class="sidebar-group-toggle" on:click={() => sidebarLabelsCollapsed.set(!$sidebarLabelsCollapsed)}
+            aria-expanded={!$sidebarLabelsCollapsed}
+            title={$sidebarLabelsCollapsed ? $_('sidebar.show_labels') : $_('sidebar.hide_labels')}>
+            <span class="sidebar-group-label">{$_('nav.labels')}</span>
+            <span class="material-symbols-rounded group-chevron" class:collapsed={$sidebarLabelsCollapsed}>expand_more</span>
+          </button>
+          <button class="sidebar-group-action" on:click={() => labelManagerOpen = true}
+            title={$_('labels.edit_labels')} aria-label={$_('labels.edit_labels')}>
+            <span class="material-symbols-rounded">edit</span>
+          </button>
+        </div>
+        {#if !$sidebarLabelsCollapsed}
+          {#each $labels as l (l.id)}
+            <button class="sidebar-item sidebar-label-item" class:active={activePath === `/label/${l.id}`} on:click={() => go(`/label/${l.id}`)}>
+              <span class="label-dot-wrap"><span class="label-dot" style="background:{colorDot(l.color)}"></span></span>
+              <span class="sidebar-label">{l.name}</span>
+              {#if l.note_count}<span class="label-count">{l.note_count}</span>{/if}
+              {#if activePath === `/label/${l.id}`}<div class="active-indicator"></div>{/if}
+            </button>
+          {/each}
+          {#if !$labels.length}
+            <button class="sidebar-item sidebar-label-item muted" on:click={() => labelManagerOpen = true}>
+              <span class="material-symbols-rounded sidebar-icon">new_label</span>
+              <span class="sidebar-label">{$_('labels.create')}</span>
+            </button>
+          {/if}
+        {/if}
       {/if}
 
       <div class="sidebar-divider nav-divider"></div>
-      <button class="sidebar-item" class:active={isTabActive(settingsItem.path)} on:click={() => go(settingsItem.path)}>
+      <button class="sidebar-item" class:active={isTabActive(settingsItem.path, activePath)} on:click={() => go(settingsItem.path)}
+        title={rail ? settingsItem.label : undefined} aria-label={rail ? settingsItem.label : undefined}>
         <span class="material-symbols-rounded sidebar-icon">
           {settingsItem.icon}
           {#if $updateAvailable.available || $pwaUpdateReady}
             <span class="nav-update-dot" aria-label="Update available"></span>
           {/if}
         </span>
-        <span class="sidebar-label">{settingsItem.label}</span>
-        {#if isTabActive(settingsItem.path)}<div class="active-indicator"></div>{/if}
+        {#if !rail}<span class="sidebar-label">{settingsItem.label}</span>{/if}
+        {#if isTabActive(settingsItem.path, activePath)}<div class="active-indicator"></div>{/if}
       </button>
     </nav>
 
     <div class="sidebar-footer">
       {#if $userMgmtActive && $currentUser}
         <div class="sidebar-user">
-          <div class="user-avatar">
+          <button class="user-avatar" on:click={() => go('/profile')}
+            title={rail ? `${$currentUser.full_name || $currentUser.username} · ${APP_VERSION}` : undefined}
+            aria-label={$currentUser.full_name || $currentUser.username}>
             {#if $currentUser.avatar_url}
               <img src={resolveAssetUrl($currentUser.avatar_url)} alt="" class="user-avatar-img" />
             {:else}
               {getInitial($currentUser)}
             {/if}
-          </div>
-          <div class="user-info">
-            <span class="user-name">{$currentUser.full_name || $currentUser.username}</span>
-            <span class="sidebar-version">{APP_VERSION}</span>
-          </div>
-          <button class="btn-icon logout-btn" on:click={handleLogout} title={$_('common.sign_out')} aria-label={$_('common.sign_out')}>
-            <span class="material-symbols-rounded">logout</span>
+            {#if rail && syncBad}<span class="avatar-sync-dot" aria-hidden="true"></span>{/if}
           </button>
+          {#if !rail}
+            <div class="user-info">
+              <span class="user-name">{$currentUser.full_name || $currentUser.username}</span>
+              <span class="sidebar-version">
+                {APP_VERSION}{#if syncText}<span class="sync-sep"> · </span><span class="sync-text" class:bad={syncBad}>{syncText}</span>{/if}
+              </span>
+            </div>
+            <button class="btn-icon logout-btn" on:click={handleLogout} title={$_('common.sign_out')} aria-label={$_('common.sign_out')}>
+              <span class="material-symbols-rounded">logout</span>
+            </button>
+          {/if}
         </div>
       {:else}
-        <span class="sidebar-version">{APP_VERSION}</span>
+        <span class="sidebar-version" title={rail ? APP_VERSION : undefined}>
+          {rail ? APP_VERSION.replace(/-.*/, '') : APP_VERSION}{#if syncText && !rail}<span class="sync-sep"> · </span><span class="sync-text" class:bad={syncBad}>{syncText}</span>{/if}
+        </span>
       {/if}
     </div>
   </aside>
@@ -189,10 +302,9 @@
 <style>
   .sidebar-backdrop {
     position: fixed; inset: 0;
-    /* Dark frosted glass scrim — covers everything to the right of the
-       sidebar panel with a heavy blur + saturation boost so the page
-       content reads as background texture rather than competing with
-       the sidebar nav items. */
+    /* Dark frosted glass scrim covering everything to the right of the
+       sidebar panel, with a heavy blur and saturation boost so the page
+       content reads as background texture. */
     background: rgba(0, 0, 0, 0.55);
     backdrop-filter: blur(28px) saturate(180%);
     -webkit-backdrop-filter: blur(28px) saturate(180%);
@@ -210,19 +322,23 @@
     flex-direction: column;
     padding: var(--safe-top) 0 var(--safe-bottom);
     box-shadow: var(--shadow-lg);
+    transition: width 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   /* Persistent sidebar: no shadow, lower z-index (no need to float above content) */
   .sidebar-persistent {
     box-shadow: none;
     z-index: 40;
   }
+  .sidebar-panel.rail { width: 76px; }
 
   .sidebar-brand {
     display: flex;
     align-items: center;
     gap: 14px;
-    padding: 20px 20px 16px;
+    padding: 20px 12px 16px 20px;
+    position: relative;
   }
+  .rail .sidebar-brand { flex-direction: column; gap: 10px; padding: 18px 0 12px; }
   .brand-icon {
     width: 44px;
     height: 44px;
@@ -230,7 +346,8 @@
     flex-shrink: 0;
     filter: drop-shadow(0 2px 8px color-mix(in srgb, var(--accent) 30%, transparent));
   }
-  .brand-text { display: flex; flex-direction: column; gap: 2px; }
+  .rail .brand-icon { width: 38px; height: 38px; }
+  .brand-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
   .brand-name {
     font-size: 20px;
     font-weight: 700;
@@ -241,8 +358,17 @@
     background-clip: text;
   }
   .brand-tagline { font-size: 12px; color: var(--text-3); }
+  .rail-toggle {
+    width: 32px; height: 32px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 9px; color: var(--text-3);
+    transition: background var(--dur-fast), color var(--dur-fast);
+  }
+  .rail-toggle:hover { background: var(--surface-2); color: var(--text-1); }
+  .rail-toggle .material-symbols-rounded { font-size: 20px; }
 
   .sidebar-divider { height: 1px; background: var(--border); margin: 0 16px 8px; }
+  .rail .sidebar-divider { margin: 0 14px 8px; }
 
   .sidebar-nav {
     flex: 1;
@@ -251,20 +377,50 @@
     gap: 2px;
     padding: 0 10px;
     overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
   }
+  .rail .sidebar-nav { padding: 0 12px; scrollbar-width: none; }
+  .rail .sidebar-nav::-webkit-scrollbar { display: none; }
+
+  /* The sliding highlight behind the active item. */
+  .nav-pill {
+    position: absolute; left: 10px; right: 10px; top: 0;
+    border-radius: var(--radius-md);
+    background: var(--accent-dim);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .rail .nav-pill { left: 12px; right: 12px; }
+  .nav-pill.visible { opacity: 1; }
+  .nav-pill.ready {
+    transition: transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1), height 280ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 160ms ease;
+  }
+  :global(html.no-animations) .nav-pill.ready { transition: none; }
+  @media (prefers-reduced-motion: reduce) { .nav-pill.ready { transition: opacity 120ms ease; } }
 
   .sidebar-group {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 4px 4px 14px;
+    padding: 12px 4px 4px 8px;
   }
-  .sidebar-group-label { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
+  .sidebar-group-toggle {
+    display: flex; align-items: center; gap: 4px;
+    padding: 4px 6px; margin-left: -2px; border-radius: 7px;
+  }
+  .sidebar-group-toggle:hover { background: var(--surface-2); }
+  .sidebar-group-toggle:hover .sidebar-group-label { color: var(--text-2); }
+  .sidebar-group-label { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); transition: color var(--dur-fast); }
+  .group-chevron { font-size: 16px; color: var(--text-3); transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .group-chevron.collapsed { transform: rotate(-90deg); }
   .sidebar-group-action { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
   .sidebar-group-action:hover { background: var(--surface-2); color: var(--text-1); }
   .sidebar-group-action .material-symbols-rounded { font-size: 16px; }
   .sidebar-label-item { padding-top: 9px !important; padding-bottom: 9px !important; font-size: 14px !important; }
   .sidebar-label-item.muted { color: var(--text-3); }
-  .label-dot-wrap { width: 22px; display: flex; justify-content: center; flex-shrink: 0; }
+  .label-dot-wrap { width: 22px; display: flex; justify-content: center; align-items: center; flex-shrink: 0; }
   .label-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .rail-label .label-dot { width: 10px; height: 10px; }
   .label-count { font-size: 12px; color: var(--text-3); }
   .nav-divider { margin: 10px 6px; }
   .sidebar-item {
@@ -282,20 +438,30 @@
     text-align: left;
     width: 100%;
     position: relative;
-    transition: background var(--dur-fast), color var(--dur-fast);
+    z-index: 1;
+    transition: background var(--dur-fast), color var(--dur-fast), transform 120ms ease;
     -webkit-tap-highlight-color: transparent;
   }
-  .sidebar-item:hover  { background: var(--surface-2); color: var(--text-1); }
-  .sidebar-item.active {
-    background: var(--accent-dim);
-    color: var(--accent);
-  }
+  .rail .sidebar-item { justify-content: center; padding: 12px 0; gap: 0; }
+  .rail .sidebar-label-item, .rail .rail-label { padding: 10px 0 !important; }
+  .sidebar-item:hover { background: color-mix(in srgb, var(--text-1) 6%, transparent); color: var(--text-1); }
+  .sidebar-item.active { color: var(--accent); }
+  .sidebar-item.active:hover { background: none; }
   .sidebar-item:active { transform: scale(0.98); }
+  .sidebar-item:focus-visible,
+  .rail-toggle:focus-visible,
+  .sidebar-group-toggle:focus-visible,
+  .sidebar-group-action:focus-visible,
+  .user-avatar:focus-visible,
+  .logout-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
 
   .sidebar-icon { font-size: 22px; flex-shrink: 0; position: relative; }
   /* Update-available dot on the Settings nav icon. Same accent tint the
      banner uses so the two surfaces read as one signal. */
-  .nav-update-dot {
+  .nav-update-dot, .nav-count-dot {
     position: absolute;
     top: 0;
     right: -2px;
@@ -305,7 +471,15 @@
     background: var(--accent);
     box-shadow: 0 0 0 2px var(--surface-1);
   }
-  .sidebar-label { flex: 1; }
+  .sidebar-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nav-badge {
+    min-width: 20px; height: 20px; padding: 0 6px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: var(--radius-full);
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: var(--accent-text);
+    font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
+  }
 
   .active-indicator {
     width: 4px;
@@ -317,6 +491,7 @@
     top: 50%;
     transform: translateY(-50%);
   }
+  .rail .active-indicator { right: -12px; }
 
   .sidebar-footer {
     padding: 12px 14px;
@@ -325,7 +500,10 @@
     align-items: center;
     justify-content: flex-end;
   }
-  .sidebar-version { font-size: 11px; color: var(--text-3); }
+  .rail .sidebar-footer { justify-content: center; padding: 12px 0; }
+  .sidebar-version { font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sync-sep { opacity: 0.6; }
+  .sync-text.bad { color: var(--warning); }
 
   .sidebar-user {
     display: flex;
@@ -333,6 +511,7 @@
     gap: 10px;
     width: 100%;
   }
+  .rail .sidebar-user { justify-content: center; }
   .user-avatar {
     width: 34px;
     height: 34px;
@@ -345,13 +524,20 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    overflow: hidden;
+    overflow: visible;
+    position: relative;
+    cursor: pointer;
   }
   .user-avatar-img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     border-radius: 50%;
+  }
+  .avatar-sync-dot {
+    position: absolute; right: -1px; bottom: -1px;
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--warning); box-shadow: 0 0 0 2px var(--surface-1);
   }
   .user-info {
     flex: 1;

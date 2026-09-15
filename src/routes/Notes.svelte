@@ -36,6 +36,7 @@
   $: view = path.startsWith('/archive') ? 'archive'
     : path.startsWith('/trash') ? 'trash'
     : path.startsWith('/reminders') ? 'reminders'
+    : path.startsWith('/shared') ? 'shared'
     : 'notes';
   $: labelId = path.startsWith('/label/') ? Number(params?.id) : null;
   $: activeLabel = labelId != null ? $labelsById.get(labelId) : null;
@@ -75,6 +76,7 @@
     : view === 'reminders' ? $_('routes.reminders.title')
     : view === 'archive' ? $_('routes.archive.title')
     : view === 'trash' ? $_('routes.trash.title')
+    : view === 'shared' ? $_('routes.shared.title')
     : $_('routes.notes.title');
 
   async function load() {
@@ -375,13 +377,14 @@
     {:else if !notes.length}
       <div class="empty">
         <span class="material-symbols-rounded empty-icon">
-          {query ? 'search_off' : view === 'reminders' ? 'notifications' : view === 'archive' ? 'archive' : view === 'trash' ? 'delete' : activeLabel ? 'label' : 'sticky_note_2'}
+          {query ? 'search_off' : view === 'reminders' ? 'notifications' : view === 'archive' ? 'archive' : view === 'trash' ? 'delete' : view === 'shared' ? 'group' : activeLabel ? 'label' : 'sticky_note_2'}
         </span>
         <h2>
           {query ? $_('notes.empty_search_title')
             : view === 'reminders' ? $_('routes.reminders.empty_title')
             : view === 'archive' ? $_('routes.archive.empty_title')
             : view === 'trash' ? $_('routes.trash.empty_title')
+            : view === 'shared' ? $_('routes.shared.empty_title')
             : activeLabel ? $_('routes.label.empty_title')
             : $_('routes.notes.empty_title')}
         </h2>
@@ -390,6 +393,7 @@
             : view === 'reminders' ? $_('routes.reminders.empty_body')
             : view === 'archive' ? $_('routes.archive.empty_body')
             : view === 'trash' ? $_('routes.trash.empty_body')
+            : view === 'shared' ? $_('routes.shared.empty_body')
             : activeLabel ? $_('routes.label.empty_body')
             : $_('routes.notes.empty_body')}
         </p>

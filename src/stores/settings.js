@@ -31,6 +31,7 @@ export const USER_PREFS = new Set([
 
 export const DEVICE_PREFS = new Set([
   'appearance','navStyle','sidebarPersistent','disableAnimations',
+  'sidebarRail', 'sidebarLabelsCollapsed', // per-device sidebar shape
   'forceMobileLayout',     // per-device layout opt-out (mirrors NT/LT)
   'biometricLoginEnabled', // Android-only, per-device biometric unlock for sign-in
   'appLockEnabled',        // Android-only: require biometric / device credential to open the app
@@ -249,6 +250,9 @@ function createSettingStore(key, defaultValue) {
 export const appearance        = createSettingStore('appearance',        'system');
 export const navStyle          = createSettingStore('navStyle',          'both');
 export const sidebarPersistent = createSettingStore('sidebarPersistent', true);
+// Pinned desktop sidebar collapsed to an icon rail, and the Labels section folded.
+export const sidebarRail = createSettingStore('sidebarRail', false);
+export const sidebarLabelsCollapsed = createSettingStore('sidebarLabelsCollapsed', false);
 export const disableAnimations = createSettingStore('disableAnimations', false);
 export const biometricLoginEnabled = createSettingStore('biometricLoginEnabled', false);
 export const appLockEnabled    = createSettingStore('appLockEnabled',    false);

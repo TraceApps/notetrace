@@ -273,6 +273,7 @@ export const NotesNative = {
     const args = [LOCAL_USER_ID];
     if (view === 'trash') where.push('n.trashed_at IS NOT NULL');
     else if (view === 'reminders') where.push('n.trashed_at IS NULL', 'n.reminder_at IS NOT NULL');
+    else if (view === 'shared') where.push('n.trashed_at IS NULL', 'n.archived = 0', "n.share_role IN ('view', 'edit')");
     else {
       where.push('n.trashed_at IS NULL');
       where.push(view === 'archive' ? 'n.archived = 1' : 'n.archived = 0');

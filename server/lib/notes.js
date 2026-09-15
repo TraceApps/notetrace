@@ -206,7 +206,7 @@ export function ftsQuery(q) {
 
 /**
  * List notes for a view.
- *   view: 'notes' (default) | 'archive' | 'trash' | 'reminders'
+ *   view: 'notes' (default) | 'archive' | 'trash' | 'reminders' | 'shared' (shared with the caller)
  *   labelId: only notes carrying this label
  *   q: full-text search across title, body and checklist items
  */
@@ -223,6 +223,8 @@ export function listNotes(u, { view = 'notes', labelId = null, q = '' } = {}) {
   else if (view === 'reminders') {
     // Reminders belong to the owner.
     where.push('n.trashed_at IS NULL', 'n.reminder_at IS NOT NULL', owned);
+  } else if (view === 'shared') {
+    where.push('n.trashed_at IS NULL', multi ? 'm.id IS NOT NULL' : '0', `${archived} = 0`);
   } else {
     where.push('n.trashed_at IS NULL');
     where.push(view === 'archive' ? `${archived} = 1` : `${archived} = 0`);

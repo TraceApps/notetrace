@@ -17,9 +17,9 @@ const idParam = req => {
 };
 const notFound = res => res.status(404).json({ error: 'Note not found' });
 
-// GET /api/notes?view=notes|archive|trash|reminders&label=<id>&q=<text>
+// GET /api/notes?view=notes|archive|trash|reminders|shared&label=<id>&q=<text>
 router.get('/', wrap((req, res) => {
-  const view = ['notes', 'archive', 'trash', 'reminders'].includes(req.query.view) ? req.query.view : 'notes';
+  const view = ['notes', 'archive', 'trash', 'reminders', 'shared'].includes(req.query.view) ? req.query.view : 'notes';
   const label = parseInt(req.query.label, 10);
   res.json(Notes.listNotes(uid(req), {
     view,

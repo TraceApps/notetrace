@@ -11,7 +11,7 @@
   import Toast     from './components/ui/Toast.svelte';
   import ConfirmDialogMount from './components/ui/ConfirmDialogMount.svelte';
   import { DB }    from './lib/db.js';
-  import { navStyle, applyAccentColor, accentColor, applyAppearance, appearance, disableAnimations, sidebarPersistent, pageBanners, bannerStyle, bannerAnimation, forceMobileLayout, startPage } from './stores/settings.js';
+  import { navStyle, applyAccentColor, accentColor, applyAppearance, appearance, disableAnimations, sidebarPersistent, sidebarRail, pageBanners, bannerStyle, bannerAnimation, forceMobileLayout, startPage } from './stores/settings.js';
   import { _ } from 'svelte-i18n';
   import { currentUser, userMgmtActive, setupRequired, loadAuthState, handleOidcCallback } from './stores/auth.js';
   import { needsNativeSetup, isNative, getNativeMode, getServerUrl, apiUrl } from './lib/platform.js';
@@ -195,6 +195,7 @@
     '/archive':            Notes,
     '/trash':              Notes,
     '/label/:id':          Notes,
+    '/shared':             Notes,
     '/settings':           Settings,
     '/settings/:section':  Settings,
     '/wizard':             Wizard,
@@ -248,7 +249,7 @@
     );
     document.documentElement.style.setProperty(
       '--sidebar-w',
-      sidebarPinned ? '280px' : '0px'
+      sidebarPinned ? ($sidebarRail ? '76px' : '280px') : '0px'
     );
   }
 
