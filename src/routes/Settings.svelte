@@ -27,6 +27,7 @@
   // Per-section pages — one component per slug, dispatched by
   // SECTION_COMPONENTS below.
   import SettingsAppearance      from '../components/settings/SettingsAppearance.svelte';
+  import SettingsNotes           from '../components/settings/SettingsNotes.svelte';
   import SettingsRegional        from '../components/settings/SettingsRegional.svelte';
   import SettingsTrace           from '../components/settings/SettingsTrace.svelte';
   import SettingsServerConnection from '../components/settings/SettingsServerConnection.svelte';
@@ -147,6 +148,7 @@
   // sub-page header to show the section name.
   const SECTION_META = {
     appearance:    { titleKey: 'settings.appearance.section',        icon: 'contrast' },
+    notes:         { titleKey: 'settings.notes.section',             icon: 'sticky_note_2' },
     regional:      { titleKey: 'settings.regional.section',          icon: 'public' },
     ai:            { titleKey: 'settings.ai.section',                icon: 'bolt' },
     cooktrace:     { titleKey: 'cooktrace.section',                  icon: 'skillet' },
@@ -172,6 +174,7 @@
   // every child.
   const SECTION_COMPONENTS = {
     appearance:    SettingsAppearance,
+    notes:         SettingsNotes,
     regional:      SettingsRegional,
     ai:            SettingsTrace,
     cooktrace:     SettingsCooktrace,
@@ -197,7 +200,8 @@
   // runs on the index, before drill-in.
   const SECTION_KEYWORDS = {
     profile:       ['profile','my profile','account','name','avatar','log out','logout','sign out','password','change password'],
-    appearance:    ['appearance','theme','dark','light','accent','color','navigation','sidebar','persistent','start page','animations','tasks','link previews','link preview','previews','note order','sort','custom order','drag','reorder','arrange','keyboard','shortcuts','hotkeys','keys','density','compact','comfortable','dense','card size','swipe','gesture','gestures','reduce motion','banner','page banner','force mobile','mobile layout','mobile view','phone layout','narrow layout','auto','foldable','fold','tab bar','bottom bar','icons','rail','tasks','every checklist','checklists in tasks','shopping list'],
+    appearance:    ['appearance','theme','dark','light','accent','color','navigation','sidebar','persistent','start page','animations','reduce motion','banner','page banner','force mobile','mobile layout','mobile view','phone layout','narrow layout','auto','foldable','fold','tab bar','bottom bar','icons','rail'],
+    notes:         ['notes','cards','density','compact','comfortable','dense','card size','note order','sort','custom order','drag','reorder','arrange','swipe','gesture','gestures','archive','keyboard','shortcuts','hotkeys','keys','link previews','link preview','previews','tasks','every checklist','checklists in tasks','shopping list'],
     regional:      ['regional','date','time','12h','24h','units','energy','kcal','kj','calories','kilojoules','imperial','metric','measurement system'],
     ai:            ['ai','trace','assistant','provider','model','custom model','model id','api key','chat','claude','openai','gemini','sonnet','opus','haiku','gpt','gemini 3','base url','artificial intelligence','smart log','smartlog','quick log','voice','dictate','hold to record','mic','transcribe','transcription','whisper','voice notes','read text','ocr','image text'],
     cooktrace:     ['cooktrace','cook trace','shopping','shopping list','groceries','grocery','send to cooktrace','integration','integrations','link','traceapps','recipes'],
@@ -404,6 +408,11 @@
   <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'appearance')} class:active={currentSection === 'appearance'} aria-current={currentSection === 'appearance' ? 'page' : undefined} on:click={() => toggleSection('appearance')}>
     <span class="material-symbols-rounded si">contrast</span>
     <span>{$_('settings.appearance.section')}</span>
+    <span class="material-symbols-rounded chevron">expand_more</span>
+  </button>
+  <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'notes')} class:active={currentSection === 'notes'} aria-current={currentSection === 'notes' ? 'page' : undefined} on:click={() => toggleSection('notes')}>
+    <span class="material-symbols-rounded si">sticky_note_2</span>
+    <span>{$_('settings.notes.section')}</span>
     <span class="material-symbols-rounded chevron">expand_more</span>
   </button>
   <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'regional')} class:active={currentSection === 'regional'} aria-current={currentSection === 'regional' ? 'page' : undefined} on:click={() => toggleSection('regional')}>

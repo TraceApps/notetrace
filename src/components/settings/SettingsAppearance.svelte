@@ -11,12 +11,8 @@
   import { applyAppearance, applyAccentColor } from '../../stores/settings.js';
   import {
     appearance, accentColor, navStyle, sidebarPersistent, disableAnimations,
-    bannerStyle, bannerAnimation, startPage, forceMobileLayout, linkPreviews, noteSort, keyboardShortcuts, cardDensity, swipeToArchive, tasksAllChecklists,
+    bannerStyle, bannerAnimation, startPage, forceMobileLayout,
   } from '../../stores/settings.js';
-  import ShortcutsHelp from '../notes/ShortcutsHelp.svelte';
-  let shortcutsOpen = false;
-  const hasKeyboard = typeof window !== 'undefined' && window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
-  import { linkPreviewsAvailable } from '../../lib/link-preview.js';
   import { openColorPicker } from '../../stores/color-picker.js';
 
   // Theme / accent options — mirror NT exactly.
@@ -176,76 +172,7 @@
     {/if}
   </div>
 
-  <p class="sub-label">{$_('settings_page.appearance.notes_group')}</p>
-  <div class="card settings-card">
-    <div class="setting-row">
-      <div>
-        <span class="setting-label">{$_('settings_page.appearance.density')}</span>
-        <div class="setting-desc">{$_('settings_page.appearance.density_desc')}</div>
-      </div>
-      <div class="select-wrap" style="width:160px">
-        <select class="select sel-sm" value={$cardDensity} on:change={e => cardDensity.set(e.target.value)}>
-          <option value="comfortable">{$_('settings_page.appearance.density_comfortable')}</option>
-          <option value="compact">{$_('settings_page.appearance.density_compact')}</option>
-        </select>
-      </div>
-    </div>
-    <div class="setting-divider"></div>
-    <div class="setting-row">
-      <div>
-        <span class="setting-label">{$_('settings_page.appearance.note_order')}</span>
-        <div class="setting-desc">{$_('settings_page.appearance.note_order_desc')}</div>
-      </div>
-      <div class="select-wrap" style="width:160px">
-        <select class="select sel-sm" value={$noteSort} on:change={e => noteSort.set(e.target.value)}>
-          <option value="edited">{$_('settings_page.appearance.note_order_edited')}</option>
-          <option value="custom">{$_('settings_page.appearance.note_order_custom')}</option>
-        </select>
-      </div>
-    </div>
-    <div class="setting-divider"></div>
-    <div class="setting-row">
-      <div>
-        <span class="setting-label">{$_('settings_page.appearance.tasks_all')}</span>
-        <div class="setting-desc">{$_('settings_page.appearance.tasks_all_desc')}</div>
-      </div>
-      <input type="checkbox" class="toggle-cb" checked={$tasksAllChecklists} on:change={e => tasksAllChecklists.set(e.target.checked)} />
-    </div>
-    {#if !hasKeyboard}
-      <div class="setting-divider"></div>
-      <div class="setting-row">
-        <div>
-          <span class="setting-label">{$_('settings_page.appearance.swipe')}</span>
-          <div class="setting-desc">{$_('settings_page.appearance.swipe_desc')}</div>
-        </div>
-        <input type="checkbox" class="toggle-cb" checked={$swipeToArchive} on:change={e => swipeToArchive.set(e.target.checked)} />
-      </div>
-    {/if}
-    {#if hasKeyboard}
-      <div class="setting-divider"></div>
-      <div class="setting-row">
-        <div>
-          <span class="setting-label">{$_('settings_page.appearance.shortcuts')}</span>
-          <div class="setting-desc">{$_('settings_page.appearance.shortcuts_desc')}</div>
-        </div>
-        <button class="btn btn-secondary" style="height:34px" on:click={() => shortcutsOpen = true}>{$_('settings_page.appearance.shortcuts_view')}</button>
-        <input type="checkbox" class="toggle-cb" checked={$keyboardShortcuts} on:change={e => keyboardShortcuts.set(e.target.checked)} aria-label={$_('settings_page.appearance.shortcuts')} />
-      </div>
-    {/if}
-    {#if linkPreviewsAvailable}
-      <div class="setting-divider"></div>
-      <div class="setting-row">
-        <div>
-          <span class="setting-label">{$_('settings_page.appearance.link_previews')}</span>
-          <div class="setting-desc">{$_('settings_page.appearance.link_previews_desc')}</div>
-        </div>
-        <input type="checkbox" class="toggle-cb" checked={$linkPreviews} on:change={e => linkPreviews.set(e.target.checked)} />
-      </div>
-    {/if}
-  </div>
 </div>
-
-<ShortcutsHelp bind:open={shortcutsOpen} />
 
 <style>
   /* Accent-swatch styles live with the section that owns them so the

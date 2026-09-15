@@ -698,6 +698,9 @@
     "tags":               "Tags"
   },
   "settings": {
+    "notes": {
+      "section":          "Notes"
+    },
     "appearance": {
       "section":          "Appearance",
       "theme":            "Theme",
@@ -953,24 +956,6 @@
       "persistent_sidebar":     "Persistent Sidebar",
       "persistent_sidebar_desc": "Sidebar stays open and shifts page content instead of overlaying it.",
       "start_page":             "Start Page",
-      "notes_group":            "Notes",
-      "density":                "Card Density",
-      "density_desc":           "Compact fits more notes on the screen, with smaller text and no link images.",
-      "density_comfortable":    "Comfortable",
-      "density_compact":        "Compact",
-      "tasks_all":              "Show Every Checklist in Tasks",
-      "tasks_all_desc":         "Tasks lists every open item from every checklist, including shopping and packing lists. Off: only items with a due date and checklists you show in Tasks.",
-      "swipe":                  "Swipe to Archive",
-      "swipe_desc":             "Swipe a note card sideways to archive it, with Undo. In Archive, a swipe brings it back.",
-      "shortcuts":              "Keyboard Shortcuts",
-      "shortcuts_desc":         "Single keys like c for a new note and / to search. Press ? to see them all.",
-      "shortcuts_view":         "View",
-      "note_order":             "Note Order",
-      "note_order_desc":        "Newest edit first, or the order you drag notes into.",
-      "note_order_edited":      "Last Edited",
-      "note_order_custom":      "Your Order",
-      "link_previews":          "Link Previews",
-      "link_previews_desc":     "Show the title, image, and site of the first link on a note card. Your server fetches them, not your browser.",
       "reduce_motion":          "Reduce Motion",
       "page_banners":           "Page Banners",
       "page_banners_desc":      "Header style at the top of every page. Animated is a compact accent-gradient bar with a chosen motion style; Gradient is the same bar, static; Off is a plain glass header.",
@@ -983,6 +968,25 @@
       "anim_drift":             "Drift",
       "anim_pulse":             "Pulse",
       "anim_aurora":            "Aurora"
+    },
+    "notes": {
+      "density":                 "Card Density",
+      "density_desc":            "Compact fits more notes on the screen, with smaller text and no link images.",
+      "density_comfortable":     "Comfortable",
+      "density_compact":         "Compact",
+      "note_order":              "Note Order",
+      "note_order_desc":         "Newest edit first, or the order you drag notes into.",
+      "note_order_edited":       "Last Edited",
+      "note_order_custom":       "Your Order",
+      "tasks_all":               "Show Every Checklist in Tasks",
+      "tasks_all_desc":          "Tasks lists every open item from every checklist, including shopping and packing lists. Off: only items with a due date and checklists you show in Tasks.",
+      "swipe":                   "Swipe to Archive",
+      "swipe_desc":              "Swipe a note card sideways to archive it, with Undo. In Archive, a swipe brings it back.",
+      "shortcuts":               "Keyboard Shortcuts",
+      "shortcuts_desc":          "Single keys like c for a new note and / to search. Press ? to see them all.",
+      "shortcuts_view":          "View",
+      "link_previews":           "Link Previews",
+      "link_previews_desc":      "Show the title, image, and site of the first link on a note card. Your server fetches them, not your browser."
     },
     "regional": {
       "language_desc":          "UI language. A translation may lag one or two releases behind English; missing strings fall back to English.",
