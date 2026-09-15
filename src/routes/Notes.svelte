@@ -340,7 +340,11 @@
     else editing = entry;
   }
   // On a phone the + button sits in the corner, so Trace's button stacks above it.
-  $: if (typeof document !== 'undefined') document.documentElement.style.setProperty('--page-fab-space', canCapture && $viewport.width <= 600 ? '76px' : '0px');
+  // A phone, upright or on its side, starts notes from the + button; wider or taller
+  // screens use the Take a note bar. Kept in step with the media query in the styles.
+  const PHONE_CAPTURE = '(max-width: 600px), (pointer: coarse) and (max-height: 500px)';
+  $: phoneCapture = typeof window !== 'undefined' && ($viewport, !!window.matchMedia?.(PHONE_CAPTURE).matches);
+  $: if (typeof document !== 'undefined') document.documentElement.style.setProperty('--page-fab-space', canCapture && phoneCapture ? '76px' : '0px');
   onDestroy(() => document.documentElement.style.setProperty('--page-fab-space', '0px'));
   // Holding the + button on a phone starts a voice note instead of a text note.
   let fabHeld = false;
@@ -1435,7 +1439,8 @@
     background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-text); box-shadow: var(--shadow-lg);
   }
   :global(.fab-menu .fab-close .material-symbols-rounded) { font-size: 28px; }
-  @media (max-width: 600px) {
+  /* Same as PHONE_CAPTURE in the script: phones in either orientation. */
+  @media (max-width: 600px), (pointer: coarse) and (max-height: 500px) {
     .capture { display: none; }
     .fab { display: flex; }
     .notes-body { gap: 18px; padding-top: 16px; }
