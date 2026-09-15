@@ -8,6 +8,24 @@
     "settings": "Settings",
     "shared":   "Shared with Me"
   },
+  "slash": {
+    "title":     "Insert",
+    "checklist": "Checklist",
+    "h1":        "Large Heading",
+    "h2":        "Heading",
+    "h3":        "Small Heading",
+    "bullet":    "Bulleted List",
+    "numbered":  "Numbered List",
+    "quote":     "Quote",
+    "code":      "Code Block",
+    "divider":   "Divider",
+    "link":      "Link to a Note",
+    "date":      "Today's Date",
+    "time":      "Current Time",
+    "image":     "Image",
+    "voice":     "Voice Note",
+    "reminder":  "Reminder"
+  },
   "shortcuts": {
     "title":           "Keyboard Shortcuts",
     "off":             "Single-key shortcuts are turned off on this device (Settings, Appearance).",

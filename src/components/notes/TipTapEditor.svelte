@@ -9,6 +9,10 @@
    * [[Note title]] links render as chips (note-link-extension.js). Typing
    * `[[` shows matching note titles from `linkTitles`; picking one, or
    * tapping a link, emits `openlink` / inserts the link.
+   *
+   * Typing `/` at the start of a line or after a space shows commands:
+   * formatting runs here; note-level actions (checklist, image, voice note,
+   * reminder) are emitted as `slash` for the note editor to handle.
    */
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
   import { _ } from 'svelte-i18n';
@@ -26,6 +30,8 @@
   export let showToolbar = true;
   /** Titles offered after typing [[ (other notes the user can see). */
   export let linkTitles = [];
+  /** Note-level slash commands the parent handles: 'checklist' | 'image' | 'voice' | 'reminder'. */
+  export let slashActions = [];
 
   const dispatch = createEventDispatcher();
   let el;
@@ -33,10 +39,57 @@
   let lastEmitted = value;
   let active = {};
 
-  // [[ suggestions
-  let suggest = null;   // { query, from, to, x, y }
+  // [[ suggestions and / commands
+  let suggest = null;   // { mode: 'link' | 'slash', query, from, to, x, y }
   let suggestIndex = 0;
-  $: suggestions = suggest ? _matches(suggest.query) : [];
+  $: suggestions = !suggest ? [] : suggest.mode === 'slash' ? _slashMatches(suggest.query, slashActions) : _matches(suggest.query);
+
+  const SLASH = [
+    { key: 'checklist', icon: 'checklist',            words: 'checklist list todo checkbox tasks', parent: true },
+    { key: 'h1',        icon: 'format_h1',            words: 'heading title h1 large' },
+    { key: 'h2',        icon: 'format_h2',            words: 'heading subtitle h2 medium' },
+    { key: 'h3',        icon: 'format_h3',            words: 'heading h3 small' },
+    { key: 'bullet',    icon: 'format_list_bulleted', words: 'bullet list unordered' },
+    { key: 'numbered',  icon: 'format_list_numbered', words: 'numbered list ordered' },
+    { key: 'quote',     icon: 'format_quote',         words: 'quote blockquote' },
+    { key: 'code',      icon: 'code_blocks',          words: 'code block snippet' },
+    { key: 'divider',   icon: 'horizontal_rule',      words: 'divider line rule separator' },
+    { key: 'link',      icon: 'add_link',             words: 'link note wiki' },
+    { key: 'date',      icon: 'today',                words: 'date today now' },
+    { key: 'time',      icon: 'schedule',             words: 'time now clock' },
+    { key: 'image',     icon: 'add_photo_alternate',  words: 'image photo picture', parent: true },
+    { key: 'voice',     icon: 'mic',                  words: 'voice record audio', parent: true },
+    { key: 'reminder',  icon: 'notification_add',     words: 'reminder remind alarm', parent: true },
+  ];
+  function _slashMatches(query, actions) {
+    const q = query.trim().toLowerCase();
+    return SLASH
+      .filter(c => !c.parent || (actions || []).includes(c.key))
+      .filter(c => !q || c.key.startsWith(q) || c.words.split(' ').some(w => w.startsWith(q)) || $_(`slash.${c.key}`).toLowerCase().includes(q))
+      .slice(0, 10)
+      .map(c => ({ ...c, slash: true }));
+  }
+  function runSlash(cmd) {
+    const range = { from: suggest.from, to: suggest.to };
+    suggest = null;
+    const chain = editor.chain().focus().deleteRange(range);
+    const now = new Date();
+    switch (cmd.key) {
+      case 'h1': chain.setHeading({ level: 1 }).run(); break;
+      case 'h2': chain.setHeading({ level: 2 }).run(); break;
+      case 'h3': chain.setHeading({ level: 3 }).run(); break;
+      case 'bullet': chain.toggleBulletList().run(); break;
+      case 'numbered': chain.toggleOrderedList().run(); break;
+      case 'quote': chain.toggleBlockquote().run(); break;
+      case 'code': chain.toggleCodeBlock().run(); break;
+      case 'divider': chain.setHorizontalRule().run(); break;
+      case 'link': chain.insertContent('[[').run(); break;
+      case 'date': chain.insertContent(now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) + ' ').run(); break;
+      case 'time': chain.insertContent(now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) + ' ').run(); break;
+      default: chain.run(); dispatch('slash', cmd.key);
+    }
+    refreshActive();
+  }
 
   function _matches(query) {
     const q = query.trim().toLowerCase();
@@ -57,15 +110,21 @@
     const $from = sel.$from;
     const before = $from.parent.textBetween(0, $from.parentOffset, undefined, '\ufffc');
     const m = before.match(/\[\[([^[\]\n\ufffc]{0,60})$/);
-    if (!m) { suggest = null; return; }
+    const s = !m && $from.parent.type.name !== 'codeBlock' ? before.match(/(?:^|\s)\/([a-zA-Z]{0,20})$/) : null;
+    if (!m && !s) { suggest = null; return; }
     const coords = view.coordsAtPos(sel.from);
-    const changed = !suggest || suggest.query !== m[1];
-    suggest = { query: m[1], from: sel.from - m[0].length, to: sel.from, x: coords.left, y: coords.bottom };
+    const mode = m ? 'link' : 'slash';
+    const query = m ? m[1] : s[1];
+    const len = m ? m[0].length : s[1].length + 1;
+    const changed = !suggest || suggest.mode !== mode || suggest.query !== query;
+    suggest = { mode, query, from: sel.from - len, to: sel.from, x: coords.left, y: coords.bottom };
     if (changed) suggestIndex = 0;
+    if (mode === 'slash' && !_slashMatches(query, slashActions).length) suggest = null;
   }
 
   function pickSuggestion(item) {
     if (!editor || !suggest || !item) return;
+    if (item.slash) { runSlash(item); return; }
     editor.chain().focus()
       .deleteRange({ from: suggest.from, to: suggest.to })
       .insertContent([{ type: 'noteLink', attrs: { title: item.title } }, { type: 'text', text: ' ' }])
@@ -192,13 +251,20 @@
 {/if}
 <div class="tiptap-host" bind:this={el}></div>
 {#if suggest && suggestions.length}
-  <ul use:portal class="link-suggest" role="listbox" aria-label={$_('note_links.suggestions')}
-    style="left:{Math.min(suggest.x, window.innerWidth - 272)}px; top:{suggest.y + 6}px">
+  <ul use:portal class="link-suggest" class:slash={suggest.mode === 'slash'} role="listbox"
+    aria-label={suggest.mode === 'slash' ? $_('slash.title') : $_('note_links.suggestions')}
+    style="left:{Math.min(suggest.x, window.innerWidth - 272)}px; {suggest.y + 360 > window.innerHeight && suggest.y > 380 ? `bottom:${window.innerHeight - suggest.y + 28}px` : `top:${suggest.y + 6}px`}">
+    {#if suggest.mode === 'slash'}<li class="suggest-head" aria-hidden="true">{$_('slash.title')}</li>{/if}
     {#each suggestions as item, i}
       <li role="option" aria-selected={i === suggestIndex}>
         <button type="button" class:on={i === suggestIndex} on:mousedown|preventDefault={() => pickSuggestion(item)}>
-          <span class="material-symbols-rounded">{item.create ? 'add_link' : 'description'}</span>
-          <span class="t">{item.create ? $_('note_links.link_new', { values: { title: item.title } }) : item.title}</span>
+          {#if item.slash}
+            <span class="material-symbols-rounded">{item.icon}</span>
+            <span class="t">{$_(`slash.${item.key}`)}</span>
+          {:else}
+            <span class="material-symbols-rounded">{item.create ? 'add_link' : 'description'}</span>
+            <span class="t">{item.create ? $_('note_links.link_new', { values: { title: item.title } }) : item.title}</span>
+          {/if}
         </button>
       </li>
     {/each}
@@ -280,6 +346,9 @@
   .link-suggest button.on, .link-suggest button:hover { background: var(--accent-dim); }
   .link-suggest .material-symbols-rounded { font-size: 18px; color: var(--text-3); }
   .link-suggest .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .link-suggest.slash { max-height: 340px; overflow-y: auto; }
+  .link-suggest.slash .material-symbols-rounded { color: var(--accent); }
+  .suggest-head { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); padding: 6px 8px 4px; }
   .tiptap-host :global(.tiptap-body hr) { border: none; border-top: 1px solid var(--border-strong); }
   .tiptap-host :global(.tiptap-body p.is-editor-empty:first-child::before) {
     content: attr(data-placeholder);

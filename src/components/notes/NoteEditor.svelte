@@ -535,6 +535,16 @@
   }
   function onResize() { narrow = window.innerWidth < 600; }
 
+  // Note-level commands typed as /checklist, /image, /voice, /reminder.
+  function onSlash(key) {
+    const rect = document.querySelector('.editor-panel .tiptap-host')?.getBoundingClientRect() || null;
+    const fake = { currentTarget: { getBoundingClientRect: () => rect } };
+    if (key === 'checklist') convert();
+    else if (key === 'image') imageInput.click();
+    else if (key === 'voice') openRecorder(fake);
+    else if (key === 'reminder') { reminderAnchor = rect; reminderOpen = true; }
+  }
+
   // ── Phone editor bar ──────────────────────────────────────────────
   // On a phone the bar sits on top of the on-screen keyboard (the visual
   // viewport shrinks while it's up; the Android app resizes the WebView
@@ -653,6 +663,8 @@
           {#if kind === 'text'}
             <TipTapEditor bind:this={bodyRef} bind:value={body} editable={!contentLocked} showToolbar={!narrow}
               on:formats={(e) => formats = e.detail}
+              slashActions={contentLocked ? [] : ['checklist', 'image', ...(canRecord ? ['voice'] : []), ...(isOwner ? ['reminder'] : [])]}
+              on:slash={(e) => onSlash(e.detail)}
               linkTitles={linkTitles.filter(t => t.toLowerCase() !== title.trim().toLowerCase())}
               placeholder={$_('notes.body_placeholder')} on:change={scheduleText} on:openlink={(e) => openLinked(e.detail)} />
           {:else}
