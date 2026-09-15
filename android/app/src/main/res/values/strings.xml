@@ -4,4 +4,7 @@
     <string name="title_activity_main">NoteTrace</string>
     <string name="package_name">com.notetrace.app</string>
     <string name="custom_url_scheme">com.notetrace.app</string>
+    <string name="shortcut_voice">Voice Note</string>
+    <string name="shortcut_note">New Note</string>
+    <string name="shortcut_list">New List</string>
 </resources>

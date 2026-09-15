@@ -804,7 +804,8 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
      cancel-preview state. */
   .fab {
     position: fixed;
-    bottom: calc(var(--tabbar-h, var(--nav-h)) + var(--safe-bottom, 0px) + 20px);
+    /* --page-fab-space: a page's own round button below this one (the notes + on a phone). */
+    bottom: calc(var(--tabbar-h, var(--nav-h)) + var(--safe-bottom, 0px) + 20px + var(--page-fab-space, 0px));
     right: 20px;
     width: 60px;
     height: 60px;
@@ -902,7 +903,7 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
     position: fixed;
     right: 52px;
     transform: translateX(50%);
-    bottom: calc(var(--tabbar-h, var(--nav-h, 0px)) + var(--safe-bottom, 0px) + 92px);
+    bottom: calc(var(--tabbar-h, var(--nav-h, 0px)) + var(--safe-bottom, 0px) + 92px + var(--page-fab-space, 0px));
     padding: 8px 16px;
     border-radius: 16px;
     background: rgba(0, 0, 0, 0.82);

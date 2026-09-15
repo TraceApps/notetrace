@@ -13,6 +13,7 @@
     { title: $_('shortcuts.group_notes'), rows: [
       [['c'], $_('shortcuts.new_note')],
       [['l'], $_('shortcuts.new_list')],
+      [['v'], $_('shortcuts.new_voice')],
       [['/'], $_('shortcuts.search')],
       [[mod, 'K'], $_('shortcuts.search_anywhere')],
       [['j'], $_('shortcuts.next')],

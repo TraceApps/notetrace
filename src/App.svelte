@@ -447,12 +447,22 @@
           }
         });
         // Deep link callbacks: notetrace://oidc-callback?token=…
+        // A home screen shortcut that cold-starts the app arrives as the launch URL.
+        App.getLaunchUrl?.().then((r) => {
+          const m = String(r?.url || '').match(/^notetrace:\/\/new\/(\w+)/);
+          if (m) import('svelte-spa-router').then(({ push }) => push(`/?new=${m[1]}`));
+        }).catch(() => {});
         App.addListener('appUrlOpen', async ({ url }) => {
           console.log('[app] deep link received:', url);
           try {
             const u = new URL(url);
             const params = u.searchParams;
             const host = (u.hostname || u.host || '').toLowerCase();
+            if (host === 'new') {
+              const what = (u.pathname || '').replace(/^\/+/, '') || 'text';
+              import('svelte-spa-router').then(({ push }) => push(`/?new=${encodeURIComponent(what)}`));
+              return;
+            }
             if (host === 'oidc-callback') {
               const errMsg = params.get('error');
               const linked = params.get('linked');

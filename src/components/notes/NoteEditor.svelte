@@ -42,7 +42,7 @@
   import { recordingSupported, uploadVoiceNote } from '../../lib/voice-recorder.js';
   import { extractSupport, transcribeAudio, readImageText, fetchAttachmentBlob, isAudio, isImage } from '../../lib/ai-extract.js';
   import { autoTranscribe, autoReadImages } from '../../stores/settings.js';
-  import { traceReady } from '../../lib/trace-run.js';
+  import { traceReady, askTrace, TRACE_ACTIONS, titleLine } from '../../lib/trace-run.js';
   import AttachmentGrid from './AttachmentGrid.svelte';
   import ImageViewer from './ImageViewer.svelte';
   import { uploadNoteImages, isImageFile } from '../../lib/note-images.js';
@@ -234,6 +234,28 @@
     recordOpen = true;
   }
 
+  // A quick voice note opens straight into recording. Its transcript becomes
+  // the note's text and Trace suggests a title; discarding the recording of an
+  // otherwise empty note closes it.
+  let voiceFirst = false;
+  async function startQuickVoice() {
+    voiceFirst = true;
+    await tick();
+    recordAnchor = document.querySelector('.editor-panel [data-record]')?.getBoundingClientRect() || null;
+    recordOpen = true;
+  }
+  function onRecordCancel() {
+    recordOpen = false;
+    if (voiceFirst && !noteId && isEmptyNote({ title, body_md: body, items, attachments })) close();
+  }
+  async function suggestTitle(text) {
+    try {
+      const reply = await askTrace({ systemPrompt: TRACE_ACTIONS.title.system, prompt: TRACE_ACTIONS.title.prompt('', text.slice(0, 4000)) });
+      const t = titleLine(reply);
+      if (t && !title.trim()) { title = t; scheduleText(); }
+    } catch { /* the note keeps no title */ }
+  }
+
   async function onRecorded(e) {
     recordOpen = false;
     const rec = e.detail;
@@ -263,6 +285,10 @@
       const text = isAudio(att) ? await transcribeAudio(file, att.mime || file.type) : await readImageText(file);
       if (!text) { showInfo(isAudio(att) ? $_('trace_extract.no_speech') : $_('trace_extract.no_text')); return; }
       attachments = attachments.map(a => a.uuid === att.uuid ? { ...a, extracted_text: text } : a);
+      if (voiceFirst && isAudio(att)) {
+        if (kind === 'text' && !body.trim() && !contentLocked) addTextToNote(text);
+        if (!title.trim() && $traceReady) suggestTitle(text);
+      }
       await enqueue(async () => {
         if (!noteId) return;
         await NoteApi.updateAttachment(noteId, att.uuid, { extracted_text: text });
@@ -551,6 +577,8 @@
   export let originId = null;
   /** Render in place (the List layout's side pane) instead of over the page. */
   export let inline = false;
+  /** A quick voice note: start recording as soon as the editor opens. */
+  export let autoRecord = false;
   // A narrow reading pane (a half-open foldable) keeps the main actions and moves the rest into More.
   let barW = 800;
   // A narrow editor card (beside a half-open fold) uses the phone's compact toolbar.
@@ -619,6 +647,7 @@
   }
 
   onMount(async () => {
+    if (autoRecord && canRecord && !noteId) startQuickVoice();
     loadLinks();
     loadCooktraceLink();
     window.addEventListener('keydown', onKey);
@@ -629,7 +658,7 @@
     if (!noteId) {
       if (prefill?.title || prefill?.body_md) scheduleText(); // shared content saves without needing an edit
       if (prefill?.images?.length) addImages(prefill.images);
-      else if (kind === 'text') titleEl?.focus();
+      else if (kind === 'text' && !voiceFirst) titleEl?.focus();
     }
   });
   onDestroy(() => {
@@ -707,7 +736,7 @@
               <span class="material-symbols-rounded">add_photo_alternate</span>
             </button>
             {#if canRecord}
-              <button class="icon-btn" on:click={openRecorder} title={$_('voice.record')} aria-label={$_('voice.record')}>
+              <button class="icon-btn" data-record on:click={openRecorder} title={$_('voice.record')} aria-label={$_('voice.record')}>
                 <span class="material-symbols-rounded">mic</span>
               </button>
             {/if}
@@ -899,7 +928,7 @@
                 <span class="material-symbols-rounded">add_photo_alternate</span>
               </button>
               {#if canRecord}
-                <button class="icon-btn" on:click={openRecorder} title={$_('voice.record')} aria-label={$_('voice.record')}>
+                <button class="icon-btn" data-record on:click={openRecorder} title={$_('voice.record')} aria-label={$_('voice.record')}>
                   <span class="material-symbols-rounded">mic</span>
                 </button>
               {/if}
@@ -1057,7 +1086,7 @@
 </Popover>
 <Popover bind:open={recordOpen} anchor={recordAnchor}>
   {#if recordOpen}
-    <VoiceRecorder on:done={onRecorded} on:cancel={() => recordOpen = false} />
+    <VoiceRecorder on:done={onRecorded} on:cancel={onRecordCancel} />
   {/if}
 </Popover>
 <Popover bind:open={traceOpen} anchor={traceAnchor}>

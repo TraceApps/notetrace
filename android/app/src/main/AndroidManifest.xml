@@ -23,6 +23,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
 
             <!-- Share sheet: text, links, and images shared from other apps open as a new note. -->
             <intent-filter>
@@ -49,6 +50,8 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="notetrace" android:host="callback" />
                 <data android:scheme="notetrace" android:host="oidc-callback" />
+                <!-- notetrace://new/voice, /text, /checklist: home screen shortcuts -->
+                <data android:scheme="notetrace" android:host="new" />
             </intent-filter>
 
         </activity>

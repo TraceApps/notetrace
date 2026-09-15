@@ -41,6 +41,8 @@
   import NoteCard from '../components/notes/NoteCard.svelte';
   import { pendingShare, shareToNote, takeSharedFiles } from '../lib/share-intent.js';
   import { FILTER_TYPES, emptyFilters, hasFilters, matchesFilters, toggleFilter } from '../lib/note-filters.js';
+  import { recordingSupported } from '../lib/voice-recorder.js';
+  import { longpress } from '../lib/long-press.js';
   import { NOTE_COLORS, colorDot } from '../lib/note-colors.js';
 
   export let params = {};
@@ -328,11 +330,37 @@
     if (splitPane) openInPane(entry);
     else editing = entry;
   }
+  // A quick voice note: a new note that opens straight into recording.
+  const canRecordVoice = recordingSupported();
+  function newVoiceNote() {
+    if (!canRecordVoice) return;
+    const entry = { kind: 'text', labels: labelId != null ? [labelId] : [], voice: true };
+    if (splitPane) openInPane(entry);
+    else editing = entry;
+  }
+  // On a phone the + button sits in the corner, so Trace's button stacks above it.
+  $: if (typeof document !== 'undefined') document.documentElement.style.setProperty('--page-fab-space', canCapture && $viewport.width <= 600 ? '76px' : '0px');
+  onDestroy(() => document.documentElement.style.setProperty('--page-fab-space', '0px'));
+  // Holding the + button on a phone starts a voice note instead of a text note.
+  let fabHeld = false;
+  function onFabClick() {
+    if (fabHeld) { fabHeld = false; return; }
+    newNote('text');
+  }
 
   // Opened from a reminder notification: /?note=<id>
   $: openFromQuery($querystring);
   async function openFromQuery(qs) {
     const params = new URLSearchParams(qs || '');
+    // Home screen shortcuts: /?new=text|checklist|voice
+    const fresh = params.get('new');
+    if (fresh) {
+      replaceRoute(path);
+      await tick();
+      if (fresh === 'voice') newVoiceNote();
+      else newNote(fresh === 'checklist' ? 'checklist' : 'text');
+      return;
+    }
     if (params.get('share') === '1') {
       const prefill = shareToNote({ title: params.get('title'), text: params.get('text'), url: params.get('url') });
       replaceRoute(path);
@@ -591,6 +619,7 @@
       case 'g': _goPending = Date.now(); break;
       case 'c': if (canCapture) { e.preventDefault(); newNote('text'); } break;
       case 'l': if (canCapture) { e.preventDefault(); newNote('checklist'); } break;
+      case 'v': if (canCapture && canRecordVoice) { e.preventDefault(); newVoiceNote(); } break;
       case '/': e.preventDefault(); focusSearch(); break;
       case 'j': e.preventDefault(); focusCardAt(1); break;
       case 'k': e.preventDefault(); focusCardAt(-1); break;
@@ -791,6 +820,11 @@
         <button class="capture-icon" on:click={() => newNote('checklist')} title={$_('notes.new_checklist')} aria-label={$_('notes.new_checklist')}>
           <span class="material-symbols-rounded">check_box</span>
         </button>
+        {#if canRecordVoice}
+          <button class="capture-icon" on:click={newVoiceNote} title={$_('notes.new_voice_note')} aria-label={$_('notes.new_voice_note')}>
+            <span class="material-symbols-rounded">mic</span>
+          </button>
+        {/if}
         <button class="capture-icon" on:click={() => captureImageInput.click()} title={$_('notes.new_with_image')} aria-label={$_('notes.new_with_image')}>
           <span class="material-symbols-rounded">add_photo_alternate</span>
         </button>
@@ -868,7 +902,7 @@
         <div class="pane">
           {#if pane}
             {#key paneKey}
-              <NoteEditor bind:this={paneRef} inline note={pane.note || null} initialKind={pane.kind || 'text'}
+              <NoteEditor bind:this={paneRef} inline autoRecord={!!pane.voice} note={pane.note || null} initialKind={pane.kind || 'text'}
                 initialLabels={pane.labels || []} prefill={pane.prefill || null} on:close={closePane} />
             {/key}
           {:else}
@@ -954,7 +988,9 @@
   </div>
 
   {#if canCapture}
-    <button class="fab" class:hidden-fab={selecting} on:click={() => newNote('text')} aria-label={$_('notes.new_note')}>
+    <button class="fab" class:hidden-fab={selecting} on:click={onFabClick} on:pointerdown={() => fabHeld = false} aria-label={$_('notes.new_note')}
+      aria-description={canRecordVoice ? $_('notes.hold_for_voice') : undefined}
+      use:longpress on:longpress={() => { if (canRecordVoice) { fabHeld = true; navigator.vibrate?.(20); newVoiceNote(); } }}>
       <span class="material-symbols-rounded">add</span>
     </button>
   {/if}
@@ -964,7 +1000,7 @@
   <!-- Keyed per open: reopening while the last editor is still fading out
        would otherwise resume that editor with the previous note's state. -->
   {#key editing}
-    <NoteEditor bind:this={overlayRef} note={editing.note || null} initialKind={editing.kind || 'text'} initialLabels={editing.labels || []}
+    <NoteEditor bind:this={overlayRef} autoRecord={!!editing.voice} note={editing.note || null} initialKind={editing.kind || 'text'} initialLabels={editing.labels || []}
       prefill={editing.prefill || null} originId={editing.originId ?? null} on:close={closeEditor} />
   {/key}
 {/if}
@@ -1072,6 +1108,11 @@
     <button class="vm-row" role="menuitem" on:click={() => { newOpen = false; newNote('checklist'); }}>
       <span class="material-symbols-rounded">checklist</span><span class="vm-text"><strong>{$_('notes.new_checklist')}</strong></span>
     </button>
+    {#if canRecordVoice}
+      <button class="vm-row" role="menuitem" on:click={() => { newOpen = false; newVoiceNote(); }}>
+        <span class="material-symbols-rounded">mic</span><span class="vm-text"><strong>{$_('notes.new_voice_note')}</strong></span>
+      </button>
+    {/if}
     <button class="vm-row" role="menuitem" on:click={() => { newOpen = false; captureImageInput.click(); }}>
       <span class="material-symbols-rounded">add_photo_alternate</span><span class="vm-text"><strong>{$_('notes.new_with_image')}</strong></span>
     </button>

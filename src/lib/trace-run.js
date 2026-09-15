@@ -43,6 +43,10 @@ export const TRACE_ACTIONS = {
     system: `You summarize notes in the note's language: a few short bullet points (at most 5) with the key facts, decisions, dates, and to-dos. ${RULES} Use Markdown "- " bullets.`,
     prompt: (title, body) => `${title ? `Title: ${title}\n\n` : ''}${body}`,
   },
+  title: {
+    system: `You write a short title for a note: 2 to 6 words, in the note's language, no quotes and no ending period. ${RULES}`,
+    prompt: (title, body) => body,
+  },
   checklist: {
     system: `You turn a note into a checklist. Output one item per line, each a short actionable item, in the note's language and in a sensible order. No bullets, numbers, or checkboxes, and no headings. ${RULES}`,
     prompt: (title, body) => `${title ? `Title: ${title}\n\n` : ''}${body}`,
@@ -56,6 +60,12 @@ export function cleanTraceReply(text) {
   if (fenced) s = fenced[1].trim();
   s = s.replace(/^(here('| i)s|sure[,!]|okay[,!])[^\n]*:\s*\n+/i, '');
   return s.trim();
+}
+
+/** A title reply to a single clean line, or '' when there isn't one. */
+export function titleLine(text) {
+  const line = cleanTraceReply(text).split('\n').map(l => l.trim()).find(Boolean) || '';
+  return line.replace(/^(title:\s*)/i, '').replace(/^["'“”‘’*#\s]+|["'“”‘’*\s.]+$/g, '').slice(0, 80);
 }
 
 /** Checklist reply to item texts: one per line, stray bullets and boxes removed. */

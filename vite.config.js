@@ -73,6 +73,12 @@ export default defineConfig({
         orientation: 'any',
         start_url: './',
         scope: './',
+        // Long-press the installed app's icon: start a voice note, a note, or a list.
+        shortcuts: [
+          { name: 'Voice Note', short_name: 'Voice Note', url: './#/?new=voice', icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }] },
+          { name: 'New Note', short_name: 'New Note', url: './#/?new=text', icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }] },
+          { name: 'New List', short_name: 'New List', url: './#/?new=checklist', icons: [{ src: 'icons/icon-192.png', sizes: '192x192' }] },
+        ],
         // Installed PWA shows up in the OS share sheet; the server turns the
         // GET into a hash route that opens a pre-filled new note.
         // POST so photos can come along. The service worker takes the share
