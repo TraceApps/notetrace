@@ -44,11 +44,14 @@ export default defineConfig({
       // for the Svelte-side bridge.
       registerType: 'prompt',
       workbox: {
-        globPatterns: ['offline.html'],
+        // The app itself is cached, so the installed web app opens without a
+        // connection and shows the notes, images, and voice notes it has seen.
+        globPatterns: ['**/*.{js,css,html,woff2,woff,png,svg,ico,webmanifest}'],
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         // Reminder notification clicks and shared photos (public/sw-extras.js).
         importScripts: ['sw-extras.js'],
-        navigateFallback: null,
-        navigateFallbackDenylist: [/.*/],
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/api\//, /^\/uploads\//, /^\/share-target/],
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,
@@ -59,6 +62,30 @@ export default defineConfig({
             options: {
               cacheName: 'pages-cache',
               networkTimeoutSeconds: 3,
+            }
+          },
+          {
+            // Images and voice notes: kept after the first play or view, and
+            // rangeRequests lets a cached recording be scrubbed offline.
+            urlPattern: ({ url }) => url.pathname.startsWith('/uploads/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'note-files',
+              rangeRequests: true,
+              cacheableResponse: { statuses: [0, 200, 206] },
+              expiration: { maxEntries: 400, maxAgeSeconds: 60 * 60 * 24 * 60, purgeOnQuotaError: true },
+            }
+          },
+          {
+            // The last notes, labels, and settings seen, so the app opens with
+            // something to read offline. Writes still need the server.
+            urlPattern: ({ url, request }) => request.method === 'GET' && /^\/api\/(notes|labels|settings)/.test(url.pathname),
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'note-data',
+              networkTimeoutSeconds: 4,
+              cacheableResponse: { statuses: [200] },
+              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 * 14 },
             }
           },
         ]

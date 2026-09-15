@@ -299,6 +299,11 @@ export async function logout() {
   localStorage.removeItem('wl:userId');
   localStorage.removeItem('note:cachedUser');
   localStorage.removeItem('note:csrf');
+  // The offline copies of this account's notes and files (service worker
+  // caches) don't outlive the session on a shared computer.
+  try {
+    if (typeof caches !== 'undefined') await Promise.all(['note-data', 'note-files'].map(c => caches.delete(c)));
+  } catch { /* nothing cached */ }
   currentUser.set(null);
   // Note: userMgmtActive is a server-wide flag, not per-session. Don't flip
   // it on logout — that hides the Login gate in App.svelte (needsLogin =
