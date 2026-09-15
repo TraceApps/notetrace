@@ -74,6 +74,8 @@ Items marked ~~strikethrough~~ have been implemented.
 - ~~Card-to-editor animation~~
 - ~~Tasks view of open checklist items, with due dates on items~~
 - ~~List layout with grouping and a side pane on wide screens~~
+- ~~Two-pane List workspace with a resizable list column~~
+- ~~Label icons~~
 - ~~Due date notifications for checklist items~~
 - ~~Trace and MCP tools for tasks and due dates~~
 

@@ -200,10 +200,19 @@ reminder tick, sends at the user's digest time in their `timezone` setting (unti
 
 ### The List layout reuses the editor in place
 
-`NoteEditor` takes `inline` to render inside the List layout's side pane
-instead of over the page (no portal, backdrop, or open animation). Switching
-notes calls the editor's exported `flush()` first so pending text is saved
-before the pane is re-keyed. Sections come from `src/lib/list-groups.js`.
+`NoteEditor` takes `inline` to render inside the List layout's reading pane
+instead of over the page (no portal, backdrop, or open animation). Inline, its
+actions move from the bottom bar to a toolbar across the top, with no Done
+button. Switching notes calls the editor's exported `flush()` first so pending
+text is saved before the pane is re-keyed. Sections come from
+`src/lib/list-groups.js`. On wide screens `Notes.svelte` sizes the workspace to
+the space under the banner after each update, so the list and the pane scroll
+separately while the page itself doesn't.
+
+### Label icons
+
+A label's optional `icon` is a Material Symbols name from the fixed list in
+`server/lib/label-icons.js`; anything else is saved as no icon.
 
 ### Nested labels are names
 
