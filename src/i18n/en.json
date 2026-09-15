@@ -8,6 +8,23 @@
     "settings": "Settings",
     "shared":   "Shared with Me"
   },
+  "select": {
+    "select":            "Select Note",
+    "deselect":          "Deselect Note",
+    "toolbar":           "Selected Notes",
+    "clear":             "Clear Selection",
+    "all":               "Select All",
+    "count":             "{count} selected",
+    "delete_forever_title": "{count, plural, one {Delete # Note Forever?} other {Delete # Notes Forever?}}",
+    "toast_pinned":      "{count, plural, one {Pinned # note} other {Pinned # notes}}",
+    "toast_unpinned":    "{count, plural, one {Unpinned # note} other {Unpinned # notes}}",
+    "toast_archived":    "{count, plural, one {Archived # note} other {Archived # notes}}",
+    "toast_unarchived":  "{count, plural, one {Unarchived # note} other {Unarchived # notes}}",
+    "toast_trashed":     "{count, plural, one {Moved # note to the trash} other {Moved # notes to the trash}}",
+    "toast_restored":    "{count, plural, one {Restored # note} other {Restored # notes}}",
+    "toast_deleted":     "{count, plural, one {Deleted # note forever} other {Deleted # notes forever}}",
+    "toast_reminded":    "{count, plural, one {Set a reminder on # note} other {Set reminders on # notes}}"
+  },
   "filters": {
     "title":     "Filter Notes",
     "lists":     "Lists",

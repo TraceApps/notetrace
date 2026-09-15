@@ -16,6 +16,9 @@
   export let view = 'notes';
   /** Position in the list, for the staggered entrance. */
   export let index = 0;
+  /** Multi-select: this card is selected / some card is selected. */
+  export let selected = false;
+  export let selecting = false;
 
   const dispatch = createEventDispatcher();
   const PREVIEW_ITEMS = 8;
@@ -35,7 +38,15 @@
   $: editable = canEdit(note);
   $: shared = isShared(note);
 
-  function open() { dispatch('open', note); }
+  function open(e) {
+    // While selecting, or with Ctrl/Cmd held, a click selects instead of opening.
+    if (selecting || e?.ctrlKey || e?.metaKey) { dispatch('select', { note, range: !!e?.shiftKey }); return; }
+    dispatch('open', note);
+  }
+  function selectToggle(e) {
+    e.stopPropagation();
+    dispatch('select', { note, range: !!e.shiftKey });
+  }
 
   // A soft light follows the pointer on devices that hover. Set as CSS
   // variables straight on the element, so it never re-renders the card.
@@ -46,7 +57,7 @@
     e.currentTarget.style.setProperty('--my', `${e.clientY - r.top}px`);
   }
   function onKey(e) {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(e); }
   }
   function act(e, action) {
     e.stopPropagation();
@@ -64,6 +75,9 @@
   class:note-card-empty={empty}
   class:colored={!!note.color}
   class:is-pinned={note.pinned && (view === 'notes' || view === 'reminders')}
+  class:selected
+  class:selecting
+  aria-pressed={selecting ? selected : undefined}
   style="{noteColorStyle(note.color)} --i:{Math.min(index, 18)}"
   on:pointermove={spotlight}
   tabindex="0"
@@ -72,8 +86,12 @@
   on:click={open}
   on:keydown={onKey}
   use:longpress
-  on:longpress={(e) => dispatch('menu', { note, x: e.detail.x, y: e.detail.y })}
+  on:longpress={() => dispatch('select', { note, range: false })}
 >
+  <button class="card-select" class:on={selected} on:click={selectToggle}
+    title={selected ? $_('select.deselect') : $_('select.select')} aria-label={selected ? $_('select.deselect') : $_('select.select')}>
+    <span class="material-symbols-rounded" class:fill={selected}>{selected ? 'check_circle' : 'radio_button_unchecked'}</span>
+  </button>
   {#if view === 'notes' || view === 'reminders'}
     <button
       class="card-pin"
@@ -253,6 +271,28 @@
   :global(html.no-animations) .note-card { animation: none; }
   :global(html.no-animations) .note-card:hover,
   :global(html.no-animations) .note-card:active { transform: none; }
+
+  /* Multi-select */
+  .card-select {
+    position: absolute; top: -10px; left: -10px; z-index: 2;
+    width: 28px; height: 28px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--surface-1); color: var(--text-2);
+    box-shadow: var(--shadow-sm);
+    opacity: 0; transform: scale(0.8);
+    transition: opacity 160ms ease, transform 160ms ease, color 120ms ease;
+  }
+  .card-select .material-symbols-rounded { font-size: 24px; }
+  .card-select.on { color: var(--accent); opacity: 1; transform: none; }
+  .note-card.selecting .card-select { opacity: 1; transform: none; }
+  @media (hover: hover) {
+    .note-card:hover .card-select { opacity: 1; transform: none; }
+  }
+  .note-card.selected {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent), var(--card-rest-shadow);
+  }
+  .note-card.selecting .card-pin, .note-card.selecting .card-actions { visibility: hidden; }
 
   .card-progress {
     height: 3px; border-radius: 3px; overflow: hidden;

@@ -4,6 +4,8 @@
 
   export let notes = [];
   export let view = 'notes';
+  export let selectedIds = new Set();
+  export let selecting = false;
 
   // Column count follows the grid's own width (not the viewport), so it
   // stays right beside a pinned sidebar. Cards are dealt out row by row,
@@ -38,7 +40,7 @@
   {#each cols as col, ci (ci)}
     <div class="note-col">
       {#each col as { note, i } (note.id)}
-        <NoteCard {note} {view} index={i} on:open on:action on:toggleItem on:menu />
+        <NoteCard {note} {view} index={i} selected={selectedIds.has(note.id)} {selecting} on:open on:action on:toggleItem on:menu on:select />
       {/each}
     </div>
   {/each}

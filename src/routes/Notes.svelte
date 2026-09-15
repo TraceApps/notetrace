@@ -8,7 +8,7 @@
    *   /label/:id   notes carrying one label
    */
   import { onMount, onDestroy, tick } from 'svelte';
-  import { slide } from 'svelte/transition';
+  import { slide, fly } from 'svelte/transition';
   import { location, querystring, replace as replaceRoute } from 'svelte-spa-router';
   import { _ } from 'svelte-i18n';
   import { bannerStyle } from '../stores/settings.js';
@@ -322,6 +322,107 @@
     runAction(note, e.detail.value, null);
   }
 
+  // ── Multi-select ──────────────────────────────────────────────────
+  // Ctrl/Cmd-click, the check on a card, or a long press starts selecting;
+  // then clicks toggle, Shift-click selects a range, Escape clears.
+  let selectedIds = new Set();
+  let lastSelected = null;
+  $: selecting = selectedIds.size > 0;
+  $: selectedNotes = notes.filter(n => selectedIds.has(n.id));
+  $: visibleOrder = [...pinned, ...others, ...(view === 'reminders' ? pastReminders : [])];
+  $: view, labelId, clearSelection();
+  // Drop selected notes that left the list (archived, trashed, synced away).
+  $: pruneSelection(notes);
+  function pruneSelection(list) {
+    if (!selectedIds.size) return;
+    const ids = new Set(list.map(n => n.id));
+    if ([...selectedIds].some(id => !ids.has(id))) selectedIds = new Set([...selectedIds].filter(id => ids.has(id)));
+  }
+  function clearSelection() { selectedIds = new Set(); lastSelected = null; }
+  function onSelect(e) {
+    const { note, range } = e.detail;
+    const next = new Set(selectedIds);
+    if (range && lastSelected != null) {
+      const ids = visibleOrder.map(n => n.id);
+      const a = ids.indexOf(lastSelected), b = ids.indexOf(note.id);
+      if (a >= 0 && b >= 0) for (const id of ids.slice(Math.min(a, b), Math.max(a, b) + 1)) next.add(id);
+    } else if (next.has(note.id)) next.delete(note.id);
+    else next.add(note.id);
+    selectedIds = next;
+    lastSelected = note.id;
+  }
+  function selectAll() { selectedIds = new Set(visibleOrder.map(n => n.id)); }
+  function onSelectKey(e) {
+    if (e.key === 'Escape' && selecting && !editing) { e.preventDefault(); clearSelection(); }
+  }
+  onMount(() => window.addEventListener('keydown', onSelectKey));
+  onDestroy(() => window.removeEventListener('keydown', onSelectKey));
+
+  $: allPinned = selectedNotes.length > 0 && selectedNotes.every(n => n.pinned);
+  $: editableSel = selectedNotes.filter(canEdit);
+  $: ownedSel = selectedNotes.filter(isOwner);
+  let bulkBusy = false;
+  async function bulk(fn, list, toastKey) {
+    if (bulkBusy || !list.length) return;
+    bulkBusy = true;
+    let done = 0;
+    try {
+      for (const n of list) { await fn(n); done++; }
+      if (toastKey) showInfo($_(toastKey, { values: { count: done } }));
+    } catch (e) {
+      showError(e.message || $_('notes.save_failed'));
+    } finally {
+      bulkBusy = false;
+      clearSelection();
+      signalNotesChanged();
+      refreshLabels();
+    }
+  }
+  const bulkPin = () => { const pin = !allPinned; return bulk(n => NoteApi.updateNote(n.id, { pinned: pin }), selectedNotes, pin ? 'select.toast_pinned' : 'select.toast_unpinned'); };
+  const bulkArchive = (archived) => bulk(n => NoteApi.updateNote(n.id, { archived }), selectedNotes, archived ? 'select.toast_archived' : 'select.toast_unarchived');
+  const bulkTrash = () => bulk(n => NoteApi.trashNote(n.id), ownedSel, 'select.toast_trashed');
+  const bulkRestore = () => bulk(n => NoteApi.restoreNote(n.id), selectedNotes, 'select.toast_restored');
+  async function bulkDeleteForever() {
+    const ok = await confirmDialog({
+      title: $_('select.delete_forever_title', { values: { count: selectedNotes.length } }),
+      message: $_('notes.delete_forever_message'),
+      confirmText: $_('notes.delete_forever'),
+      dangerous: true,
+    });
+    if (ok) bulk(n => NoteApi.deleteNoteForever(n.id), selectedNotes, 'select.toast_deleted');
+  }
+  let bulkColorOpen = false, bulkColorAnchor = null;
+  let bulkLabelOpen = false, bulkLabelAnchor = null;
+  let bulkReminderOpen = false, bulkReminderAnchor = null;
+  $: sharedLabels = selectedNotes.length ? selectedNotes.map(n => n.labels || []).reduce((acc, l) => acc.filter(id => l.includes(id))) : [];
+  function bulkColor(c) { bulkColorOpen = false; bulk(n => NoteApi.updateNote(n.id, { color: c }), editableSel, null); }
+  async function bulkLabels(next) {
+    const added = next.filter(id => !sharedLabels.includes(id));
+    const removed = sharedLabels.filter(id => !next.includes(id));
+    const updates = [];
+    for (const n of selectedNotes) {
+      const cur = n.labels || [];
+      const want = [...new Set([...cur.filter(id => !removed.includes(id)), ...added])];
+      if (want.length !== cur.length || want.some(id => !cur.includes(id))) updates.push({ n, want });
+    }
+    try {
+      for (const { n, want } of updates) replace(await NoteApi.updateNote(n.id, { labels: want }));
+      refreshLabels();
+    } catch (e) { showError(e.message); }
+  }
+  async function bulkReminder(detail) {
+    bulkReminderOpen = false;
+    await ensureReminderPermission();
+    await bulk(n => NoteApi.updateNote(n.id, detail), ownedSel, 'select.toast_reminded');
+    rescheduleReminders();
+  }
+  async function bulkClearReminder() {
+    bulkReminderOpen = false;
+    await bulk(n => NoteApi.updateNote(n.id, { reminder_at: null }), ownedSel, null);
+    rescheduleReminders();
+  }
+  const anchorOf = (e) => e.currentTarget.getBoundingClientRect();
+
   async function emptyTrash() {
     const ok = await confirmDialog({
       title: $_('notes.empty_trash_title'),
@@ -456,7 +557,7 @@
         <section class="notes-section timeline">
           <h2 class="section-label"><span class="material-symbols-rounded fill">keep</span>{$_('notes.pinned')}</h2>
           <div class="timeline-list">
-            {#each pinned as n (n.id)}<NoteCard note={n} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} />{/each}
+            {#each pinned as n (n.id)}<NoteCard note={n} {view} selected={selectedIds.has(n.id)} {selecting} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} />{/each}
           </div>
         </section>
       {/if}
@@ -464,7 +565,7 @@
         <section class="notes-section timeline">
           <h2 class="section-label"><span class="material-symbols-rounded">calendar_today</span>{dayLabel(day)}</h2>
           <div class="timeline-list">
-            {#each day.notes as n (n.id)}<NoteCard note={n} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} />{/each}
+            {#each day.notes as n (n.id)}<NoteCard note={n} {view} selected={selectedIds.has(n.id)} {selecting} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} />{/each}
           </div>
         </section>
       {/each}
@@ -472,27 +573,27 @@
       {#if pinned.length}
         <section class="notes-section">
           <h2 class="section-label"><span class="material-symbols-rounded fill">keep</span>{$_('notes.pinned')}</h2>
-          <NoteGrid notes={pinned} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} />
+          <NoteGrid notes={pinned} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} />
         </section>
       {/if}
       {#if others.length}
         <section class="notes-section">
           {#if pinned.length}<h2 class="section-label">{$_('notes.others')}</h2>{/if}
           {#if view === 'reminders' && pastReminders.length}<h2 class="section-label">{$_('reminders.upcoming')}</h2>{/if}
-          <NoteGrid notes={others} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} />
+          <NoteGrid notes={others} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} />
         </section>
       {/if}
       {#if view === 'reminders' && pastReminders.length}
         <section class="notes-section">
           <h2 class="section-label">{$_('reminders.past')}</h2>
-          <NoteGrid notes={pastReminders} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} />
+          <NoteGrid notes={pastReminders} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} />
         </section>
       {/if}
     {/if}
   </div>
 
   {#if canCapture}
-    <button class="fab" on:click={() => newNote('text')} aria-label={$_('notes.new_note')}>
+    <button class="fab" class:hidden-fab={selecting} on:click={() => newNote('text')} aria-label={$_('notes.new_note')}>
       <span class="material-symbols-rounded">add</span>
     </button>
   {/if}
@@ -517,9 +618,105 @@
 <Popover bind:open={labelOpen} anchor={labelAnchor}>
   <LabelPicker selected={labelTarget?.labels || []} on:change={(e) => setLabels(e.detail)} />
 </Popover>
+{#if selecting}
+  <div class="bulk-bar" role="toolbar" aria-label={$_('select.toolbar')} transition:fly={{ y: 24, duration: 220 }}>
+    <button class="bulk-btn" on:click={clearSelection} title={$_('select.clear')} aria-label={$_('select.clear')}>
+      <span class="material-symbols-rounded">close</span>
+    </button>
+    <span class="bulk-count" aria-live="polite">{$_('select.count', { values: { count: selectedIds.size } })}</span>
+    <span class="bulk-spacer"></span>
+    {#if view === 'trash'}
+      <button class="bulk-btn" on:click={bulkRestore} disabled={bulkBusy} title={$_('notes.restore')} aria-label={$_('notes.restore')}>
+        <span class="material-symbols-rounded">restore_from_trash</span>
+      </button>
+      <button class="bulk-btn danger" on:click={bulkDeleteForever} disabled={bulkBusy} title={$_('notes.delete_forever')} aria-label={$_('notes.delete_forever')}>
+        <span class="material-symbols-rounded">delete_forever</span>
+      </button>
+    {:else}
+      {#if view === 'notes'}
+        <button class="bulk-btn" on:click={bulkPin} disabled={bulkBusy} title={allPinned ? $_('notes.unpin') : $_('notes.pin')} aria-label={allPinned ? $_('notes.unpin') : $_('notes.pin')}>
+          <span class="material-symbols-rounded" class:fill={allPinned}>keep</span>
+        </button>
+      {/if}
+      {#if ownedSel.length}
+        <button class="bulk-btn" on:click={(e) => { bulkReminderAnchor = anchorOf(e); bulkReminderOpen = true; }} disabled={bulkBusy} title={$_('reminders.remind_me')} aria-label={$_('reminders.remind_me')}>
+          <span class="material-symbols-rounded">notification_add</span>
+        </button>
+      {/if}
+      {#if editableSel.length}
+        <button class="bulk-btn" on:click={(e) => { bulkColorAnchor = anchorOf(e); bulkColorOpen = true; }} disabled={bulkBusy} title={$_('notes.color')} aria-label={$_('notes.color')}>
+          <span class="material-symbols-rounded">palette</span>
+        </button>
+      {/if}
+      <button class="bulk-btn" on:click={(e) => { bulkLabelAnchor = anchorOf(e); bulkLabelOpen = true; }} disabled={bulkBusy} title={$_('notes.labels')} aria-label={$_('notes.labels')}>
+        <span class="material-symbols-rounded">label</span>
+      </button>
+      {#if view === 'archive'}
+        <button class="bulk-btn" on:click={() => bulkArchive(false)} disabled={bulkBusy} title={$_('notes.unarchive')} aria-label={$_('notes.unarchive')}>
+          <span class="material-symbols-rounded">unarchive</span>
+        </button>
+      {:else}
+        <button class="bulk-btn" on:click={() => bulkArchive(true)} disabled={bulkBusy} title={$_('notes.archive')} aria-label={$_('notes.archive')}>
+          <span class="material-symbols-rounded">archive</span>
+        </button>
+      {/if}
+      {#if ownedSel.length}
+        <button class="bulk-btn" on:click={bulkTrash} disabled={bulkBusy} title={$_('notes.move_to_trash')} aria-label={$_('notes.move_to_trash')}>
+          <span class="material-symbols-rounded">delete</span>
+        </button>
+      {/if}
+    {/if}
+    <span class="bulk-divider" aria-hidden="true"></span>
+    <button class="bulk-btn" on:click={selectAll} title={$_('select.all')} aria-label={$_('select.all')}>
+      <span class="material-symbols-rounded">select_all</span>
+    </button>
+  </div>
+{/if}
+<Popover bind:open={bulkColorOpen} anchor={bulkColorAnchor}>
+  <ColorPalette value={null} on:select={(e) => bulkColor(e.detail)} />
+</Popover>
+<Popover bind:open={bulkLabelOpen} anchor={bulkLabelAnchor}>
+  <LabelPicker selected={sharedLabels} on:change={(e) => bulkLabels(e.detail)} />
+</Popover>
+<Popover bind:open={bulkReminderOpen} anchor={bulkReminderAnchor}>
+  <ReminderPicker reminderAt={null} repeat={null} tz={null} on:set={(e) => bulkReminder(e.detail)} on:clear={bulkClearReminder} />
+</Popover>
 <ActionSheet bind:open={menuOpen} title={menuNote?.title || ''} actions={menuActions} on:select={onMenuSelect} />
 
 <style>
+  .bulk-bar {
+    position: fixed; z-index: 150;
+    bottom: calc(var(--safe-bottom) + 24px);
+    left: calc(var(--sidebar-w, 0px) + 12px); right: 12px;
+    max-width: 720px; margin: 0 auto;
+    height: 52px; padding: 0 8px;
+    display: flex; align-items: center; gap: 2px;
+    border-radius: var(--radius-lg);
+    background: var(--glass-surface);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+    box-shadow: var(--shadow-lg), 0 0 0 4px var(--accent-dim);
+  }
+  .bulk-count { font-size: 15px; font-weight: 600; color: var(--text-1); padding: 0 6px; white-space: nowrap; }
+  .bulk-spacer { flex: 1; }
+  .bulk-divider { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+  .bulk-btn {
+    width: 40px; height: 40px; flex-shrink: 0; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center; color: var(--text-2);
+    transition: background var(--dur-fast), color var(--dur-fast);
+  }
+  .bulk-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--text-1) 9%, transparent); color: var(--text-1); }
+  .bulk-btn:disabled { opacity: 0.5; }
+  .bulk-btn.danger { color: var(--danger); }
+  @media (max-width: 600px) {
+    .bulk-bar { left: 8px; right: 8px; bottom: calc(var(--nav-h) + var(--safe-bottom) + 10px); padding: 0 4px; }
+    .bulk-bar { gap: 0; }
+    .bulk-btn { width: 36px; }
+    .bulk-count { font-size: 14px; padding: 0 2px; }
+    .bulk-divider { margin: 0 2px; }
+  }
+
   .layout-toggle { width: 44px; height: 44px; flex-shrink: 0; border-radius: var(--radius-md); color: var(--text-2); display: flex; align-items: center; justify-content: center; }
   .layout-toggle:hover { background: color-mix(in srgb, var(--text-1) 8%, transparent); color: var(--text-1); }
   .timeline-list { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 720px; margin: 0 auto; }
@@ -642,6 +839,7 @@
     z-index: 30;
   }
   .fab .material-symbols-rounded { font-size: 30px; }
+  .fab.hidden-fab { visibility: hidden; }
   @media (max-width: 600px) {
     .notes-toolbar { display: flex; }
     .search { flex: 1; }
