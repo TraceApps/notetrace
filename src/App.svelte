@@ -145,6 +145,8 @@
     _pullTracking = false;
     if (!hit) { _pullDistance = 0; return; }
     _pullRefreshing = true;
+    // Park the spinner at the threshold while refreshing, like the other Trace apps.
+    _pullDistance = PULL_SYNC_THRESHOLD;
     console.info('[sync] pull-to-refresh triggered');
     try {
       if (_syncModeActive) await _runForcedSync();
