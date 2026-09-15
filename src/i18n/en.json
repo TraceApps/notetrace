@@ -10,6 +10,16 @@
     "search":   "Search",
     "tasks":    "Tasks"
   },
+  "list": {
+    "layout":        "Layout",
+    "group_by":      "Group Notes",
+    "group_none":    "No Grouping",
+    "group_label":   "By Label",
+    "group_color":   "By Color",
+    "group_date":    "By Date Edited",
+    "no_label":      "No Label",
+    "select_note":   "Pick a note to read and edit it here."
+  },
   "tasks": {
     "add_placeholder": "Add a task",
     "add":             "Add",
@@ -449,6 +459,7 @@
   "timeline": {
     "show_timeline": "Timeline View",
     "show_grid":     "Grid View",
+    "show_list":     "List View",
     "today":         "Today",
     "yesterday":     "Yesterday"
   },

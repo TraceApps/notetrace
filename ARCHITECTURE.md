@@ -181,6 +181,21 @@ drag after a long press (which also selects), and a swipe only for a quick
 sideways move. Search filters (`src/lib/note-filters.js`) filter the loaded list
 in the browser.
 
+### Tasks are checklist items
+
+The Tasks view (`src/routes/Tasks.svelte`) reads the normal notes list and
+shows unchecked items; there's no task table. The only new data is
+`checklist_items.due_date` (a `YYYY-MM-DD` calendar day, synced with the item),
+and `src/lib/due-dates.js` groups items by it. Quick add appends to a checklist
+titled "Tasks".
+
+### The List layout reuses the editor in place
+
+`NoteEditor` takes `inline` to render inside the List layout's side pane
+instead of over the page (no portal, backdrop, or open animation). Switching
+notes calls the editor's exported `flush()` first so pending text is saved
+before the pane is re-keyed. Sections come from `src/lib/list-groups.js`.
+
 ### Nested labels are names
 
 `Home/Garage` is an ordinary label whose name contains a slash;

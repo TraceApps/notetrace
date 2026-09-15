@@ -541,6 +541,10 @@
   // it on close. Without a visible card (new note, a linked note, reduced
   // motion) it rises into place instead.
   export let originId = null;
+  /** Render in place (the List layout's side pane) instead of over the page. */
+  export let inline = false;
+  /** Save anything pending, for switching notes in the side pane. */
+  export async function flush() { await flushAll(); }
   const _reduceMotion = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   function _cardRect() {
     const id = originId ?? noteId;
@@ -551,6 +555,7 @@
     return r.width > 0 && r.bottom > 0 && r.top < window.innerHeight ? r : null;
   }
   function morph(node) {
+    if (inline) return { duration: 0 };
     const from = !_reduceMotion && !$disableAnimations && originId != null ? _cardRect() : null;
     if (!from) return fly(node, { y: narrow ? 30 : 16, duration: $disableAnimations ? 0 : 220, easing: cubicOut });
     const to = node.getBoundingClientRect();
@@ -642,8 +647,8 @@
 <!-- The host stays in place while the backdrop moves to <body>. Without a fixed
      first node, closing the editor left its other top-level nodes behind. -->
 <div class="editor-host">
-<div use:portal class="editor-backdrop" on:click|self={() => close()} transition:fade|global={{ duration: $disableAnimations ? 0 : 160 }}>
-  <div class="editor-panel" class:narrow class:kb-open={narrow && kb > 0} class:drag-over={dragOver} style="{noteColorStyle(color)} --kb:{narrow ? kb : 0}px"
+<div use:portal={!inline} class="editor-backdrop" class:inline on:click|self={() => { if (!inline) close(); }} transition:fade|global={{ duration: $disableAnimations || inline ? 0 : 160 }}>
+  <div class="editor-panel" class:inline class:narrow class:kb-open={narrow && kb > 0} class:drag-over={dragOver} style="{noteColorStyle(color)} --kb:{narrow ? kb : 0}px"
     on:paste={onPaste} on:dragover={onDragOver} on:dragleave={() => dragOver = false} on:drop={onDrop}
     role="dialog" aria-modal="true" aria-label={title || $_('notes.untitled')}
     in:morph|global out:morph|global>
@@ -974,6 +979,12 @@
   .backlink .material-symbols-rounded { font-size: 16px; }
   .editor-panel.drag-over { outline: 2px dashed var(--accent); outline-offset: -6px; }
 
+  .editor-backdrop.inline { display: contents; }
+  .editor-panel.inline {
+    max-width: none; max-height: none; height: 100%;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--card-rest-shadow);
+  }
   .editor-backdrop {
     position: fixed; inset: 0; z-index: 200;
     background: rgba(0, 0, 0, 0.55);

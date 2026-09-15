@@ -27,7 +27,9 @@
   import { ensureReminderPermission, rescheduleReminders } from '../lib/note-reminders.js';
   import { isOwner, canEdit } from '../lib/note-sharing.js';
   import { groupByDay } from '../lib/timeline.js';
-  import { notesLayout, noteSort, noteOrder, keyboardShortcuts, swipeToArchive } from '../stores/settings.js';
+  import { notesLayout, noteSort, noteOrder, keyboardShortcuts, swipeToArchive, listGroupBy } from '../stores/settings.js';
+  import NoteRow from '../components/notes/NoteRow.svelte';
+  import { groupNotes } from '../lib/list-groups.js';
   import { showUndo } from '../stores/toast.js';
   import ShortcutsHelp from '../components/notes/ShortcutsHelp.svelte';
   import { push as pushRoute } from 'svelte-spa-router';
@@ -157,9 +159,70 @@
   });
 
   // ── Editor ─────────────────────────────────────────────────────────
-  function openNote(e) { editing = { note: e.detail, originId: e.detail.id }; }
+  // ── List layout: notes on the left, the open note on the right ─────
+  // On a wide screen the List layout opens notes in a side pane; narrower
+  // screens open them over the page like the grid does.
+  $: listMode = $notesLayout === 'list' && view !== 'reminders';
+  let wideList = typeof window !== 'undefined' && window.innerWidth >= 1100;
+  const _onListResize = () => { wideList = window.innerWidth >= 1100; };
+  onMount(() => window.addEventListener('resize', _onListResize));
+  onDestroy(() => window.removeEventListener('resize', _onListResize));
+  $: splitPane = listMode && wideList;
+  let pane = null;      // { note } or { kind, labels } in the side pane
+  // The pane is sticky; its height fills from wherever it sits to the bottom of the screen.
+  let paneEl, paneH = 600;
+  function sizePane() {
+    if (!paneEl) return;
+    const top = Math.max(12, paneEl.getBoundingClientRect().top);
+    paneH = Math.max(420, Math.round(window.innerHeight - top - 12));
+  }
+  onMount(() => {
+    window.addEventListener('scroll', sizePane, true);
+    window.addEventListener('resize', sizePane);
+  });
+  onDestroy(() => {
+    window.removeEventListener('scroll', sizePane, true);
+    window.removeEventListener('resize', sizePane);
+  });
+  $: if (paneEl) tick().then(sizePane);
+  let paneKey = 0;
+  let paneRef;
+  async function openInPane(entry) {
+    const hadPane = !!pane;
+    try { await paneRef?.flush?.(); } catch { /* keep going */ }
+    pane = entry;
+    paneKey++;
+    if (hadPane) load();   // the note just left may have changed
+  }
+  async function closePane(e) {
+    const target = e?.detail?.navigate;
+    pane = null;
+    load();
+    if (target) {
+      await tick();
+      try { const n = await NoteApi.getNote(target); if (n) openInPane({ note: n }); } catch { /* gone */ }
+    }
+  }
+  $: if (!splitPane && pane) { const ref = paneRef; Promise.resolve(ref?.flush?.()).finally(() => { pane = null; load(); }); }
+  $: listGroups = listMode ? groupNotes(filtered, $listGroupBy, { labels: $labels, pinnedFirst: view === 'notes' }) : [];
+  function groupTitle(g) {
+    if (g.kind === 'pinned') return $_('notes.pinned');
+    if (g.kind === 'others') return $_('notes.others');
+    if (g.kind === 'label') return g.label.name;
+    if (g.kind === 'no-label') return $_('list.no_label');
+    if (g.kind === 'color') return $_(`notes.color_${g.color || 'default'}`);
+    if (g.kind === 'day') return dayLabel(g.day);
+    return '';
+  }
+
+  function openNote(e) {
+    if (splitPane) openInPane({ note: e.detail });
+    else editing = { note: e.detail, originId: e.detail.id };
+  }
   function newNote(kind = 'text') {
-    editing = { kind, labels: labelId != null ? [labelId] : [] };
+    const entry = { kind, labels: labelId != null ? [labelId] : [] };
+    if (splitPane) openInPane(entry);
+    else editing = entry;
   }
 
   // Opened from a reminder notification: /?note=<id>
@@ -356,7 +419,9 @@
   let lastSelected = null;
   $: selecting = selectedIds.size > 0;
   $: selectedNotes = notes.filter(n => selectedIds.has(n.id));
-  $: visibleOrder = [...pinned, ...others, ...(view === 'reminders' ? pastReminders : [])];
+  $: visibleOrder = listMode
+    ? [...new Map(listGroups.flatMap(g => g.notes).map(n => [n.id, n])).values()]
+    : [...pinned, ...others, ...(view === 'reminders' ? pastReminders : [])];
   $: view, labelId, clearSelection();
   // Drop selected notes that left the list (archived, trashed, synced away).
   $: pruneSelection(notes);
@@ -389,13 +454,13 @@
   let _goPending = 0;
   const typingIn = (el) => !!el?.closest?.('input, textarea, select, [contenteditable="true"]');
   function focusedCard() {
-    const el = document.activeElement?.closest?.('.note-card[data-note-id]');
+    const el = document.activeElement?.closest?.('[data-note-id]');
     return el ? notes.find(n => n.id === Number(el.dataset.noteId)) : null;
   }
   function focusCardAt(step) {
-    const els = visibleOrder.map(n => document.querySelector(`.note-card[data-note-id="${n.id}"]:not(.drag-ghost)`)).filter(Boolean);
+    const els = visibleOrder.map(n => document.querySelector(`[data-note-id="${n.id}"]:not(.drag-ghost)`)).filter(Boolean);
     if (!els.length) return;
-    const cur = els.indexOf(document.activeElement?.closest?.('.note-card'));
+    const cur = els.indexOf(document.activeElement?.closest?.('[data-note-id]'));
     const next = els[cur < 0 ? (step > 0 ? 0 : els.length - 1) : Math.max(0, Math.min(els.length - 1, cur + step))];
     next.focus();
     next.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -573,11 +638,25 @@
     </div>
     <div class="toolbar-actions">
     {#if view !== 'reminders'}
-      <button class="icon-btn layout-toggle" on:click={() => notesLayout.set(timeline ? 'grid' : 'timeline')}
-        title={timeline ? $_('timeline.show_grid') : $_('timeline.show_timeline')}
-        aria-label={timeline ? $_('timeline.show_grid') : $_('timeline.show_timeline')} aria-pressed={timeline}>
-        <span class="material-symbols-rounded">{timeline ? 'grid_view' : 'view_timeline'}</span>
-      </button>
+      <div class="layout-switch" role="radiogroup" aria-label={$_('list.layout')}>
+        {#each [['grid', 'grid_view', 'timeline.show_grid'], ['list', 'view_list', 'timeline.show_list'], ['timeline', 'view_timeline', 'timeline.show_timeline']] as [value, icon, label]}
+          <button role="radio" aria-checked={($notesLayout || 'grid') === value} class:on={($notesLayout || 'grid') === value}
+            title={$_(label)} aria-label={$_(label)} on:click={() => notesLayout.set(value)}>
+            <span class="material-symbols-rounded">{icon}</span>
+          </button>
+        {/each}
+      </div>
+      {#if listMode}
+        <div class="group-by">
+          <span class="material-symbols-rounded group-by-icon" aria-hidden="true">expand_more</span>
+          <select value={$listGroupBy} on:change={(e) => listGroupBy.set(e.target.value)} aria-label={$_('list.group_by')} title={$_('list.group_by')}>
+            <option value="none">{$_('list.group_none')}</option>
+            <option value="label">{$_('list.group_label')}</option>
+            <option value="color">{$_('list.group_color')}</option>
+            <option value="date">{$_('list.group_date')}</option>
+          </select>
+        </div>
+      {/if}
     {/if}
     {#if view === 'trash' && notes.length}
       <button class="btn btn-secondary empty-trash" on:click={emptyTrash}>
@@ -663,6 +742,47 @@
             : activeLabel ? $_('routes.label.empty_body')
             : $_('routes.notes.empty_body')}
         </p>
+      </div>
+    {:else if listMode}
+      <div class="list-layout" class:split={splitPane}>
+        <div class="list-col">
+          {#each listGroups as g (g.key)}
+            <section class="list-section">
+              {#if g.kind !== 'all'}
+                <h2 class="section-label">
+                  {#if g.kind === 'pinned'}<span class="material-symbols-rounded fill">keep</span>{/if}
+                  {#if g.kind === 'label' || g.kind === 'color'}<span class="group-dot" style="background:{g.kind === 'label' ? colorDot(g.label.color) : colorDot(g.color)}"></span>{/if}
+                  {groupTitle(g)}
+                  <span class="group-count">{g.notes.length}</span>
+                </h2>
+              {/if}
+              {#each g.notes as n (g.key + ':' + n.id)}
+                <NoteRow note={n} current={splitPane && pane?.note?.id === n.id} selected={selectedIds.has(n.id)} {selecting}
+                  on:open={openNote} on:select={onSelect} />
+              {/each}
+            </section>
+          {/each}
+        </div>
+        {#if splitPane}
+          <div class="pane" bind:this={paneEl} style="height:{paneH}px">
+            {#if pane}
+              {#key paneKey}
+                <NoteEditor bind:this={paneRef} inline note={pane.note || null} initialKind={pane.kind || 'text'}
+                  initialLabels={pane.labels || []} on:close={closePane} />
+              {/key}
+            {:else}
+              <div class="pane-empty">
+                <span class="material-symbols-rounded">description</span>
+                <p>{$_('list.select_note')}</p>
+                {#if canCapture}
+                  <button class="btn btn-secondary" on:click={() => newNote('text')}>
+                    <span class="material-symbols-rounded">add</span>{$_('notes.new_note')}
+                  </button>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        {/if}
       </div>
     {:else if timeline}
       {#if pinned.length}
@@ -830,8 +950,33 @@
     .bulk-divider { margin: 0 2px; }
   }
 
-  .layout-toggle { width: 44px; height: 44px; flex-shrink: 0; border-radius: var(--radius-md); color: var(--text-2); display: flex; align-items: center; justify-content: center; }
-  .layout-toggle:hover { background: color-mix(in srgb, var(--text-1) 8%, transparent); color: var(--text-1); }
+  .layout-switch { display: flex; gap: 2px; padding: 3px; border-radius: var(--radius-md); background: var(--surface-2); border: 1px solid var(--border); }
+  .layout-switch button { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; color: var(--text-3); transition: background var(--dur-fast), color var(--dur-fast); }
+  .layout-switch button .material-symbols-rounded { font-size: 20px; }
+  .layout-switch button:hover { color: var(--text-1); }
+  .layout-switch button.on { background: var(--surface-1); color: var(--accent); box-shadow: var(--shadow-sm); }
+  .group-by { position: relative; }
+  .group-by select {
+    height: 44px; padding: 0 30px 0 12px; border-radius: var(--radius-md);
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text-1); font-size: 13px;
+    appearance: none; -webkit-appearance: none; cursor: pointer;
+  }
+  .group-by-icon { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 18px; color: var(--text-3); pointer-events: none; }
+
+  .list-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
+  .list-layout.split { grid-template-columns: minmax(300px, 420px) minmax(0, 1fr); }
+  .list-col { display: flex; flex-direction: column; gap: 16px; width: 100%; max-width: 760px; margin: 0 auto; }
+  .list-layout.split .list-col { max-width: none; margin: 0; }
+  .list-section { display: flex; flex-direction: column; gap: 4px; }
+  .group-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .group-count { font-weight: 500; opacity: 0.7; }
+  .pane { position: sticky; top: 12px; min-height: 420px; }
+  .pane-empty {
+    height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    border: 1px dashed var(--border-strong); border-radius: var(--radius-lg); color: var(--text-3); text-align: center; padding: 24px;
+  }
+  .pane-empty .material-symbols-rounded { font-size: 40px; color: var(--accent); opacity: 0.8; }
+  .pane-empty .btn .material-symbols-rounded { font-size: 18px; color: inherit; opacity: 1; }
   .timeline-list { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 720px; margin: 0 auto; }
   .notes-section.timeline { width: 100%; }
   .notes-section.timeline .section-label { max-width: 720px; margin-left: auto; margin-right: auto; }

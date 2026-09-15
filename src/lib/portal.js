@@ -1,6 +1,8 @@
 // Portal action: mounts element directly on document.body to escape
 // any CSS stacking context created by parent transforms/filters.
-export function portal(node) {
+// `use:portal={false}` leaves the node where it is.
+export function portal(node, enabled = true) {
+  if (enabled === false) return {};
   let target = document.body;
   target.appendChild(node);
   return {

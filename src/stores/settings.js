@@ -44,7 +44,8 @@ export const DEVICE_PREFS = new Set([
   'appLockEnabled',        // Android-only: require biometric / device credential to open the app
   'appLockTimeoutMin',     // minutes in the background before the lock re-engages (0 = immediately)
   'notifLocalEnabled',     // reminder notifications on this device (phone, or this browser while open)
-  'notesLayout',           // 'grid' or 'timeline' on the notes screens
+  'notesLayout',           // 'grid', 'list', or 'timeline' on the notes screens
+  'listGroupBy',           // List layout sections: 'none', 'label', 'color', 'date'
 ]);
 
 const SERVER_SETTINGS = USER_PREFS;
@@ -264,6 +265,7 @@ export const disableAnimations = createSettingStore('disableAnimations', false);
 export const biometricLoginEnabled = createSettingStore('biometricLoginEnabled', false);
 export const appLockEnabled    = createSettingStore('appLockEnabled',    false);
 export const notesLayout       = createSettingStore('notesLayout',       'grid');
+export const listGroupBy       = createSettingStore('listGroupBy',       'none');
 export const linkPreviews      = createSettingStore('linkPreviews',      true);
 // 'edited' (newest edit first) or 'custom' (the order you dragged notes into).
 export const noteSort          = createSettingStore('noteSort',          'edited');

@@ -72,6 +72,9 @@ Items marked ~~strikethrough~~ have been implemented.
 - ~~Nested labels~~
 - ~~Swipe to archive and pull to refresh on phones~~
 - ~~Card-to-editor animation~~
+- ~~Tasks view of open checklist items, with due dates on items~~
+- ~~List layout with grouping and a side pane on wide screens~~
+- Due date notifications for checklist items
 
 ## Wear OS Companion
 
