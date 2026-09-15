@@ -588,7 +588,7 @@
 
 {#if $appLocked}<LockScreen />{/if}
 
-<Sidebar bind:open={sidebarOpen} persistent={sidebarPinned} on:close={() => { if (!sidebarPinned) sidebarOpen = false; }} />
+<Sidebar bind:open={sidebarOpen} persistent={sidebarPinned} canPin={_hasSidebar && _persistentAllowed} on:close={() => { if (!sidebarPinned) sidebarOpen = false; }} />
 
 
 <!-- In-app update banner (native only). Renders only if the OS-level

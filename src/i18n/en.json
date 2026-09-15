@@ -127,6 +127,7 @@
   },
   "sidebar": {
     "collapse":        "Collapse Sidebar",
+    "pin_icons":       "Keep Sidebar Open as Icons",
     "expand":          "Expand Sidebar",
     "show_labels":     "Show Labels",
     "hide_labels":     "Hide Labels",

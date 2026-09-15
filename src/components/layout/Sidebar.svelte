@@ -10,7 +10,7 @@
   import { updateAvailable } from '../../lib/updates.js';
   import { pwaUpdateReady } from '../../lib/pwa-update.js';
   import { labels, refreshLabels, notesChanged } from '../../stores/notes.js';
-  import { sidebarRail, sidebarLabelsCollapsed } from '../../stores/settings.js';
+  import { sidebarRail, sidebarLabelsCollapsed, sidebarPersistent } from '../../stores/settings.js';
   import { colorDot } from '../../lib/note-colors.js';
   import { sharingAvailable } from '../../lib/note-sharing.js';
   import { NoteApi } from '../../lib/api.js';
@@ -25,6 +25,8 @@
 
   export let open = false;
   export let persistent = false;
+  /** Wide enough to pin: the slide-out menu offers to keep the sidebar as icons. */
+  export let canPin = false;
   const dispatch = createEventDispatcher();
 
   // The icon rail only applies to the pinned desktop sidebar; the phone
@@ -190,6 +192,12 @@
           title={rail ? $_('sidebar.expand') : $_('sidebar.collapse')} aria-label={rail ? $_('sidebar.expand') : $_('sidebar.collapse')}
           aria-expanded={!rail}>
           <span class="material-symbols-rounded">{rail ? 'left_panel_open' : 'left_panel_close'}</span>
+        </button>
+      {:else if canPin}
+        <!-- From the slide-out menu on a wide screen: pin the sidebar as icons. -->
+        <button class="rail-toggle" on:click={() => { sidebarPersistent.set(true); sidebarRail.set(true); }}
+          title={$_('sidebar.pin_icons')} aria-label={$_('sidebar.pin_icons')}>
+          <span class="material-symbols-rounded">left_panel_close</span>
         </button>
       {/if}
     </div>
