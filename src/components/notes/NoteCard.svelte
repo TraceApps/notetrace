@@ -106,6 +106,7 @@
   aria-pressed={selecting ? selected : undefined}
   style="{noteColorStyle(note.color)} --i:{Math.min(index, 18)}"
   on:pointermove={spotlight}
+  data-note-id={note.id}
   tabindex="0"
   role="button"
   aria-label={note.title || $_('notes.untitled')}
@@ -317,6 +318,17 @@
   :global(html.no-animations) .note-card { animation: none; }
   :global(html.no-animations) .note-card:hover,
   :global(html.no-animations) .note-card:active { transform: none; }
+
+  /* Drag to reorder (classes set by lib/card-drag.js) */
+  .note-card:global(.dragging) { opacity: 0.35; transform: scale(0.98); animation: none; }
+  .note-card:global(.drag-ghost) {
+    animation: none; opacity: 0.96; cursor: grabbing;
+    box-shadow: var(--card-lift-shadow), 0 24px 48px -20px color-mix(in srgb, var(--note-glow) 60%, transparent);
+    transition: none;
+  }
+  .note-card:global(.drop-before) { box-shadow: -4px 0 0 0 var(--accent), 0 -4px 0 0 var(--accent), var(--card-rest-shadow); }
+  .note-card:global(.drop-after) { box-shadow: 4px 0 0 0 var(--accent), 0 4px 0 0 var(--accent), var(--card-rest-shadow); }
+  :global(html.card-dragging), :global(html.card-dragging *) { cursor: grabbing !important; user-select: none !important; }
 
   /* Multi-select */
   .card-select {

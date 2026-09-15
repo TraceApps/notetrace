@@ -82,6 +82,7 @@ async function _hydrate(rows) {
   }
   return rows.map(r => ({
     id: r.id,
+    server_id: r.server_id ?? null,
     title: r.title,
     body_md: r.body_md,
     kind: r.kind,

@@ -22,7 +22,7 @@ export const USER_PREFS = new Set([
   // Voice notes and images: automatic transcription / reading text with Trace
   'autoTranscribe','autoReadImages','aiTranscribeModel',
   // Note cards
-  'linkPreviews',
+  'linkPreviews', 'noteSort', 'noteOrder',
   // Notifications
   'notifPushService',
   'appriseUrl','appriseTag','gotifyUrl','gotifyToken','ntfyUrl','ntfyTopic','ntfyToken',
@@ -260,6 +260,9 @@ export const biometricLoginEnabled = createSettingStore('biometricLoginEnabled',
 export const appLockEnabled    = createSettingStore('appLockEnabled',    false);
 export const notesLayout       = createSettingStore('notesLayout',       'grid');
 export const linkPreviews      = createSettingStore('linkPreviews',      true);
+// 'edited' (newest edit first) or 'custom' (the order you dragged notes into).
+export const noteSort          = createSettingStore('noteSort',          'edited');
+export const noteOrder         = createSettingStore('noteOrder',         []);
 export const appLockTimeoutMin = createSettingStore('appLockTimeoutMin', 1);
 // Force-mobile layout: keep the mobile single-column pattern even on
 // wide viewports. Gates every desktop @media rule via the

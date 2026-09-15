@@ -27,7 +27,9 @@
   import { ensureReminderPermission, rescheduleReminders } from '../lib/note-reminders.js';
   import { isOwner, canEdit } from '../lib/note-sharing.js';
   import { groupByDay } from '../lib/timeline.js';
-  import { notesLayout } from '../stores/settings.js';
+  import { notesLayout, noteSort, noteOrder } from '../stores/settings.js';
+  import { noteKey, applyOrder, mergeOrder } from '../lib/note-order.js';
+  import { isNative } from '../lib/platform.js';
   import NoteCard from '../components/notes/NoteCard.svelte';
   import { pendingShare, shareToNote, takeSharedFiles } from '../lib/share-intent.js';
   import { FILTER_TYPES, emptyFilters, hasFilters, matchesFilters, toggleFilter } from '../lib/note-filters.js';
@@ -72,7 +74,22 @@
   let searchFocused = false;
   let _blurTimer;
   $: filtering = hasFilters(filters);
-  $: filtered = filtering ? notes.filter(n => matchesFilters(n, filters)) : notes;
+  // Custom order applies to the grid in Notes, Shared with Me, and labels.
+  $: orderable = (view === 'notes' || view === 'shared') && !timeline;
+  const keyOf = (n) => noteKey(n, { native: isNative });
+  $: ordered = orderable && $noteSort === 'custom' ? applyOrder(notes, $noteOrder, keyOf) : notes;
+  $: filtered = filtering ? ordered.filter(n => matchesFilters(n, filters)) : ordered;
+  function onReorder(e) {
+    const keys = e.detail.ids.map(id => keyOf(notes.find(n => n.id === id))).filter(Boolean);
+    if ($noteSort !== 'custom') {
+      // First drag: keep everything else where it is on screen.
+      noteOrder.set(mergeOrder(filtered.map(keyOf), keys));
+      noteSort.set('custom');
+      showInfo($_('notes.custom_order_on'));
+    } else {
+      noteOrder.set(mergeOrder($noteOrder, keys));
+    }
+  }
   $: showFilters = searchFocused || filtering || !!query;
   // A new view starts unfiltered.
   $: view, labelId, (filters = emptyFilters());
@@ -573,20 +590,20 @@
       {#if pinned.length}
         <section class="notes-section">
           <h2 class="section-label"><span class="material-symbols-rounded fill">keep</span>{$_('notes.pinned')}</h2>
-          <NoteGrid notes={pinned} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} />
+          <NoteGrid notes={pinned} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} />
         </section>
       {/if}
       {#if others.length}
         <section class="notes-section">
           {#if pinned.length}<h2 class="section-label">{$_('notes.others')}</h2>{/if}
           {#if view === 'reminders' && pastReminders.length}<h2 class="section-label">{$_('reminders.upcoming')}</h2>{/if}
-          <NoteGrid notes={others} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} />
+          <NoteGrid notes={others} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} />
         </section>
       {/if}
       {#if view === 'reminders' && pastReminders.length}
         <section class="notes-section">
           <h2 class="section-label">{$_('reminders.past')}</h2>
-          <NoteGrid notes={pastReminders} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} />
+          <NoteGrid notes={pastReminders} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} />
         </section>
       {/if}
     {/if}

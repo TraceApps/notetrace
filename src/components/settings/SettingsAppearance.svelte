@@ -10,7 +10,7 @@
   import { applyAppearance, applyAccentColor } from '../../stores/settings.js';
   import {
     appearance, accentColor, navStyle, sidebarPersistent, disableAnimations,
-    bannerStyle, bannerAnimation, startPage, forceMobileLayout, sidebarRail, linkPreviews,
+    bannerStyle, bannerAnimation, startPage, forceMobileLayout, sidebarRail, linkPreviews, noteSort,
   } from '../../stores/settings.js';
   import { linkPreviewsAvailable } from '../../lib/link-preview.js';
   import { openColorPicker } from '../../stores/color-picker.js';
@@ -132,6 +132,19 @@
         <div class="setting-desc">Keep the mobile single-column layout even on wide screens.</div>
       </div>
       <input type="checkbox" class="toggle-cb" checked={$forceMobileLayout} on:change={e => forceMobileLayout.set(e.target.checked)} />
+    </div>
+    <div class="setting-divider"></div>
+    <div class="setting-row">
+      <div>
+        <span class="setting-label">{$_('settings_page.appearance.note_order')}</span>
+        <div class="setting-desc">{$_('settings_page.appearance.note_order_desc')}</div>
+      </div>
+      <div class="select-wrap" style="width:160px">
+        <select class="select sel-sm" value={$noteSort} on:change={e => noteSort.set(e.target.value)}>
+          <option value="edited">{$_('settings_page.appearance.note_order_edited')}</option>
+          <option value="custom">{$_('settings_page.appearance.note_order_custom')}</option>
+        </select>
+      </div>
     </div>
     {#if linkPreviewsAvailable}
       <div class="setting-divider"></div>

@@ -1,11 +1,21 @@
 <script>
   import { onMount, onDestroy } from 'svelte';
+  import { createEventDispatcher } from 'svelte';
   import NoteCard from './NoteCard.svelte';
+  import { cardDrag } from '../../lib/card-drag.js';
+  import { moveId } from '../../lib/note-order.js';
 
   export let notes = [];
   export let view = 'notes';
   export let selectedIds = new Set();
   export let selecting = false;
+  /** Cards can be dragged into a new order (dispatches `reorder` with the note ids). */
+  export let draggable = false;
+  const dispatch = createEventDispatcher();
+  function onDrop(dragId, targetId, after) {
+    const ids = moveId(notes.map(n => n.id), dragId, targetId, after);
+    if (ids.join() !== notes.map(n => n.id).join()) dispatch('reorder', { ids });
+  }
 
   // Column count follows the grid's own width (not the viewport), so it
   // stays right beside a pinned sidebar. Cards are dealt out row by row,
@@ -36,7 +46,7 @@
   onDestroy(() => ro?.disconnect());
 </script>
 
-<div class="note-grid" bind:this={el} style="--cols:{columns}; --gap:{gap}px; --card-max:{width < 560 ? '1fr' : CARD_MAX + 'px'}">
+<div class="note-grid" bind:this={el} use:cardDrag={{ enabled: draggable, onDrop }} style="--cols:{columns}; --gap:{gap}px; --card-max:{width < 560 ? '1fr' : CARD_MAX + 'px'}">
   {#each cols as col, ci (ci)}
     <div class="note-col">
       {#each col as { note, i } (note.id)}
