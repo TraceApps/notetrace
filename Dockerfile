@@ -17,13 +17,17 @@ RUN npm run build
 FROM node:20-alpine AS ffmpeg
 RUN apk add --no-cache build-base curl xz
 ARG FFMPEG_VERSION=7.1.1
-RUN curl -fsSL https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz | tar -xJ -C /tmp \
+# SHA-256 of the release tarball, checked against FFmpeg's signature when pinned.
+ARG FFMPEG_SHA256=733984395e0dbbe5c046abda2dc49a5544e7e0e1e2366bba849222ae9e3a03b1
+RUN curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o /tmp/ffmpeg.tar.xz https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz \
+ && echo "${FFMPEG_SHA256}  /tmp/ffmpeg.tar.xz" | sha256sum -c - \
+ && tar -xJf /tmp/ffmpeg.tar.xz -C /tmp \
  && cd /tmp/ffmpeg-${FFMPEG_VERSION} \
  && ./configure --prefix=/opt/ffmpeg --disable-everything --disable-autodetect --disable-doc --disable-debug \
       --disable-network --disable-x86asm --disable-ffplay --enable-small \
       --enable-protocol=file,pipe \
       --enable-demuxer=mov,matroska,ogg,mp3,wav,flac,amr,aac \
-      --enable-decoder=aac,opus,libopus,vorbis,mp3,mp3float,flac,pcm_s16le,pcm_s24le,pcm_f32le,amrnb,amrwb \
+      --enable-decoder=aac,opus,vorbis,mp3,mp3float,flac,pcm_s16le,pcm_s24le,pcm_f32le,amrnb,amrwb \
       --enable-parser=aac,opus,vorbis,mpegaudio,flac \
       --enable-encoder=aac \
       --enable-muxer=ipod,mp4,segment,wav,webm,ogg,matroska \
