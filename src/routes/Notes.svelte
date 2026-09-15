@@ -27,7 +27,8 @@
   import { ensureReminderPermission, rescheduleReminders } from '../lib/note-reminders.js';
   import { isOwner, canEdit } from '../lib/note-sharing.js';
   import { groupByDay } from '../lib/timeline.js';
-  import { notesLayout, noteSort, noteOrder, keyboardShortcuts } from '../stores/settings.js';
+  import { notesLayout, noteSort, noteOrder, keyboardShortcuts, swipeToArchive } from '../stores/settings.js';
+  import { showUndo } from '../stores/toast.js';
   import ShortcutsHelp from '../components/notes/ShortcutsHelp.svelte';
   import { push as pushRoute } from 'svelte-spa-router';
   import { noteKey, applyOrder, mergeOrder } from '../lib/note-order.js';
@@ -514,6 +515,26 @@
   }
   const anchorOf = (e) => e.currentTarget.getBoundingClientRect();
 
+  // ── Swipe a card sideways to archive (touch screens) ──────────────
+  const hasTouch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
+  $: swipeable = hasTouch && $swipeToArchive && !selecting && (view === 'notes' || view === 'shared' || view === 'archive');
+  async function onSwipe(e) {
+    const note = notes.find(n => n.id === e.detail.id);
+    if (!note) return;
+    const archived = view !== 'archive';
+    notes = notes.filter(n => n.id !== note.id);
+    try {
+      await NoteApi.updateNote(note.id, { archived });
+      showUndo($_(archived ? 'notes.toast_archived' : 'notes.toast_unarchived'), async () => {
+        await NoteApi.updateNote(note.id, { archived: !archived }).catch(() => {});
+        signalNotesChanged();
+      }, $_('common.undo'));
+    } catch (err) {
+      showError(err.message || $_('notes.save_failed'));
+      load();
+    }
+  }
+
   async function emptyTrash() {
     const ok = await confirmDialog({
       title: $_('notes.empty_trash_title'),
@@ -664,20 +685,20 @@
       {#if pinned.length}
         <section class="notes-section">
           <h2 class="section-label"><span class="material-symbols-rounded fill">keep</span>{$_('notes.pinned')}</h2>
-          <NoteGrid notes={pinned} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} />
+          <NoteGrid notes={pinned} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} {swipeable} on:swipe={onSwipe} />
         </section>
       {/if}
       {#if others.length}
         <section class="notes-section">
           {#if pinned.length}<h2 class="section-label">{$_('notes.others')}</h2>{/if}
           {#if view === 'reminders' && pastReminders.length}<h2 class="section-label">{$_('reminders.upcoming')}</h2>{/if}
-          <NoteGrid notes={others} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} />
+          <NoteGrid notes={others} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} {swipeable} on:swipe={onSwipe} />
         </section>
       {/if}
       {#if view === 'reminders' && pastReminders.length}
         <section class="notes-section">
           <h2 class="section-label">{$_('reminders.past')}</h2>
-          <NoteGrid notes={pastReminders} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} />
+          <NoteGrid notes={pastReminders} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} {swipeable} on:swipe={onSwipe} />
         </section>
       {/if}
     {/if}

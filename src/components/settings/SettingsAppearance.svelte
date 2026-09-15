@@ -10,7 +10,7 @@
   import { applyAppearance, applyAccentColor } from '../../stores/settings.js';
   import {
     appearance, accentColor, navStyle, sidebarPersistent, disableAnimations,
-    bannerStyle, bannerAnimation, startPage, forceMobileLayout, sidebarRail, linkPreviews, noteSort, keyboardShortcuts, cardDensity,
+    bannerStyle, bannerAnimation, startPage, forceMobileLayout, sidebarRail, linkPreviews, noteSort, keyboardShortcuts, cardDensity, swipeToArchive,
   } from '../../stores/settings.js';
   import ShortcutsHelp from '../notes/ShortcutsHelp.svelte';
   let shortcutsOpen = false;
@@ -162,6 +162,16 @@
         </select>
       </div>
     </div>
+    {#if !hasKeyboard}
+      <div class="setting-divider"></div>
+      <div class="setting-row">
+        <div>
+          <span class="setting-label">{$_('settings_page.appearance.swipe')}</span>
+          <div class="setting-desc">{$_('settings_page.appearance.swipe_desc')}</div>
+        </div>
+        <input type="checkbox" class="toggle-cb" checked={$swipeToArchive} on:change={e => swipeToArchive.set(e.target.checked)} />
+      </div>
+    {/if}
     {#if hasKeyboard}
       <div class="setting-divider"></div>
       <div class="setting-row">

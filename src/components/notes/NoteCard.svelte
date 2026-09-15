@@ -330,6 +330,10 @@
   .note-card:global(.drop-after) { box-shadow: 4px 0 0 0 var(--accent), 0 4px 0 0 var(--accent), var(--card-rest-shadow); }
   :global(html.card-dragging), :global(html.card-dragging *) { cursor: grabbing !important; user-select: none !important; }
 
+  /* Swipe to archive (lib/card-swipe.js) */
+  .note-card:global(.swiping) { animation: none; transition: none; }
+  .note-card:global(.swipe-armed) { border-color: var(--accent); }
+
   /* Multi-select */
   .card-select {
     position: absolute; top: -10px; left: -10px; z-index: 2;

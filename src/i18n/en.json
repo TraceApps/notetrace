@@ -6,7 +6,8 @@
     "trash":    "Trash",
     "labels":   "Labels",
     "settings": "Settings",
-    "shared":   "Shared with Me"
+    "shared":   "Shared with Me",
+    "search":   "Search"
   },
   "slash": {
     "title":     "Insert",
@@ -196,6 +197,7 @@
   },
   "common": {
     "sign_out":     "Sign Out",
+    "undo":         "Undo",
     "log_out":      "Log Out",
     "signing_out":  "Signing out…",
     "experimental": "Experimental",
@@ -864,6 +866,8 @@
       "density_desc":           "Compact fits more notes on the screen, with smaller text and no link images.",
       "density_comfortable":    "Comfortable",
       "density_compact":        "Compact",
+      "swipe":                  "Swipe to Archive",
+      "swipe_desc":             "Swipe a note card sideways to archive it, with Undo. In Archive, a swipe brings it back.",
       "shortcuts":              "Keyboard Shortcuts",
       "shortcuts_desc":         "Single keys like c for a new note and / to search. Press ? to see them all.",
       "shortcuts_view":         "View",

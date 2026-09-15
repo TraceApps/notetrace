@@ -100,8 +100,13 @@
     } catch { /* silent */ }
   }
 
+  // Phones and tablets without a sync connection refresh the note list instead.
+  const _coarse = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
+  $: _pullEnabled = _syncModeActive || _coarse;
+  let _pullStartT = 0;
   function _startPullSync(event) {
-    if (!_syncModeActive || _pullRefreshing || sidebarOpen || showNativeSetup) return;
+    if (!_pullEnabled || _pullRefreshing || sidebarOpen || showNativeSetup) return;
+    if (event.target?.closest?.('.editor-backdrop, .bulk-bar, .pop-backdrop')) return;
     if (event.target?.closest?.('[role="dialog"], .sheet-backdrop, .sidebar-panel, .sidebar-backdrop, .bottom-nav')) return;
     // Walk up from the touch target to the nearest scrolling ancestor.
     // Handles both editor pages (their own `.page-shell.editor-page`
@@ -119,6 +124,7 @@
     }
     _pullStartX = event.touches[0].clientX;
     _pullStartY = event.touches[0].clientY;
+    _pullStartT = Date.now();
     _pullTracking = true;
     _pullDistance = 0;
   }
@@ -128,6 +134,8 @@
     const dy = event.touches[0].clientY - _pullStartY;
     if (Math.abs(dx) > Math.abs(dy)) { _pullTracking = false; _pullDistance = 0; return; }
     if (dy < PULL_SYNC_SLOP) return;
+    // A long press is a select or drag, not a pull.
+    if ((_pullDistance === 0 && Date.now() - _pullStartT > 450) || document.documentElement.classList.contains('card-dragging')) { _pullTracking = false; _pullDistance = 0; return; }
     event.preventDefault();
     _pullDistance = Math.min(PULL_SYNC_MAX, (dy - PULL_SYNC_SLOP) * 0.5);
   }
@@ -138,7 +146,10 @@
     if (!hit) { _pullDistance = 0; return; }
     _pullRefreshing = true;
     console.info('[sync] pull-to-refresh triggered');
-    try { await _runForcedSync(); }
+    try {
+      if (_syncModeActive) await _runForcedSync();
+      else { signalNotesChanged(); await new Promise(r => setTimeout(r, 450)); }
+    }
     finally { _pullRefreshing = false; _pullDistance = 0; }
   }
   function _cancelPullSync() { _pullTracking = false; _pullDistance = 0; }
@@ -629,7 +640,7 @@
      center, 0.45x translate for a slower reveal). Gated on
      _syncModeActive so PWA / native-standalone don't accidentally
      spawn one. -->
-{#if _syncModeActive && !sidebarOpen && (_pullDistance > 0 || _pullRefreshing)}
+{#if _pullEnabled && !sidebarOpen && (_pullDistance > 0 || _pullRefreshing)}
   <div
     class="pull-sync-indicator"
     class:ready-to-sync={_pullDistance >= PULL_SYNC_THRESHOLD}

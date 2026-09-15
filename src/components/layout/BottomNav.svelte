@@ -3,6 +3,8 @@
   import { _ } from 'svelte-i18n';
   import { updateAvailable } from '../../lib/updates.js';
   import { pwaUpdateReady } from '../../lib/pwa-update.js';
+  import { navStyle } from '../../stores/settings.js';
+  import { tick } from 'svelte';
 
   // Labels resolve at render time via $_() so tab text follows the
   // active locale without needing to re-mount when Language changes.
@@ -10,7 +12,10 @@
     { path: '/notes',    icon: 'sticky_note_2', label: $_('nav.notes')    },
     { path: '/reminders', icon: 'notifications', label: $_('nav.reminders') },
     { path: '/archive',  icon: 'archive',       label: $_('nav.archive')  },
-    { path: '/trash',    icon: 'delete',        label: $_('nav.trash')    },
+    // With the ☰ menu available (Both), Trash lives there and Search takes its tab.
+    $navStyle === 'both'
+      ? { path: '#search', icon: 'search',      label: $_('nav.search')   }
+      : { path: '/trash',  icon: 'delete',      label: $_('nav.trash')    },
     { path: '/settings', icon: 'settings',      label: $_('nav.settings') },
   ];
   $: activeIdx = (() => {
@@ -23,12 +28,23 @@
       .map((t, i) => ({ t, i }))
       .sort((a, b) => b.t.path.length - a.t.path.length);
     for (const { t, i } of sorted) {
+      if (t.path.startsWith('#')) continue;
       if (norm === t.path || norm.startsWith(t.path + '/')) return i;
     }
     return 0;
   })();
 
-  function go(path) { push(path); }
+  async function go(path) {
+    if (path !== '#search') { push(path); return; }
+    const base = $location.split('?')[0];
+    const onNotes = base === '/' || /^\/(notes|reminders|archive|trash|shared|label\/)/.test(base);
+    if (!onNotes) {
+      await push('/');
+      await tick();
+      await new Promise(r => setTimeout(r, 80));
+    }
+    window.dispatchEvent(new CustomEvent('note:focus-search'));
+  }
 </script>
 
 <nav class="bottom-nav" role="navigation" aria-label="Main navigation">

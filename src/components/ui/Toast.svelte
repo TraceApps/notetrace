@@ -16,6 +16,9 @@
         <span class="material-symbols-rounded toast-icon">error</span>
       {/if}
       <span class="toast-msg">{toast.message}</span>
+      {#if toast.action}
+        <button class="toast-action" on:click={toast.action.run}>{toast.action.label}</button>
+      {/if}
     </div>
   {/each}
 </div>
@@ -55,4 +58,10 @@
   .toast--success .toast-icon { color: var(--success); }
   .toast--error   .toast-icon { color: var(--danger); }
   .toast-msg { flex: 1; }
+  .toast-action {
+    pointer-events: auto;
+    margin: -6px -8px -6px 4px; padding: 6px 10px; border-radius: 10px;
+    color: var(--accent); font-weight: 700; font-size: 14px;
+  }
+  .toast-action:hover { background: var(--accent-dim); }
 </style>
