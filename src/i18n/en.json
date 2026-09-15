@@ -448,6 +448,7 @@
     "pause":         "Pause",
     "remove":        "Remove voice note",
     "limit":         "Recordings stop at 60 minutes.",
+    "limit_native":  "Keeps recording with the screen off, for up to 3 hours.",
     "add_file":      "Add Audio File",
     "add_file_instead": "Add an audio file instead",
     "unsupported_file": "{name} can't be played here, and the server can't convert it.",

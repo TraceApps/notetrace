@@ -28,8 +28,8 @@
       if (gone) { h.cancel(); return; }
       handle = h;
       timer = setInterval(tick, 100);
-    } catch {
-      if (!gone) error = $_('voice.denied');
+    } catch (e) {
+      if (!gone) error = /denied/i.test(String(e?.message || '')) || e?.name === 'NotAllowedError' ? $_('voice.denied') : (e?.message || $_('voice.denied'));
     }
   });
   onDestroy(() => {
@@ -49,7 +49,8 @@
       sampleAt = now;
       meter = [...meter.slice(1), handle.level()];
     }
-    if (elapsed >= handle.limitMs) stop();
+    // Stopped from the Android notification, or at the time limit.
+    if (handle.finished || elapsed >= handle.limitMs) stop();
   }
 
   function togglePause() {
@@ -85,7 +86,7 @@
       {#each meter as v, i (i)}<span style="height:{Math.max(6, Math.round(v * 100))}%"></span>{/each}
     </div>
     <p class="vr-hint">
-      {$_('voice.limit')}
+      {handle?.native ? $_('voice.limit_native') : $_('voice.limit')}
       {#if canAddFile}<button class="vr-file" on:click={() => { stopping = true; handle?.cancel(); dispatch('file'); }}>{$_('voice.add_file_instead')}</button>{/if}
     </p>
     <div class="vr-buttons">

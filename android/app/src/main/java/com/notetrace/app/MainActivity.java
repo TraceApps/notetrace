@@ -11,6 +11,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ShareIntentPlugin.class);
         registerPlugin(NoteRemindersPlugin.class);
         registerPlugin(FoldPlugin.class);
+        registerPlugin(VoiceRecorderPlugin.class);
         super.onCreate(savedInstanceState);
         ShareIntentPlugin.handleIntent(getIntent());
         NoteRemindersPlugin.handleIntent(getIntent());

@@ -118,3 +118,15 @@ test('English strings load before the first render (English only)', () => {
   assert.match(i18n, /addMessages\('en', en\)/);
   assert.doesNotMatch(i18n, /register\(/, 'lazy-loaded messages leave the locale unset when the app first renders');
 });
+
+test('Android records voice notes in a microphone foreground service', () => {
+  const manifest = read('../android/app/src/main/AndroidManifest.xml');
+  assert.match(manifest, /<service android:name="\.VoiceRecorderService"[^>]*android:foregroundServiceType="microphone"/);
+  for (const p of ['RECORD_AUDIO', 'FOREGROUND_SERVICE', 'FOREGROUND_SERVICE_MICROPHONE', 'WAKE_LOCK']) {
+    assert.match(manifest, new RegExp(`android\\.permission\\.${p}"`), p);
+  }
+  assert.match(read('../android/app/src/main/java/com/notetrace/app/MainActivity.java'), /registerPlugin\(VoiceRecorderPlugin\.class\)/);
+  const js = read('../src/lib/voice-recorder.js');
+  assert.match(js, /isPluginAvailable\('VoiceRecorder'\)/, 'the app uses the native recorder when it has it');
+  assert.match(read('../src/components/notes/VoiceRecorder.svelte'), /handle\.finished/, 'a Stop from the notification finishes the recording');
+});

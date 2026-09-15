@@ -67,6 +67,9 @@
 
         </activity>
 
+        <!-- Voice notes record here, so recording keeps going with the screen off. -->
+        <service android:name=".VoiceRecorderService" android:exported="false" android:foregroundServiceType="microphone" />
+
         <!-- Note reminders: exact alarms fire here; Done and Snooze buttons too. -->
         <receiver android:name=".NoteReminderReceiver" android:exported="false" />
 
@@ -105,6 +108,10 @@
          runtime grant, even though audio is sent to Google's speech
          service rather than recorded locally. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Voice notes keep recording with the screen off: a microphone foreground service and a wake lock. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Capacitor's BridgeWebChromeClient.onPermissionRequest() (in
          node_modules/@capacitor/android/...) demands BOTH of these
          permissions before it'll grant an AUDIO_CAPTURE WebView request.

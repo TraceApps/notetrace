@@ -132,7 +132,15 @@ export async function transcribeVoiceNote(att, blob = null) {
   const file = blob || await fetchAttachmentBlob(att.url);
   const limit = transcribeLimitBytes(_cfg().provider);
   if (file.size <= limit) return _transcribePiece(file, mime);
-  if (!_serverUpload(att?.url)) throw new Error('This recording is too long to transcribe in one request.');
+  if (!_serverUpload(att?.url)) {
+    // No server: the Android app can cut its own M4A recordings into pieces.
+    const { splitRecordingOnDevice } = await import('./voice-recorder.js');
+    const parts = await splitRecordingOnDevice(resolveAssetUrl(att.url), chunkSeconds(file.size, (att.duration_ms || 0) / 1000, limit)).catch(() => null);
+    if (!parts?.length) throw new Error('This recording is too long to transcribe in one request.');
+    const out = [];
+    for (const p of parts) out.push({ offset: p.offset, ...(await _transcribePiece(p.blob, 'audio/mp4')) });
+    return mergePieces(out);
+  }
   const seconds = chunkSeconds(file.size, (att.duration_ms || 0) / 1000, limit);
   const res = await fetch(apiUrl('/api/upload/split'), {
     method: 'POST', credentials: 'include',

@@ -9,11 +9,80 @@
  */
 import { NoteApi } from './api.js';
 import { barsFromLevels } from '../../server/lib/voice-meta.js';
+import { isNative } from './platform.js';
 
 export const MAX_RECORDING_MS = 60 * 60 * 1000;
+/** The Android app records natively and keeps going with the screen off. */
+export const NATIVE_MAX_RECORDING_MS = 3 * 60 * 60 * 1000;
+
+let _nativePlugin = null;
+async function _native() {
+  if (!isNative) return null;
+  if (!_nativePlugin) {
+    const { Capacitor, registerPlugin } = await import('@capacitor/core');
+    if (!Capacitor.isPluginAvailable('VoiceRecorder')) return null;
+    _nativePlugin = { plugin: registerPlugin('VoiceRecorder'), Capacitor };
+  }
+  return _nativePlugin;
+}
+
+/** Recording through VoiceRecorderPlugin, with the same handle as the browser recorder. */
+async function _startNative({ plugin: VR, Capacitor }) {
+  await VR.start();
+  let status = { state: 'starting', elapsedMs: 0, level: 0 };
+  for (let i = 0; i < 60 && status.state === 'starting'; i++) {
+    await new Promise(r => setTimeout(r, 50));
+    status = await VR.getStatus();
+  }
+  if (status.state !== 'recording') throw new Error(status.error || 'The microphone isn\'t available');
+  let seenAt = Date.now();
+  let level = 0;
+  const poll = setInterval(async () => {
+    try {
+      status = await VR.getStatus();
+      seenAt = Date.now();
+      level = status.level || 0;
+    } catch { /* keep the last status */ }
+  }, 150);
+  const handle = {
+    native: true,
+    startedAt: Date.now(),
+    limitMs: NATIVE_MAX_RECORDING_MS,
+    get paused() { return status.state === 'paused'; },
+    /** Stopped from the notification while the app was in the background. */
+    get finished() { return status.state === 'stopped'; },
+    elapsed: () => (status.elapsedMs || 0) + (status.state === 'recording' ? Date.now() - seenAt : 0),
+    level: () => level,
+    pause() { status = { ...status, state: 'paused' }; VR.pause().catch(() => {}); },
+    resume() { status = { ...status, state: 'recording' }; seenAt = Date.now(); VR.resume().catch(() => {}); },
+    async stop() {
+      clearInterval(poll);
+      const r = await VR.stop();
+      const res = await fetch(Capacitor.convertFileSrc(`file://${r.path}`));
+      const blob = new Blob([await res.blob()], { type: 'audio/mp4' });
+      return { blob, mime: 'audio/mp4', durationMs: r.durationMs, waveform: r.waveform?.length ? r.waveform : null, path: r.path };
+    },
+    cancel() { clearInterval(poll); VR.cancel().catch(() => {}); },
+  };
+  return handle;
+}
+
+/** Split a long M4A on this device, for transcribing without a server: [{ blob, offset }]. */
+export async function splitRecordingOnDevice(url, seconds) {
+  const n = await _native();
+  const path = decodeURIComponent(String(url || '').match(/_capacitor_file_(\/.+)$/)?.[1] || '');
+  if (!n || !path) return null;
+  const { pieces } = await n.plugin.splitFile({ path, seconds: Math.round(seconds) });
+  const out = [];
+  for (const p of pieces || []) {
+    const res = await fetch(n.Capacitor.convertFileSrc(`file://${p.path}`));
+    out.push({ blob: new Blob([await res.blob()], { type: 'audio/mp4' }), offset: p.offset });
+  }
+  return out;
+}
 
 export function recordingSupported() {
-  return typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && typeof window.MediaRecorder !== 'undefined';
+  return typeof window !== 'undefined' && (isNative || (!!navigator.mediaDevices?.getUserMedia && typeof window.MediaRecorder !== 'undefined'));
 }
 
 function _mimeType() {
@@ -58,6 +127,8 @@ function _levelMeter(stream) {
  *     elapsed(): ms recorded so far (pauses excluded), level(): 0 to 1, paused: boolean, limitMs }
  */
 export async function startRecording() {
+  const native = await _native();
+  if (native) return _startNative(native);
   const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 } });
   const mimeType = _mimeType();
   const rec = new MediaRecorder(stream, mimeType ? { mimeType, audioBitsPerSecond: 32000 } : undefined);
