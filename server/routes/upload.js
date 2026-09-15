@@ -5,6 +5,7 @@ import fs from 'fs';
 import { requireAuth } from '../middleware/auth.js';
 import { makeRateLimiter } from '../middleware/rate-limit.js';
 import { detectImageType } from '../lib/image-magic.js';
+import { safeUploadExtension } from '../lib/upload-paths.js';
 import { audioToolsAvailable, convertToM4a, probeDurationMs, splitAudio } from '../lib/audio-tools.js';
 
 const uploadLimit = makeRateLimiter({ max: 60, windowMs: 60_000, label: 'upload' });
@@ -16,7 +17,7 @@ fs.mkdirSync(uploadsPath, { recursive: true });
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadsPath),
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase() || '.jpg';
+    const ext = safeUploadExtension(file.mimetype, file.originalname);
     cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
   },
 });
