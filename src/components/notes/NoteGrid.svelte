@@ -33,7 +33,8 @@
 
   $: minCard = width < 560 ? (compact ? 130 : 150) : (compact ? 190 : 236);
   $: gap = width < 560 ? (compact ? 8 : 10) : (compact ? 10 : GAP);
-  $: columns = Math.max(1, Math.min(6, Math.floor((width + gap) / (minCard + gap)) || 1));
+  // A cover screen narrower than about 360px gets one column; two would squeeze titles onto three lines.
+  $: columns = width > 0 && width < 330 ? 1 : Math.max(1, Math.min(6, Math.floor((width + gap) / (minCard + gap)) || 1));
   $: cols = deal(notes, columns);
 
   // Each card keeps its list position so the entrance can ripple in order.

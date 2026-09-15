@@ -547,8 +547,16 @@
   export let originId = null;
   /** Render in place (the List layout's side pane) instead of over the page. */
   export let inline = false;
+  // A narrow reading pane (a half-open foldable) keeps the main actions and moves the rest into More.
+  let barW = 800;
+  // A narrow editor card (beside a half-open fold) uses the phone's compact toolbar.
+  let panelW = 0;
+  $: compactBar = narrow || (!inline && panelW > 0 && panelW < 560);
+  $: tightBar = inline && barW < 600;
   /** Save anything pending, for switching notes in the side pane. */
   export async function flush() { await flushAll(); }
+  /** The note's id once it exists (a new note gets one on its first save). */
+  export function currentNoteId() { return noteId; }
   const _reduceMotion = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   function _cardRect() {
     const id = originId ?? noteId;
@@ -652,7 +660,7 @@
      first node, closing the editor left its other top-level nodes behind. -->
 <div class="editor-host">
 <div use:portal={!inline} class="editor-backdrop" class:inline on:click|self={() => { if (!inline) close(); }} transition:fade|global={{ duration: $disableAnimations || inline ? 0 : 160 }}>
-  <div class="editor-panel" class:inline class:narrow class:kb-open={narrow && kb > 0} class:drag-over={dragOver} style="{noteColorStyle(color)} --kb:{narrow ? kb : 0}px"
+  <div class="editor-panel" class:inline class:narrow class:compact-bar={compactBar} bind:clientWidth={panelW} class:kb-open={narrow && kb > 0} class:drag-over={dragOver} style="{noteColorStyle(color)} --kb:{narrow ? kb : 0}px"
     on:paste={onPaste} on:dragover={onDragOver} on:dragleave={() => dragOver = false} on:drop={onDrop}
     role="dialog" aria-modal="true" aria-label={title || $_('notes.untitled')}
     in:morph|global out:morph|global>
@@ -663,7 +671,7 @@
       </div>
     {:else}
       {#if inline && !readOnly}
-        <div class="reader-bar" role="toolbar" aria-label={$_('notes.more_options')}>
+        <div class="reader-bar" class:tight={barW < 600} bind:clientWidth={barW} role="toolbar" aria-label={$_('notes.more_options')}>
           <span class="crumb" title={crumb}>
             {#if chips.length && chips[0].icon}
               <LabelGlyph label={chips[0]} iconSize={17} />
@@ -685,12 +693,12 @@
               <span class="material-symbols-rounded">notification_add</span>
             </button>
           {/if}
-          {#if $sharingAvailable}
+          {#if $sharingAvailable && !tightBar}
             <button class="icon-btn" on:click={openShare} title={$_('sharing.share')} aria-label={$_('sharing.share')}>
               <span class="material-symbols-rounded">person_add</span>
             </button>
           {/if}
-          {#if !contentLocked}
+          {#if !contentLocked && !tightBar}
             <button class="icon-btn" on:click={() => imageInput.click()} title={$_('attachments.add_image')} aria-label={$_('attachments.add_image')}>
               <span class="material-symbols-rounded">add_photo_alternate</span>
             </button>
@@ -703,9 +711,11 @@
               <span class="material-symbols-rounded">palette</span>
             </button>
           {/if}
-          <button class="icon-btn" on:click={openLabels} title={$_('notes.labels')} aria-label={$_('notes.labels')}>
-            <span class="material-symbols-rounded">label</span>
-          </button>
+          {#if !tightBar}
+            <button class="icon-btn" on:click={openLabels} title={$_('notes.labels')} aria-label={$_('notes.labels')}>
+              <span class="material-symbols-rounded">label</span>
+            </button>
+          {/if}
           <button class="icon-btn" on:click={openMore} title={$_('notes.more_options')} aria-label={$_('notes.more_options')} aria-haspopup="menu">
             <span class="material-symbols-rounded">more_horiz</span>
           </button>
@@ -816,7 +826,7 @@
             <span class="material-symbols-rounded">restore_from_trash</span>{$_('notes.restore')}
           </button>
           <button class="btn btn-danger" on:click={deleteForever}>{$_('notes.delete_forever')}</button>
-        {:else if narrow && fmtMode}
+        {:else if compactBar && fmtMode}
           <div class="phone-bar fmt-row" role="toolbar" aria-label={$_('notes.formatting')}>
             <button class="icon-btn" on:mousedown|preventDefault on:click={() => fmtMode = false} aria-label={$_('notes.close_formatting')}>
               <span class="material-symbols-rounded">close</span>
@@ -830,7 +840,7 @@
               {/each}
             </div>
           </div>
-        {:else if narrow}
+        {:else if compactBar}
           <div class="phone-bar">
             {#if !contentLocked}
               <button class="icon-btn" on:mousedown|preventDefault on:click={openAdd} aria-label={$_('notes.add_to_note')} title={$_('notes.add_to_note')}>
@@ -959,6 +969,29 @@
 <Popover bind:open={moreOpen} anchor={moreAnchor}>
   <div class="sheet-menu">
     {#if inline}
+      {#if tightBar}
+        {#if !contentLocked}
+          <button class="sheet-item" on:click={() => fromSheet(() => imageInput.click(), moreAnchor)}>
+            <span class="material-symbols-rounded">add_photo_alternate</span>{$_('attachments.add_image')}
+          </button>
+          {#if canRecord}
+            <button class="sheet-item" on:click={() => fromSheet(openRecorder, moreAnchor)}>
+              <span class="material-symbols-rounded">mic</span>{$_('voice.record')}
+            </button>
+          {/if}
+          <button class="sheet-item" on:click={() => fromSheet(openColor, moreAnchor)}>
+            <span class="material-symbols-rounded">palette</span>{$_('notes.color')}
+          </button>
+        {/if}
+        <button class="sheet-item" on:click={() => fromSheet(openLabels, moreAnchor)}>
+          <span class="material-symbols-rounded">label</span>{$_('notes.labels')}
+        </button>
+        {#if $sharingAvailable}
+          <button class="sheet-item" on:click={() => fromSheet(openShare, moreAnchor)}>
+            <span class="material-symbols-rounded">person_add</span>{$_('sharing.share')}
+          </button>
+        {/if}
+      {/if}
       {#if !contentLocked}
         <button class="sheet-item" on:click={() => fromSheet(convert, moreAnchor)}>
           <span class="material-symbols-rounded">{kind === 'text' ? 'checklist' : 'notes'}</span>{kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}
@@ -1066,6 +1099,8 @@
   .bar-sep { width: 1px; height: 22px; background: var(--note-border); margin: 0 6px; }
   .inline .editor-top { padding-top: 26px; }
   @media (max-width: 1320px) { .reader-bar .edited { display: none; } }
+  .reader-bar.tight { padding-left: 20px; }
+  .reader-bar.tight .crumb { flex-shrink: 1; }
   .editor-backdrop {
     position: fixed; inset: 0; z-index: 200;
     background: rgba(0, 0, 0, 0.55);
@@ -1142,10 +1177,10 @@
   .bar-actions { display: flex; flex-wrap: wrap; gap: 2px; }
   .spacer { flex: 1; }
   .edited { font-size: 12px; color: var(--text-3); white-space: nowrap; }
-  .narrow .edited { display: none; }
+  .compact-bar .edited { display: none; }
   .kb-open .editor-bar { padding-bottom: 6px; }
   .phone-bar { display: flex; align-items: center; gap: 2px; width: 100%; min-width: 0; }
-  .narrow .phone-edited { display: block; overflow: hidden; text-overflow: ellipsis; min-width: 0; padding: 0 4px; font-size: 11px; }
+  .compact-bar .phone-edited { display: block; overflow: hidden; text-overflow: ellipsis; min-width: 0; padding: 0 4px; font-size: 11px; }
   .fmt-row .fmt-scroll { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; flex: 1; min-width: 0; }
   .fmt-row .fmt-scroll::-webkit-scrollbar { display: none; }
   .fmt-row > .icon-btn { border-right: 1px solid var(--note-border); border-radius: 12px 0 0 12px; margin-right: 4px; }

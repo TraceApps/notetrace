@@ -209,6 +209,25 @@ text is saved before the pane is re-keyed. Sections come from
 the space under the banner after each update, so the list and the pane scroll
 separately while the page itself doesn't.
 
+### Screen sizes and foldables
+
+`src/stores/window-size.js` sorts the window into compact (under 600px),
+medium (to 1023px), and expanded size classes and holds `contentWidth`, the
+room left beside a pinned sidebar, which App.svelte keeps current and mirrors
+as `size-*` and `wide-content` classes on `<html>`. Auto navigation, the List
+layout's two panes (`contentWidth` of 740px or more), and Settings' two panes
+read these instead of their own breakpoints. The notes layout is saved per size
+class (`notesLayoutBySize`), so a foldable's two screens keep their own.
+
+`src/lib/fold.js` reports a half-open fold as `{ posture, start, end }`. The
+Android app gets it from `FoldPlugin.java` (Jetpack WindowManager's
+FoldingFeature, converted to CSS pixels); a browser with the Viewport Segments
+API reports it through `window.viewport.segments`. It sets `fold-book` or
+`fold-tabletop` and `--fold-start`/`--fold-end` on `<html>`;
+`src/styles/fold.css` moves overlays off the crease, and the List layout snaps
+its divider to a book fold. Folding or unfolding with a note open flushes the
+editor and reopens the note in the pane or full screen.
+
 ### Label icons
 
 A label's optional `icon` is a Material Symbols name from the fixed list in

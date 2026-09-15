@@ -145,4 +145,8 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
   }
+  /* A narrow cover screen: six labels need a little less spacing to stay apart. */
+  @media (max-width: 379px) {
+    .nav-label { font-size: 9px; letter-spacing: 0.01em; }
+  }
 </style>

@@ -1,4 +1,5 @@
 <script>
+  import { viewport, sizeClass } from '../../stores/window-size.js';
   // Appearance section — extracted from the Settings.svelte monolith.
   // Renders theme, accent, navigation style, persistent sidebar (gated
   // by viewport width), start page, reduce motion, page banners + the
@@ -25,6 +26,7 @@
     { value: 'light',  label: 'Light'          },
   ];
   const NAV_STYLE_OPTS = [
+    { value: 'auto',    label: 'Auto'           },
     { value: 'bottom',  label: 'Bottom Tab Bar' },
     { value: 'sidebar', label: 'Side Panel'     },
     { value: 'both',    label: 'Both'           },
@@ -59,11 +61,7 @@
   // hides on phones (and reappears if the user rotates a tablet to
   // landscape, etc.). Threshold matches App.svelte's _persistentAllowed
   // (768px = standard tablet).
-  let _viewportW = typeof window !== 'undefined' ? window.innerWidth : 1024;
-  if (typeof window !== 'undefined') {
-    window.addEventListener('resize', () => { _viewportW = window.innerWidth; });
-  }
-  $: _persistentAllowed = _viewportW >= 768;
+  $: _persistentAllowed = $navStyle === 'auto' ? $sizeClass !== 'compact' : $viewport.width >= 768;
 </script>
 
 <div class="section-body">
@@ -102,14 +100,17 @@
     </div>
     <div class="setting-divider"></div>
     <div class="setting-row">
-      <span class="setting-label">{$_('settings_page.appearance.navigation_style')}</span>
+      <div>
+        <span class="setting-label">{$_('settings_page.appearance.navigation_style')}</span>
+        {#if $navStyle === 'auto'}<div class="setting-desc">Fits the screen: tab bar on a phone, icons beside the page on an unfolded foldable or small tablet, and the full sidebar on larger screens.</div>{/if}
+      </div>
       <div class="select-wrap" style="width:160px">
         <select class="select sel-sm" value={$navStyle} on:change={e => navStyle.set(e.target.value)}>
           {#each NAV_STYLE_OPTS as o}<option value={o.value}>{o.label}</option>{/each}
         </select>
       </div>
     </div>
-    {#if ($navStyle === 'sidebar' || $navStyle === 'both') && _persistentAllowed}
+    {#if ($navStyle === 'sidebar' || $navStyle === 'both' || $navStyle === 'auto') && _persistentAllowed}
       <div class="setting-divider"></div>
       <div class="setting-row">
         <div>

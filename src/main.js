@@ -11,6 +11,7 @@ import './styles/typography.css';
 import './styles/animations.css';
 import './styles/buttons.css';
 import './styles/forms.css';
+import './styles/fold.css';
 import App from './App.svelte';
 import { DB } from './lib/db.js';
 import { initI18n } from './i18n/index.js';

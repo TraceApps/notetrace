@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(ShareIntentPlugin.class);
         registerPlugin(NoteRemindersPlugin.class);
+        registerPlugin(FoldPlugin.class);
         super.onCreate(savedInstanceState);
         ShareIntentPlugin.handleIntent(getIntent());
         NoteRemindersPlugin.handleIntent(getIntent());

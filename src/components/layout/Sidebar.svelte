@@ -29,7 +29,9 @@
 
   // The icon rail only applies to the pinned desktop sidebar; the phone
   // drawer always opens full width.
-  $: rail = persistent && $sidebarRail;
+  /** Which setting holds icons-only: Auto navigation keeps a separate one for medium screens. */
+  export let railStore = sidebarRail;
+  $: rail = persistent && $railStore;
 
   // Collapsed, each icon names itself in a label beside the rail on hover or focus.
   let tip = null;   // { text, top, left }
@@ -194,7 +196,7 @@
     <div class="sidebar-brand">
       {#if rail}
         <!-- Collapsed: just the expand button, centered. -->
-        <button class="rail-toggle" on:click={() => sidebarRail.set(false)}
+        <button class="rail-toggle" on:click={() => railStore.set(false)}
           data-tip={$_('sidebar.expand')} aria-label={$_('sidebar.expand')} aria-expanded="false">
           <span class="material-symbols-rounded">menu</span>
         </button>
@@ -205,7 +207,7 @@
           <span class="brand-tagline">Trace Every Thought</span>
         </div>
         {#if persistent}
-          <button class="rail-toggle" on:click={() => sidebarRail.set(true)}
+          <button class="rail-toggle" on:click={() => railStore.set(true)}
             title={$_('sidebar.collapse')} aria-label={$_('sidebar.collapse')} aria-expanded="true">
             <span class="material-symbols-rounded">menu_open</span>
           </button>

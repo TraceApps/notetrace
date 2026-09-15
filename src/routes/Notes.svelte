@@ -27,7 +27,9 @@
   import { ensureReminderPermission, rescheduleReminders } from '../lib/note-reminders.js';
   import { isOwner, canEdit } from '../lib/note-sharing.js';
   import { groupByDay } from '../lib/timeline.js';
-  import { notesLayout, noteSort, noteOrder, keyboardShortcuts, swipeToArchive, listGroupBy, listColumnWidth } from '../stores/settings.js';
+  import { notesLayout, noteSort, noteOrder, keyboardShortcuts, swipeToArchive, listGroupBy, listColumnWidth, notesLayoutBySize } from '../stores/settings.js';
+  import { sizeClass, contentWidth, viewport } from '../stores/window-size.js';
+  import { fold } from '../lib/fold.js';
   import NoteRow from '../components/notes/NoteRow.svelte';
   import { groupNotes } from '../lib/list-groups.js';
   import { showUndo } from '../stores/toast.js';
@@ -53,7 +55,16 @@
   $: activeLabel = labelId != null ? $labelsById.get(labelId) : null;
   $: canCapture = view === 'notes' || view === 'reminders';
   // Timeline: a single column grouped by the day each note was last edited.
-  $: timeline = $notesLayout === 'timeline' && view !== 'reminders';
+  // Each screen size keeps its own layout, so a foldable can show a grid
+  // folded and the List layout unfolded. Unset sizes use the last one picked.
+  $: layout = ($notesLayoutBySize || {})[$sizeClass] || $notesLayout || 'grid';
+  async function setLayout(value) {
+    // Picking another layout closes the note in the pane rather than moving it over the page.
+    if (pane && value !== 'list') await movePaneToOverlay(false);
+    notesLayoutBySize.set({ ...($notesLayoutBySize || {}), [$sizeClass]: value });
+    notesLayout.set(value);
+  }
+  $: timeline = layout === 'timeline' && view !== 'reminders';
   function dayLabel(day) {
     if (day.kind === 'today') return $_('timeline.today');
     if (day.kind === 'yesterday') return $_('timeline.yesterday');
@@ -174,14 +185,11 @@
 
   // ── Editor ─────────────────────────────────────────────────────────
   // ── List layout: notes on the left, the open note on the right ─────
-  // On a wide screen the List layout opens notes in a side pane; narrower
-  // screens open them over the page like the grid does.
-  $: listMode = $notesLayout === 'list' && view !== 'reminders';
-  let wideList = typeof window !== 'undefined' && window.innerWidth >= 1100;
-  const _onListResize = () => { wideList = window.innerWidth >= 1100; };
-  onMount(() => window.addEventListener('resize', _onListResize));
-  onDestroy(() => window.removeEventListener('resize', _onListResize));
-  $: splitPane = listMode && wideList;
+  // With room for two panes (an unfolded foldable beside the icon rail, or
+  // a desktop) the List layout opens notes beside the list; otherwise they
+  // open over the page like the grid does.
+  $: listMode = layout === 'list' && view !== 'reminders';
+  $: splitPane = listMode && $contentWidth >= 740;
   let pane = null;      // { note } or { kind, labels } in the reading pane
   // The workspace (list column + reading pane) fills the screen below the banner;
   // each side scrolls on its own.
@@ -199,7 +207,12 @@
 
   // The list column's width: drag the divider, arrow keys on it, double-click to reset.
   const LIST_W = { min: 280, max: 560, default: 360 };
-  $: listW = Math.min(LIST_W.max, Math.max(LIST_W.min, Number($listColumnWidth) || LIST_W.default));
+  $: listW = Math.max(LIST_W.min, Math.min(LIST_W.max, $contentWidth - 380, Number($listColumnWidth) || LIST_W.default));
+  // Half open like a book, the list fills the left side of the fold and the note the right.
+  $: foldListW = $fold?.posture === 'book' ? $fold.start - ($viewport.width - $contentWidth) : null;
+  $: foldSnap = splitPane && foldListW != null && foldListW >= 240 && $contentWidth - foldListW >= 300;
+  $: workListW = foldSnap ? foldListW : listW;
+  $: hingeW = foldSnap ? Math.max(0, $fold.end - $fold.start) : 0;
   let resizing = null;
   function startResize(e) {
     if (e.button !== 0) return;
@@ -250,7 +263,36 @@
       try { const n = await NoteApi.getNote(target); if (n) openInPane({ note: n }); } catch { /* gone */ }
     }
   }
-  $: if (!splitPane && pane) { const ref = paneRef; Promise.resolve(ref?.flush?.()).finally(() => { pane = null; load(); }); }
+  // Unfolding with a note open full screen moves it into the pane, and folding
+  // moves it back, keeping what was typed.
+  let overlayRef;
+  let moving = false;
+  async function _openedNote(ref, entry) {
+    try { await ref?.flush?.(); } catch { /* keep going */ }
+    const id = ref?.currentNoteId?.() ?? entry?.note?.id ?? null;
+    if (id == null) return null;
+    try { return await NoteApi.getNote(id); } catch { return null; }
+  }
+  async function moveOverlayToPane() {
+    moving = true;
+    const entry = editing;
+    const note = await _openedNote(overlayRef, entry);
+    editing = null;
+    pane = note ? { note } : { kind: entry.kind || 'text', labels: entry.labels || [], prefill: entry.prefill || null };
+    paneKey++;
+    moving = false;
+    load();
+  }
+  async function movePaneToOverlay(reopen) {
+    moving = true;
+    const note = await _openedNote(paneRef, pane);
+    pane = null;
+    if (reopen && note) editing = { note };
+    moving = false;
+    load();
+  }
+  $: if (splitPane && editing && !moving) moveOverlayToPane();
+  $: if (!splitPane && pane && !moving) movePaneToOverlay(true);
   $: listGroups = listMode ? groupNotes(filtered, $listGroupBy, { labels: $labels, pinnedFirst: view === 'notes' }) : [];
   function groupTitle(g) {
     if (g.kind === 'pinned') return $_('notes.pinned');
@@ -774,7 +816,7 @@
       </div>
     {:else if splitPane}
       <!-- svelte-ignore a11y-no-static-element-interactions -->
-      <div class="workspace" bind:this={workEl} class:resizing={!!resizing} style="height:{workH}px; --list-w:{listW}px">
+      <div class="workspace" bind:this={workEl} class:resizing={!!resizing} class:fold-snap={foldSnap} style="height:{workH}px; --list-w:{workListW}px; --hinge:{hingeW}px">
         <div class="list-col">
           <div class="list-head">
             <span class="list-count">{$_('list.note_count', { values: { count: filtered.length } })}</span>
@@ -922,7 +964,7 @@
   <!-- Keyed per open: reopening while the last editor is still fading out
        would otherwise resume that editor with the previous note's state. -->
   {#key editing}
-    <NoteEditor note={editing.note || null} initialKind={editing.kind || 'text'} initialLabels={editing.labels || []}
+    <NoteEditor bind:this={overlayRef} note={editing.note || null} initialKind={editing.kind || 'text'} initialLabels={editing.labels || []}
       prefill={editing.prefill || null} originId={editing.originId ?? null} on:close={closeEditor} />
   {/key}
 {/if}
@@ -1005,11 +1047,11 @@
   <div class="view-menu" role="menu">
     <p class="vm-title">{$_('list.layout')}</p>
     {#each [['grid', 'grid_view', 'timeline.show_grid', 'list.grid_desc'], ['list', 'view_list', 'timeline.show_list', 'list.list_desc'], ['timeline', 'view_timeline', 'timeline.show_timeline', 'list.timeline_desc']] as [value, icon, label, desc]}
-      <button class="vm-row" role="menuitemradio" aria-checked={($notesLayout || 'grid') === value} class:on={($notesLayout || 'grid') === value}
-        on:click={() => { notesLayout.set(value); if (value !== 'list') viewOpen = false; }}>
+      <button class="vm-row" role="menuitemradio" aria-checked={layout === value} class:on={layout === value}
+        on:click={() => { setLayout(value); if (value !== 'list') viewOpen = false; }}>
         <span class="material-symbols-rounded">{icon}</span>
         <span class="vm-text"><strong>{$_(label)}</strong><small>{$_(desc)}</small></span>
-        {#if ($notesLayout || 'grid') === value}<span class="material-symbols-rounded vm-check">check</span>{/if}
+        {#if layout === value}<span class="material-symbols-rounded vm-check">check</span>{/if}
       </button>
     {/each}
     {#if listMode}
@@ -1102,7 +1144,7 @@
   .bulk-btn:disabled { opacity: 0.5; }
   .bulk-btn.danger { color: var(--danger); }
   @media (max-width: 600px) {
-    .bulk-bar { left: 8px; right: 8px; bottom: calc(var(--nav-h) + var(--safe-bottom) + 10px); padding: 0 4px; }
+    .bulk-bar { left: 8px; right: 8px; bottom: calc(var(--tabbar-h, var(--nav-h)) + var(--safe-bottom) + 10px); padding: 0 4px; }
     .bulk-bar { gap: 0; }
     .bulk-btn { width: 36px; }
     .bulk-count { font-size: 14px; padding: 0 2px; }
@@ -1132,7 +1174,7 @@
   .notes-body.workspace-body { padding: 0; gap: 0; max-width: none; }
   .workspace-body .trash-note { padding: 10px 16px; border-bottom: 1px solid var(--border); }
   .workspace {
-    display: grid; grid-template-columns: var(--list-w) 0 minmax(0, 1fr);
+    display: grid; grid-template-columns: var(--list-w) var(--hinge, 0px) minmax(0, 1fr);
     min-height: 0; overflow: hidden;
   }
   .workspace.resizing { user-select: none; cursor: col-resize; }
@@ -1166,8 +1208,11 @@
   .list-empty strong { color: var(--text-1); font-family: var(--font-note-title); font-weight: 500; font-size: 18px; }
   .list-empty p { font-size: 13px; line-height: 1.5; }
   .list-resizer {
-    position: relative; z-index: 3; width: 0; cursor: col-resize; outline: none;
+    position: relative; z-index: 3; width: var(--hinge, 0px); cursor: col-resize; outline: none;
   }
+  /* Snapped to the fold: the fold is the divider. */
+  .workspace.fold-snap .list-resizer { pointer-events: none; }
+  .workspace.fold-snap .list-resizer::after { display: none; }
   .list-resizer::before { content: ''; position: absolute; top: 0; bottom: 0; left: -5px; width: 10px; }
   .list-resizer::after {
     content: ''; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px;
@@ -1273,7 +1318,7 @@
   .fab {
     position: fixed;
     right: 16px;
-    bottom: calc(var(--nav-h) + var(--safe-bottom) + 16px);
+    bottom: calc(var(--tabbar-h, var(--nav-h)) + var(--safe-bottom) + 16px);
     width: 60px; height: 60px;
     border-radius: 20px;
     background: linear-gradient(135deg, var(--accent), var(--accent-2));

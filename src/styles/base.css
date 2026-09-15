@@ -314,7 +314,7 @@ html.banner-animation-aurora .page-header.banner-animated::after {
 .page-shell {
   display: block;
   min-height: 100dvh;
-  padding-bottom: calc(var(--nav-h) + var(--safe-bottom));
+  padding-bottom: calc(var(--tabbar-h, var(--nav-h)) + var(--safe-bottom));
 }
 /* Editor pages (RecipeEditor, RecipeView etc.) — full-screen page that covers
    the bottom nav. Sticky header inside, scrollable content below. */

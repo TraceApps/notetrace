@@ -75,6 +75,7 @@ Items marked ~~strikethrough~~ have been implemented.
 - ~~Tasks view of open checklist items, with due dates on items~~
 - ~~List layout with grouping and a side pane on wide screens~~
 - ~~Two-pane List workspace with a resizable list column~~
+- ~~Foldables: Auto navigation, per-screen layouts, fold-aware book and tabletop layouts~~
 - ~~Label icons~~
 - ~~Due date notifications for checklist items~~
 - ~~Trace and MCP tools for tasks and due dates~~

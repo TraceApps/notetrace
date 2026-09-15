@@ -36,6 +36,7 @@ export const USER_PREFS = new Set([
 export const DEVICE_PREFS = new Set([
   'appearance','navStyle','sidebarPersistent','disableAnimations',
   'sidebarRail', 'sidebarLabelsCollapsed', // per-device sidebar shape
+  'sidebarRailMedium',     // Auto navigation on a medium screen (an unfolded foldable): sidebar as icons
   'keyboardShortcuts',     // single-key shortcuts on this device
   'cardDensity',           // 'comfortable' or 'compact' note cards
   'labelTreeCollapsed',    // nested label groups folded in the sidebar
@@ -45,7 +46,8 @@ export const DEVICE_PREFS = new Set([
   'appLockEnabled',        // Android-only: require biometric / device credential to open the app
   'appLockTimeoutMin',     // minutes in the background before the lock re-engages (0 = immediately)
   'notifLocalEnabled',     // reminder notifications on this device (phone, or this browser while open)
-  'notesLayout',           // 'grid', 'list', or 'timeline' on the notes screens
+  'notesLayout',           // 'grid', 'list', or 'timeline' on the notes screens (the last one picked)
+  'notesLayoutBySize',     // the layout picked for each size class, so a foldable's two screens keep their own
   'listGroupBy',           // List layout sections: 'none', 'label', 'color', 'date'
   'listColumnWidth',       // List layout: width of the list column beside the reading pane, px
 ]);
@@ -258,15 +260,18 @@ function createSettingStore(key, defaultValue) {
 
 // ── Device prefs (local-only) ──────────────────────────────────────────────
 export const appearance        = createSettingStore('appearance',        'system');
-export const navStyle          = createSettingStore('navStyle',          'both');
+// 'auto' fits the screen: tab bar on phones, icons on an unfolded foldable, sidebar on desktop.
+export const navStyle          = createSettingStore('navStyle',          'auto');
 export const sidebarPersistent = createSettingStore('sidebarPersistent', true);
 // Pinned desktop sidebar collapsed to an icon rail, and the Labels section folded.
 export const sidebarRail = createSettingStore('sidebarRail', false);
+export const sidebarRailMedium = createSettingStore('sidebarRailMedium', true);
 export const sidebarLabelsCollapsed = createSettingStore('sidebarLabelsCollapsed', false);
 export const disableAnimations = createSettingStore('disableAnimations', false);
 export const biometricLoginEnabled = createSettingStore('biometricLoginEnabled', false);
 export const appLockEnabled    = createSettingStore('appLockEnabled',    false);
 export const notesLayout       = createSettingStore('notesLayout',       'grid');
+export const notesLayoutBySize = createSettingStore('notesLayoutBySize', {});
 export const listGroupBy       = createSettingStore('listGroupBy',       'none');
 export const listColumnWidth   = createSettingStore('listColumnWidth',   360);
 export const linkPreviews      = createSettingStore('linkPreviews',      true);

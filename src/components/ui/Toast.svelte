@@ -26,7 +26,7 @@
 <style>
   .toast-container {
     position: fixed;
-    bottom: calc(var(--nav-h) + var(--safe-bottom) + 12px);
+    bottom: calc(var(--tabbar-h, var(--nav-h)) + var(--safe-bottom) + 12px);
     left: 50%;
     transform: translateX(-50%);
     display: flex;

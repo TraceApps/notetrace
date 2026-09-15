@@ -1,0 +1,42 @@
+/*
+ * fold.css: layouts for a foldable that's half open (lib/fold.js sets the
+ * classes and --fold-start / --fold-end).
+ *
+ * Book (fold top to bottom): windows that would sit across the crease open
+ * on the right side of it instead.
+ * Tabletop (fold side to side): what you read stays above the fold; controls
+ * and the keyboard stay below it.
+ */
+
+/* ── Book ─────────────────────────────────────────────────────────── */
+html.fold-book .editor-backdrop:not(.inline),
+html.fold-book .dialog-backdrop,
+html.fold-book .sheet-backdrop {
+  padding-left: calc(var(--fold-end) + 16px) !important;
+  padding-right: 16px !important;
+}
+html.fold-book .viewer { padding-left: calc(var(--fold-end) + 16px) !important; }
+html.fold-book .viewer .v-prev { left: calc(var(--fold-end) + 12px) !important; }
+html.fold-book .viewer .v-count,
+html.fold-book .viewer .v-text { left: calc(var(--fold-end) + (100vw - var(--fold-end)) / 2) !important; }
+
+/* ── Tabletop ─────────────────────────────────────────────────────── */
+/* Full-screen editor on a phone: the note above the fold, its toolbar and the keyboard below. */
+html.fold-tabletop .editor-panel.narrow { padding-bottom: calc(100dvh - var(--fold-start)) !important; }
+html.fold-tabletop .editor-panel.narrow .editor-scroll { padding-bottom: 20px !important; }
+html.fold-tabletop .editor-panel.narrow::after {
+  content: ''; position: fixed; left: 0; right: 0; top: var(--fold-start); height: 1px;
+  background: var(--note-border, var(--border)); pointer-events: none;
+}
+/* The editor card on a wider screen fits above the fold. */
+html.fold-tabletop .editor-backdrop:not(.inline) {
+  padding-top: 16px !important;
+  padding-bottom: calc(100dvh - var(--fold-start) + 16px) !important;
+  align-items: center !important;
+}
+html.fold-tabletop .editor-panel:not(.narrow):not(.inline) { max-height: calc(var(--fold-start) - 32px) !important; }
+html.fold-tabletop .dialog-backdrop { padding-bottom: calc(100dvh - var(--fold-start) + 24px) !important; }
+/* Images above the fold; the count and any read text below it. */
+html.fold-tabletop .viewer { padding-top: 16px !important; padding-bottom: calc(100dvh - var(--fold-start) + 12px) !important; }
+html.fold-tabletop .viewer .v-prev,
+html.fold-tabletop .viewer .v-next { top: calc(var(--fold-start) / 2) !important; }

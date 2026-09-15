@@ -83,11 +83,11 @@
   // sub-page auto-navigates back to the index with the query so
   // filtering shows the matching sections. On desktop the search
   // filters the always-visible left rail in place — no navigation
-  // needed. Threshold matches the two-pane shell (1024px).
+  // needed. Two panes show when App.svelte sets html.wide-content.
   function _onSearchInput() {
     if (!currentSection) return;
     if (typeof window === 'undefined') return;
-    if (window.matchMedia('(min-width: 1024px)').matches) return;
+    if (document.documentElement.classList.contains('wide-content')) return;
     if (!settingsQuery) return;
     push(`/settings?q=${encodeURIComponent(settingsQuery)}`);
   }
@@ -197,7 +197,7 @@
   // runs on the index, before drill-in.
   const SECTION_KEYWORDS = {
     profile:       ['profile','my profile','account','name','avatar','log out','logout','sign out','password','change password'],
-    appearance:    ['appearance','theme','dark','light','accent','color','navigation','sidebar','persistent','start page','animations','tasks','link previews','link preview','previews','note order','sort','custom order','drag','reorder','arrange','keyboard','shortcuts','hotkeys','keys','density','compact','comfortable','dense','card size','swipe','gesture','gestures','reduce motion','banner','page banner','force mobile','mobile layout','mobile view','phone layout','narrow layout'],
+    appearance:    ['appearance','theme','dark','light','accent','color','navigation','sidebar','persistent','start page','animations','tasks','link previews','link preview','previews','note order','sort','custom order','drag','reorder','arrange','keyboard','shortcuts','hotkeys','keys','density','compact','comfortable','dense','card size','swipe','gesture','gestures','reduce motion','banner','page banner','force mobile','mobile layout','mobile view','phone layout','narrow layout','auto','foldable','fold','tab bar','bottom bar','icons','rail'],
     regional:      ['regional','date','time','12h','24h','units','energy','kcal','kj','calories','kilojoules','imperial','metric','measurement system'],
     ai:            ['ai','trace','assistant','provider','model','custom model','model id','api key','chat','claude','openai','gemini','sonnet','opus','haiku','gpt','gemini 3','base url','artificial intelligence','smart log','smartlog','quick log','voice','dictate','hold to record','mic','transcribe','transcription','whisper','voice notes','read text','ocr','image text'],
     cooktrace:     ['cooktrace','cook trace','shopping','shopping list','groceries','grocery','send to cooktrace','integration','integrations','link','traceapps','recipes'],
@@ -388,7 +388,7 @@
 <!-- Settings section-list snippet. Defined at the top level so it's
      usable from BOTH render sites: (a) the mobile index (below the
      profile hero, as a single stacked column), and (b) the desktop
-     left rail (two-pane shell at ≥1024px). Same markup + same
+     left rail (two-pane shell with html.wide-content). Same markup + same
      handlers; visual density is context-styled via the parent class
      (.settings-nav-rail vs .settings-mobile-index). -->
 {#snippet sectionButtons()}
@@ -548,7 +548,7 @@
 
     <div class="settings-two-pane">
 
-      <!-- Left rail (desktop only, ≥1024px). Always shows the full
+      <!-- Left rail (two panes only, html.wide-content). Always shows the full
            section list so users can jump between sections without
            going back to the index. Hidden on mobile via CSS. -->
       <aside class="settings-nav-rail" bind:this={_railEl}>
@@ -1048,15 +1048,16 @@
   .settings-desktop-hero { display: none; }
   .settings-mobile-index { display: block; }
 
-  @media (min-width: 1024px) {
-    :global(html:not(.force-mobile-layout)) .settings-two-pane {
+  /* Two panes when the page has the room beside the sidebar (App.svelte sets wide-content). */
+  @media all {
+    :global(html.wide-content) .settings-two-pane {
       display: grid;
       grid-template-columns: 280px minmax(0, 1fr);
       gap: 24px;
       align-items: start;
     }
 
-    :global(html:not(.force-mobile-layout)) .settings-nav-rail {
+    :global(html.wide-content) .settings-nav-rail {
       display: flex;
       flex-direction: column;
       gap: 2px;
@@ -1077,7 +1078,7 @@
       scrollbar-width: thin;
       scrollbar-color: var(--border) transparent;
     }
-    :global(html:not(.force-mobile-layout)) .settings-nav-rail :global(.section-toggle) {
+    :global(html.wide-content) .settings-nav-rail :global(.section-toggle) {
       background: transparent;
       border: none;
       min-height: 36px;
@@ -1089,14 +1090,14 @@
       z-index: 1;
       transition: color 160ms ease;
     }
-    :global(html:not(.force-mobile-layout)) .settings-nav-rail :global(.section-toggle:hover) {
+    :global(html.wide-content) .settings-nav-rail :global(.section-toggle:hover) {
       background: var(--surface-2);
     }
-    :global(html:not(.force-mobile-layout)) .settings-nav-rail :global(.section-toggle.active) {
+    :global(html.wide-content) .settings-nav-rail :global(.section-toggle.active) {
       background: transparent;
       color: var(--accent);
     }
-    :global(html:not(.force-mobile-layout)) .settings-nav-rail .rail-active-pill {
+    :global(html.wide-content) .settings-nav-rail .rail-active-pill {
       position: absolute;
       left: 8px;
       right: 8px;
@@ -1108,35 +1109,35 @@
       z-index: 0;
       will-change: transform, height;
     }
-    :global(html:not(.force-mobile-layout)) .settings-nav-rail .rail-active-pill.visible {
+    :global(html.wide-content) .settings-nav-rail .rail-active-pill.visible {
       opacity: 1;
     }
-    :global(html:not(.force-mobile-layout)) .settings-nav-rail .rail-active-pill.ready {
+    :global(html.wide-content) .settings-nav-rail .rail-active-pill.ready {
       transition:
         transform 320ms cubic-bezier(0.32, 0.72, 0, 1),
         height 260ms cubic-bezier(0.32, 0.72, 0, 1),
         opacity 180ms ease;
     }
-    :global(html:not(.force-mobile-layout)) .settings-nav-rail :global(.section-toggle:focus-visible) {
+    :global(html.wide-content) .settings-nav-rail :global(.section-toggle:focus-visible) {
       outline: 2px solid var(--accent);
       outline-offset: -2px;
       background: var(--surface-2);
     }
-    :global(html:not(.force-mobile-layout)) .settings-nav-rail :global(.section-toggle .si) {
+    :global(html.wide-content) .settings-nav-rail :global(.section-toggle .si) {
       width: 24px;
       height: 24px;
       font-size: 18px;
     }
-    :global(html:not(.force-mobile-layout)) .settings-nav-rail :global(.section-toggle .chevron) { display: none; }
-    :global(html:not(.force-mobile-layout)) .settings-nav-rail :global(.settings-group-label) {
+    :global(html.wide-content) .settings-nav-rail :global(.section-toggle .chevron) { display: none; }
+    :global(html.wide-content) .settings-nav-rail :global(.settings-group-label) {
       margin: 12px 4px 4px;
       font-size: 10px;
       letter-spacing: 0.1em;
     }
-    :global(html:not(.force-mobile-layout)) .settings-nav-rail :global(.settings-group-label:first-child) {
+    :global(html.wide-content) .settings-nav-rail :global(.settings-group-label:first-child) {
       margin-top: 2px;
     }
-    :global(html:not(.force-mobile-layout)) .settings-nav-rail .settings-nav-empty {
+    :global(html.wide-content) .settings-nav-rail .settings-nav-empty {
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -1145,16 +1146,16 @@
       text-align: center;
       color: var(--text-3);
     }
-    :global(html:not(.force-mobile-layout)) .settings-nav-rail .settings-nav-empty :global(.material-symbols-rounded) {
+    :global(html.wide-content) .settings-nav-rail .settings-nav-empty :global(.material-symbols-rounded) {
       font-size: 28px;
       opacity: 0.7;
     }
-    :global(html:not(.force-mobile-layout)) .settings-nav-rail .settings-nav-empty p {
+    :global(html.wide-content) .settings-nav-rail .settings-nav-empty p {
       margin: 0;
       font-size: 12px;
       line-height: 1.4;
     }
-    :global(html:not(.force-mobile-layout)) .settings-nav-rail .settings-nav-clear {
+    :global(html.wide-content) .settings-nav-rail .settings-nav-clear {
       background: transparent;
       border: 1px solid var(--border);
       color: var(--text-2);
@@ -1164,14 +1165,14 @@
       font-weight: 600;
       cursor: pointer;
     }
-    :global(html:not(.force-mobile-layout)) .settings-nav-rail .settings-nav-clear:hover {
+    :global(html.wide-content) .settings-nav-rail .settings-nav-clear:hover {
       background: var(--surface-2);
       color: var(--text-1);
     }
 
     /* Desktop-only vs mobile-only content in the pane. */
-    :global(html:not(.force-mobile-layout)) .settings-mobile-index { display: none; }
-    :global(html:not(.force-mobile-layout)) .settings-desktop-hero { display: block; }
+    :global(html.wide-content) .settings-mobile-index { display: none; }
+    :global(html.wide-content) .settings-desktop-hero { display: block; }
   }
 
   /* Desktop welcome hero: profile card is expandable inline. */

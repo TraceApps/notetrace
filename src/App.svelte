@@ -1,4 +1,6 @@
 <script>
+  import { viewport, sizeClass, contentWidth } from './stores/window-size.js';
+  import { initFold } from './lib/fold.js';
   import { onMount }   from 'svelte';
   import { fade, fly, slide } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
@@ -12,7 +14,7 @@
   import Toast     from './components/ui/Toast.svelte';
   import ConfirmDialogMount from './components/ui/ConfirmDialogMount.svelte';
   import { DB }    from './lib/db.js';
-  import { navStyle, applyAccentColor, accentColor, applyAppearance, appearance, disableAnimations, sidebarPersistent, sidebarRail, cardDensity, pageBanners, bannerStyle, bannerAnimation, forceMobileLayout, startPage } from './stores/settings.js';
+  import { navStyle, applyAccentColor, accentColor, applyAppearance, appearance, disableAnimations, sidebarPersistent, sidebarRail, sidebarRailMedium, cardDensity, pageBanners, bannerStyle, bannerAnimation, forceMobileLayout, startPage } from './stores/settings.js';
   import { _ } from 'svelte-i18n';
   import { currentUser, userMgmtActive, setupRequired, loadAuthState, handleOidcCallback } from './stores/auth.js';
   import { needsNativeSetup, isNative, getNativeMode, getServerUrl, apiUrl } from './lib/platform.js';
@@ -225,15 +227,26 @@
   const NAV_HIDDEN = ['/wizard', '/profile'];
   $: showNav       = !NAV_HIDDEN.some(p => $location.startsWith(p));
 
-  let _viewportW = typeof window !== 'undefined' ? window.innerWidth : 1024;
-  if (typeof window !== 'undefined') {
-    window.addEventListener('resize', () => { _viewportW = window.innerWidth; });
-  }
-  $: _persistentAllowed = _viewportW >= 768;
+  $: _viewportW = $viewport.width;
+  // Auto navigation fits the screen: a phone gets the tab bar and the ☰ menu;
+  // anything wider pins the sidebar (as icons on a medium screen such as an
+  // unfolded foldable) and drops the tab bar. Bottom, Side Panel, and Both
+  // behave as they always have.
+  $: _auto = $navStyle === 'auto';
+  $: _persistentAllowed = _auto ? $sizeClass !== 'compact' : _viewportW >= 768;
+  $: railStore = _auto && $sizeClass === 'medium' ? sidebarRailMedium : sidebarRail;
 
-  $: _hasSidebar   = showNav && ($navStyle === 'sidebar' || $navStyle === 'both');
+  $: _hasSidebar   = showNav && ($navStyle === 'sidebar' || $navStyle === 'both' || _auto);
   $: sidebarPinned = _hasSidebar && _persistentAllowed && $sidebarPersistent;
-  $: hasBottomNav  = showNav && ($navStyle === 'bottom' || $navStyle === 'both');
+  $: hasBottomNav  = showNav && ($navStyle === 'bottom' || $navStyle === 'both' || (_auto && !sidebarPinned));
+  $: _sidebarPx = sidebarPinned ? ($railStore ? 76 : 280) : 0;
+  $: contentWidth.set(_viewportW - _sidebarPx);
+  $: if (typeof document !== 'undefined') {
+    const root = document.documentElement;
+    for (const c of ['compact', 'medium', 'expanded']) root.classList.toggle(`size-${c}`, $sizeClass === c);
+    // Room for two panes (Settings, the List layout) beside whatever sidebar is pinned.
+    root.classList.toggle('wide-content', !$forceMobileLayout && _viewportW - _sidebarPx >= 720);
+  }
   $: document.documentElement.style.setProperty('--tabbar-h', hasBottomNav ? 'var(--nav-h)' : '0px');
   $: showHamburger = _hasSidebar && !sidebarPinned;
 
@@ -266,7 +279,7 @@
     );
     document.documentElement.style.setProperty(
       '--sidebar-w',
-      sidebarPinned ? ($sidebarRail ? '76px' : '280px') : '0px'
+      `${_sidebarPx}px`
     );
   }
 
@@ -312,6 +325,7 @@
   }
 
   onMount(async () => {
+    initFold();
     // Start Page: only when the app opens on the default route, never over a
     // deep link, a share, or a notification tap.
     if (['', '#', '#/'].includes(window.location.hash) && ['/reminders', '/tasks', '/archive'].includes($startPage)) {
@@ -591,7 +605,7 @@
 
 {#if $appLocked}<LockScreen />{/if}
 
-<Sidebar bind:open={sidebarOpen} persistent={sidebarPinned} on:close={() => { if (!sidebarPinned) sidebarOpen = false; }} />
+<Sidebar bind:open={sidebarOpen} persistent={sidebarPinned} {railStore} on:close={() => { if (!sidebarPinned) sidebarOpen = false; }} />
 
 
 <!-- In-app update banner (native only). Renders only if the OS-level
