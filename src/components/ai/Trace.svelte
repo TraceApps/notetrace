@@ -290,7 +290,7 @@
     setToolHandler(async (name, args) => {
       const result = await executeNoteTool(name, args);
       // Anything Trace changed shows up on screen without a reload.
-      if (!['search_notes', 'get_note', 'list_labels', 'list_reminders'].includes(name) && !result?.error) {
+      if (!['search_notes', 'get_note', 'list_labels', 'list_reminders', 'list_tasks'].includes(name) && !result?.error) {
         signalNotesChanged();
         refreshLabels();
       }
@@ -309,7 +309,7 @@
 
 Today is ${today}; the user's local time is ${localNow} (${Intl.DateTimeFormat().resolvedOptions().timeZone}). The user's date format is ${$dateFormat}.
 
-Use the note tools to answer from the user's real notes: search_notes to find notes (search before saying something doesn't exist), get_note to read one, and the write tools to make the changes the user asks for. For lists (groceries, packing, to-dos) use checklists. Give reminder times as local times like ${now.toLocaleDateString('en-CA')}T09:00. Don't move notes to the trash unless the user clearly asked.
+Use the note tools to answer from the user's real notes: search_notes to find notes (search before saying something doesn't exist), get_note to read one, and the write tools to make the changes the user asks for. For lists (groceries, packing, to-dos) use checklists. Give reminder times as local times like ${now.toLocaleDateString('en-CA')}T09:00. Checklist items can have due dates (YYYY-MM-DD): use list_tasks for what's due, and set_due_date or the due option on add_checklist_items to set them. Don't move notes to the trash unless the user clearly asked.
 
 Keep replies short and actionable. When you rewrite or summarize text, return it ready to paste into a note. If a tool returns { error: ... }, tell the user what went wrong and how to fix it.`;
   }

@@ -2,9 +2,9 @@
  * MCP note tools. The catalog and logic are shared with Trace
  * (lib/note-tools.js); this file adapts lib/notes.js to the api shape the
  * tools expect and registers each tool in its tier:
- *   read:    search_notes, get_note, list_labels, list_reminders
+ *   read:    search_notes, get_note, list_labels, list_reminders, list_tasks
  *   write:   create_note, update_note, append_to_note, add_checklist_items,
- *            check_checklist_item, set_reminder, set_labels
+ *            check_checklist_item, set_due_date, set_reminder, set_labels
  *   destroy: move_to_trash
  * Every call runs as the token's user, with the same sharing and
  * ownership rules as the app. set_reminder reads a time without an offset
@@ -17,8 +17,8 @@ import * as Notes from '../../notes.js';
 import { NOTE_TOOLS, executeNoteTool } from '../../note-tools.js';
 import { toolResult, toolError } from '../_util.js';
 
-export const READ = ['search_notes', 'get_note', 'list_labels', 'list_reminders'];
-export const WRITE = ['create_note', 'update_note', 'append_to_note', 'add_checklist_items', 'check_checklist_item', 'set_reminder', 'set_labels'];
+export const READ = ['search_notes', 'get_note', 'list_labels', 'list_reminders', 'list_tasks'];
+export const WRITE = ['create_note', 'update_note', 'append_to_note', 'add_checklist_items', 'check_checklist_item', 'set_due_date', 'set_reminder', 'set_labels'];
 export const DESTROY = ['move_to_trash'];
 
 export function notesApiFor(u) {

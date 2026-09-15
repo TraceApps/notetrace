@@ -31,7 +31,7 @@ function fakeApi() {
       return clone(n);
     },
     async updateNote(id, p) { Object.assign(notes.get(id), p); return clone(notes.get(id)); },
-    async addItem(id, { text }) { const n = notes.get(id); n.items.push({ uuid: `a${n.items.length}`, text, checked: false }); return clone(n); },
+    async addItem(id, { text, due_date = null }) { const n = notes.get(id); n.items.push({ uuid: `a${n.items.length}`, text, checked: false, due_date }); return clone(n); },
     async updateItem(id, uuid, p) { const it = notes.get(id).items.find(i => i.uuid === uuid); Object.assign(it, p); return clone(notes.get(id)); },
     async trashNote(id) { notes.get(id).trashed_at = 'now'; return clone(notes.get(id)); },
   };
@@ -101,6 +101,28 @@ test('reminders use local time, and shared view-only notes are protected', async
   assert.match((await executeNoteTool('update_note', { id: note.id, text: 'x' }, api)).error, /view only/);
   assert.match((await executeNoteTool('move_to_trash', { id: note.id }, api)).error, /owner/);
   assert.match((await executeNoteTool('set_reminder', { id: note.id, clear: true }, api)).error, /owner/);
+});
+
+test('due dates: add with due, set, clear, and list tasks', async () => {
+  const api = fakeApi();
+  const list = await api.createNote({ title: 'Chores', kind: 'checklist', items: [{ text: 'Sweep' }, { text: 'Done thing', checked: true }] });
+  await api.createNote({ title: 'Plain', kind: 'text', body_md: 'hi' });
+  const added = await executeNoteTool('add_checklist_items', { id: list.id, items: ['Taxes', 'Bins'], due: '2099-04-15' }, api);
+  assert.equal(added.added, 2);
+  assert.equal(added.note.items.find(i => i.text === 'Taxes').due, '2099-04-15');
+  assert.match((await executeNoteTool('add_checklist_items', { id: list.id, items: ['x'], due: 'soon' }, api)).error, /YYYY-MM-DD/);
+  assert.equal((await executeNoteTool('set_due_date', { id: list.id, item: 'sweep', due: '2099-01-02' }, api)).due, '2099-01-02');
+  assert.match((await executeNoteTool('set_due_date', { id: list.id, item: 'sweep', due: '2099-02-30' }, api)).error, /YYYY-MM-DD/);
+  let all = await executeNoteTool('list_tasks', {}, api);
+  assert.deepEqual(all.tasks.map(t => t.text), ['Sweep', 'Taxes', 'Bins']);
+  assert.equal(all.tasks[0].list, 'Chores');
+  const soon = await executeNoteTool('list_tasks', { due_by: '2099-03-01' }, api);
+  assert.deepEqual(soon.tasks.map(t => t.text), ['Sweep']);
+  assert.equal((await executeNoteTool('list_tasks', { due_by: '2099-03-01', include_undated: true }, api)).count, 1);
+  assert.match((await executeNoteTool('list_tasks', { due_by: 'tomorrow' }, api)).error, /YYYY-MM-DD/);
+  assert.equal((await executeNoteTool('set_due_date', { id: list.id, item: 'Taxes', clear: true }, api)).due, null);
+  all = await executeNoteTool('list_tasks', { due_by: '2099-12-31' }, api);
+  assert.deepEqual(all.tasks.map(t => t.text), ['Sweep', 'Bins']);
 });
 
 test('MCP tiers cover every tool exactly once', async () => {

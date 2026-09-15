@@ -149,7 +149,7 @@ forwards it.
 ### Note tools are shared by Trace and MCP
 
 `server/lib/note-tools.js` defines the note tools (search, get, create,
-update, append, checklist items, reminders, labels, trash) once, as a
+update, append, checklist items, tasks and due dates, reminders, labels, trash) once, as a
 JSON Schema catalog plus `executeNoteTool(name, args, api, opts)`. It
 imports only the pure `server/lib/reminders.js`, so Vite bundles it for
 the client too. Trace passes `NoteApi`
@@ -188,6 +188,15 @@ shows unchecked items; there's no task table. The only new data is
 `checklist_items.due_date` (a `YYYY-MM-DD` calendar day, synced with the item),
 and `src/lib/due-dates.js` groups items by it. Quick add appends to a checklist
 titled "Tasks".
+
+The daily Tasks Due notification follows the reminder paths. The digest text
+comes from the pure `server/lib/task-digest-core.js`. On Android,
+`src/lib/note-reminders.js` schedules the next 14 digests as alarms with negative
+ids, which open `/tasks`. In a browser, `src/lib/web-reminders.js` fires it once a
+day while a tab is open. On the server, `server/lib/task-digest.js` runs in the
+reminder tick, sends at the user's digest time in their `timezone` setting (until
+20:00 if it was down), and records one `tasks_due` row per local date in
+`notification_log`.
 
 ### The List layout reuses the editor in place
 

@@ -90,11 +90,41 @@ export const NOTE_TOOLS = [
   },
   {
     name: 'add_checklist_items',
-    description: 'Add items to a checklist note.',
+    description: 'Add items to a checklist note, optionally due on a date.',
     parameters: {
       type: 'object',
-      properties: { id: { type: 'integer' }, items: { type: 'array', items: { type: 'string' } } },
+      properties: {
+        id: { type: 'integer' },
+        items: { type: 'array', items: { type: 'string' } },
+        due: { type: 'string', description: 'Optional due date for the new items, YYYY-MM-DD (the user\'s calendar day).' },
+      },
       required: ['id', 'items'],
+    },
+  },
+  {
+    name: 'list_tasks',
+    description: 'List open checklist items across every checklist: overdue and due soon first, then undated. Use for "what do I need to do", "what\'s due this week", and similar.',
+    parameters: {
+      type: 'object',
+      properties: {
+        due_by: { type: 'string', description: 'Only items due on or before this date, YYYY-MM-DD. Leave out for every open item.' },
+        include_undated: { type: 'boolean', description: 'Include items without a due date. Default true, unless due_by is given.' },
+        limit: { type: 'integer', description: 'Maximum items, up to 100. Default 40.' },
+      },
+    },
+  },
+  {
+    name: 'set_due_date',
+    description: 'Set or clear the due date of a checklist item, found by its text (exact match first, then the only item containing the text).',
+    parameters: {
+      type: 'object',
+      properties: {
+        id: { type: 'integer', description: 'Note id' },
+        item: { type: 'string', description: 'Item text' },
+        due: { type: 'string', description: 'YYYY-MM-DD, or leave out with clear=true.' },
+        clear: { type: 'boolean' },
+      },
+      required: ['id', 'item'],
     },
   },
   {
@@ -236,6 +266,14 @@ async function _labelNames(api) {
   return new Map((await api.getLabels()).map(l => [l.id, l.name]));
 }
 
+/** A YYYY-MM-DD date, or null. */
+function _dueDate(v) {
+  const s = String(v ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const d = new Date(`${s}T00:00:00Z`);
+  return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === s ? s : null;
+}
+
 function _findItem(items, text) {
   const q = String(text || '').trim().toLowerCase();
   if (!q) return { error: 'item text is required' };
@@ -344,8 +382,33 @@ export async function executeNoteTool(name, args = {}, api, opts = {}) {
       if (note.kind !== 'checklist') return { error: 'This is a text note. Use append_to_note, or ask the user to switch it to a checklist.' };
       const items = (Array.isArray(a.items) ? a.items : []).map(t => String(t).trim()).filter(Boolean);
       if (!items.length) return { error: 'items is required' };
-      for (const text of items) await api.addItem(note.id, { text });
+      if (a.due != null && !_dueDate(a.due)) return { error: `Couldn't read the due date "${a.due}". Use YYYY-MM-DD.` };
+      for (const text of items) await api.addItem(note.id, { text, due_date: _dueDate(a.due) });
       return { ok: true, added: items.length, note: _full(await need(note.id), await _labelNames(api)) };
+    }
+    case 'list_tasks': {
+      const dueBy = a.due_by != null ? _dueDate(a.due_by) : null;
+      if (a.due_by != null && !dueBy) return { error: `Couldn't read "${a.due_by}". Use YYYY-MM-DD.` };
+      const undated = a.include_undated != null ? a.include_undated !== false : !dueBy;
+      const limit = Math.min(100, Math.max(1, Number(a.limit) || 40));
+      const notes = (await api.getNotes({ view: 'notes' })).filter(n => n.kind === 'checklist');
+      const tasks = notes.flatMap(n => (n.items || [])
+        .filter(i => !i.checked && String(i.text || '').trim())
+        .map(i => ({ text: i.text, due: i.due_date || null, note_id: n.id, list: n.title || '' })))
+        .filter(t => t.due ? (!dueBy || t.due <= dueBy) : undated)
+        .sort((x, y) => (x.due ? 0 : 1) - (y.due ? 0 : 1) || String(x.due || '').localeCompare(String(y.due || '')));
+      return { count: tasks.length, tasks: tasks.slice(0, limit) };
+    }
+    case 'set_due_date': {
+      const note = await need(a.id);
+      if (!canEdit(note)) return { error: 'This note is shared as view only.' };
+      if (note.kind !== 'checklist') return { error: 'This note is not a checklist.' };
+      const found = _findItem(note.items || [], a.item);
+      if (found.error) return { error: found.error };
+      const due = a.clear ? null : _dueDate(a.due);
+      if (!a.clear && !due) return { error: 'Give due as YYYY-MM-DD, or clear=true.' };
+      await api.updateItem(note.id, found.item.uuid, { due_date: due });
+      return { ok: true, item: found.item.text, due };
     }
     case 'check_checklist_item': {
       const note = await need(a.id);

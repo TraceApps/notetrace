@@ -33,14 +33,18 @@ const call = async (tok, name, args) => {
 
 const toolsFull = (await rpc(full, 'tools/list')).result.tools.map(t => t.name).sort();
 const toolsRead = (await rpc(readOnly, 'tools/list')).result.tools.map(t => t.name).sort();
-ok(toolsFull.length === 12 && toolsFull.includes('move_to_trash'), `full token sees all 12 tools (${toolsFull.length})`);
-ok(toolsRead.join() === 'get_note,list_labels,list_reminders,search_notes', `read token sees only read tools (${toolsRead.join()})`);
+ok(toolsFull.length === 14 && toolsFull.includes('move_to_trash') && toolsFull.includes('list_tasks'), `full token sees all 14 tools (${toolsFull.length})`);
+ok(toolsRead.join() === 'get_note,list_labels,list_reminders,list_tasks,search_notes', `read token sees only read tools (${toolsRead.join()})`);
 
 const created = await call(full, 'create_note', { title: 'Hardware store', kind: 'checklist', items: ['Wood glue', 'Sandpaper'], labels: ['Errands'] });
 ok(!created.isError && created.data.note.items.length === 2 && created.data.note.labels[0] === 'Errands', 'create_note makes a labeled checklist');
 const id = created.data.note.id;
 const checked = await call(full, 'check_checklist_item', { id, item: 'glue' });
 ok(!checked.isError && checked.data.item === 'Wood glue', 'check_checklist_item finds an item by partial text');
+const due = await call(full, 'set_due_date', { id, item: 'sandpaper', due: '2099-01-02' });
+ok(!due.isError && due.data.due === '2099-01-02', 'set_due_date dates an item');
+const tasks = await call(readOnly, 'list_tasks', { due_by: '2099-12-31' });
+ok(!tasks.isError && tasks.data.tasks.length === 1 && tasks.data.tasks[0].text === 'Sandpaper' && tasks.data.tasks[0].due === '2099-01-02', 'list_tasks returns dated open items');
 const found = await call(readOnly, 'search_notes', { query: 'sandpaper' });
 ok(found.data.count === 1 && found.data.notes[0].open_items[0] === 'Sandpaper', 'search_notes finds it with open items');
 const rem = await call(full, 'set_reminder', { id, at: '2099-05-01T09:00:00Z', repeat: 'monthly' });
