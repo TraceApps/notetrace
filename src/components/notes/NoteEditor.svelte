@@ -39,7 +39,7 @@
   import { cooktraceLink, loadCooktraceLink } from '../../lib/cooktrace.js';
   import VoiceRecorder from './VoiceRecorder.svelte';
   import VoiceNotes from './VoiceNotes.svelte';
-  import { recordingSupported, uploadVoiceNote } from '../../lib/voice-recorder.js';
+  import { recordingSupported, uploadVoiceNote, formatDuration } from '../../lib/voice-recorder.js';
   import { extractSupport, transcribeVoiceNote, readImageText, fetchAttachmentBlob, isAudio, isImage } from '../../lib/ai-extract.js';
   import { autoTranscribe, autoReadImages } from '../../stores/settings.js';
   import { traceReady, askTrace, TRACE_ACTIONS, titleLine } from '../../lib/trace-run.js';
@@ -47,6 +47,7 @@
   import ImageViewer from './ImageViewer.svelte';
   import { uploadNoteImages, isImageFile } from '../../lib/note-images.js';
   import { isAudioFile, prepareAudioFile } from '../../lib/voice-files.js';
+  import { pendingVoice, queueVoiceNote, flushPendingVoice, discardPendingVoice, hasPendingFor } from '../../lib/pending-voice.js';
   import { sharingAvailable } from '../../lib/note-sharing.js';
 
   /** Existing note, or null to create one. */
@@ -266,7 +267,14 @@
     try {
       att = await uploadVoiceNote(rec);
     } catch (err) {
-      showError(err.message || $_('notes.save_failed'));
+      // Keep the recording on this device and upload it when it can.
+      try {
+        if (!noteId) await enqueue(() => ensureNote());
+        await queueVoiceNote(noteId, rec, { title, body_md: kind === 'text' ? body : '', kind, labels: noteLabels });
+        showInfo($_('voice.saved_offline'));
+      } catch {
+        showError(err.message || $_('notes.save_failed'));
+      }
       return;
     }
     attachments = [...attachments, att];
@@ -370,6 +378,17 @@
     if (audio.length) addAudioFiles(audio);
     return images.length + audio.length;
   }
+  // A recording that waited on this device went up while the note is open.
+  function onVoiceUploaded(e) {
+    const { noteId: id, att, blob } = e.detail || {};
+    if (id == null || id !== noteId) return;
+    e.detail.handled = true;
+    if (!attachments.some(a => a.uuid === att.uuid)) attachments = [...attachments, att];
+    touched = true;
+    if ($autoTranscribe && $extractSupport.transcribe) extractText(att, blob);
+  }
+  $: pendingHere = $pendingVoice.filter(p => noteId != null && p.noteId === noteId);
+
   async function addAudioFiles(files) {
     if (contentLocked) return;
     touched = true;
@@ -565,7 +584,7 @@
       try { await NoteApi.updateNote(noteId, { title, rename_links_from: renamedFrom }); } catch { /* links can be fixed by hand */ }
     }
     // A note that ended up empty is removed instead of lingering as a blank card.
-    if (!skipDiscard && noteId && !trashed && isEmptyNote({ title, body_md: body, items, attachments })) {
+    if (!skipDiscard && noteId && !trashed && !hasPendingFor(noteId) && isEmptyNote({ title, body_md: body, items, attachments })) {
       try { await NoteApi.deleteNoteForever(noteId); } catch { /* best effort */ }
       noteId = null;
     }
@@ -696,6 +715,7 @@
     loadLinks();
     loadCooktraceLink();
     window.addEventListener('keydown', onKey);
+    window.addEventListener('note:voice-uploaded', onVoiceUploaded);
     window.addEventListener('resize', onResize);
     window.visualViewport?.addEventListener('resize', onViewport);
     window.visualViewport?.addEventListener('scroll', onViewport);
@@ -708,6 +728,7 @@
   });
   onDestroy(() => {
     window.removeEventListener('keydown', onKey);
+    window.removeEventListener('note:voice-uploaded', onVoiceUploaded);
     window.removeEventListener('resize', onResize);
     window.visualViewport?.removeEventListener('resize', onViewport);
     window.visualViewport?.removeEventListener('scroll', onViewport);
@@ -834,6 +855,18 @@
             <AttachmentGrid attachments={imageAttachments} pending={uploading} editable={!contentLocked}
               on:open={(e) => viewerIndex = e.detail} on:remove={removeImage} />
           </div>
+        {/if}
+        {#if pendingHere.length}
+          <ul class="pending-voice" aria-live="polite">
+            {#each pendingHere as p (p.id)}
+              <li>
+                <span class="material-symbols-rounded">cloud_upload</span>
+                <span class="pv-text">{$_('voice.waiting_upload', { values: { length: formatDuration(p.durationMs) } })}</span>
+                <button class="pv-btn" on:click={() => flushPendingVoice()}>{$_('voice.retry')}</button>
+                <button class="pv-btn danger" on:click={async () => { if (await confirmDialog({ title: $_('voice.discard_title'), message: $_('voice.discard_message'), confirmText: $_('voice.cancel'), dangerous: true })) discardPendingVoice(p.id); }}>{$_('voice.cancel')}</button>
+              </li>
+            {/each}
+          </ul>
         {/if}
         <VoiceNotes notes={voiceNotes} editable={!contentLocked} canTranscribe={$extractSupport.transcribe} busy={extracting}
           on:remove={removeImage} on:transcribe={(e) => extractText(e.detail)} on:addtext={(e) => addTextToNote(e.detail)}
@@ -1173,6 +1206,16 @@
 <style>
   .editor-host { display: contents; }
   .editor-images { margin-bottom: 14px; }
+  .pending-voice { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .pending-voice li {
+    display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--warning, #ffb547) 12%, transparent); color: var(--text-1); font-size: 13.5px;
+  }
+  .pending-voice .material-symbols-rounded { color: var(--warning, #ffb547); font-size: 20px; }
+  .pv-text { flex: 1; min-width: 0; }
+  .pv-btn { padding: 4px 8px; border-radius: 8px; font-size: 13px; color: var(--accent); }
+  .pv-btn:hover { background: var(--accent-dim); }
+  .pv-btn.danger { color: var(--text-3); }
   .backlinks { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--note-border, var(--border)); }
   .backlinks h3 { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); margin-bottom: 8px; }
   .backlink-list { display: flex; flex-wrap: wrap; gap: 6px; }

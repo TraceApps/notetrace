@@ -326,6 +326,7 @@
 
   onMount(async () => {
     initFold();
+    import('./lib/pending-voice.js').then(m => m.startPendingVoice()).catch(() => {});
     // Start Page: only when the app opens on the default route, never over a
     // deep link, a share, or a notification tap.
     if (['', '#', '#/'].includes(window.location.hash) && ['/reminders', '/tasks', '/archive'].includes($startPage)) {
