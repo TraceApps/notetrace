@@ -23,7 +23,7 @@
   import { isEmptyNote } from '../../lib/note-preview.js';
   import { relativeTime } from '../../lib/relative-time.js';
   import { confirmDialog } from '../../stores/confirmDialog.js';
-  import { showError, showInfo } from '../../stores/toast.js';
+  import { showError, showInfo, showUndo } from '../../stores/toast.js';
   import TipTapEditor from './TipTapEditor.svelte';
   import ChecklistEditor from './ChecklistEditor.svelte';
   import ColorPalette from './ColorPalette.svelte';
@@ -210,10 +210,23 @@
   function onItemDelete(e) {
     touched = true;
     const { uuid } = e.detail;
+    const at = items.findIndex(i => i.uuid === uuid);
+    const gone = items[at];
     items = items.filter(i => i.uuid !== uuid);
     enqueue(async () => {
       if (!noteId) return;
       const n = await NoteApi.deleteItem(noteId, uuid);
+      updatedAt = n?.updated_at ?? updatedAt;
+    });
+    if (gone) showUndo($_('notes.undo_item'), () => restoreItem(gone, at));
+  }
+  function restoreItem(item, at) {
+    touched = true;
+    items = [...items.slice(0, at), item, ...items.slice(at)];
+    editorKey++;
+    enqueue(async () => {
+      if (!noteId) return;
+      const n = await NoteApi.addItem(noteId, { uuid: item.uuid, text: item.text, checked: item.checked, position: item.position, due_date: item.due_date || null });
       updatedAt = n?.updated_at ?? updatedAt;
     });
   }
@@ -362,11 +375,26 @@
   function removeImage(e) {
     const uuid = e.detail;
     touched = true;
+    const gone = attachments.find(a => a.uuid === uuid);
     removedImages.add(uuid);
     attachments = attachments.filter(a => a.uuid !== uuid);
     enqueue(async () => {
       if (!noteId) return;
       apply(await NoteApi.deleteAttachment(noteId, uuid));
+    });
+    if (gone) showUndo($_(isAudio(gone) ? 'notes.undo_voice' : 'notes.undo_image'), () => restoreAttachment(gone));
+  }
+  function restoreAttachment(att) {
+    touched = true;
+    removedImages.delete(att.uuid);
+    if (!attachments.some(a => a.uuid === att.uuid)) attachments = [...attachments, att];
+    enqueue(async () => {
+      if (!noteId) return;
+      apply(await NoteApi.addAttachments(noteId, [att]));
+      // The note keeps what was read or transcribed from it.
+      if (att.extracted_text || att.waveform || att.segments) {
+        await NoteApi.updateAttachment(noteId, att.uuid, { extracted_text: att.extracted_text ?? null, waveform: att.waveform ?? null, segments: att.segments ?? null });
+      }
     });
   }
   // Images and audio files, however they arrive (picker, paste, drop, share).
@@ -495,8 +523,9 @@
     reminderOpen = true;
   }
 
-  async function convert() {
+  async function convert(undoing = false) {
     const next = kind === 'text' ? 'checklist' : 'text';
+    const before = { kind, body, items: items.map(i => ({ ...i })) };
     checklistRef?.flush?.();
     await saveText();
     await enqueue(async () => {
@@ -523,6 +552,27 @@
       items = (n.items || []).map(i => ({ ...i }));
     });
     editorKey++;
+    if (!undoing) showUndo($_(next === 'checklist' ? 'notes.undo_to_checklist' : 'notes.undo_to_text'), () => undoConvert(before));
+  }
+  /** Convert back, then put the exact text or items from before back. */
+  async function undoConvert(before) {
+    await convert(true);
+    touched = true;
+    kind = before.kind;
+    body = before.body;
+    items = before.items;
+    editorKey++;
+    await enqueue(async () => {
+      if (!noteId) return;
+      if (before.kind === 'text') {
+        apply(await NoteApi.updateNote(noteId, { body_md: before.body }));
+      } else {
+        const n = await NoteApi.getNote(noteId);
+        for (const it of n.items || []) await NoteApi.deleteItem(noteId, it.uuid);
+        for (const it of before.items) await NoteApi.addItem(noteId, { uuid: it.uuid, text: it.text, checked: it.checked, position: it.position, due_date: it.due_date || null });
+        apply(await NoteApi.getNote(noteId));
+      }
+    });
   }
 
   async function archive() {
@@ -1030,7 +1080,7 @@
               </button>
             {/if}
             {#if !contentLocked}
-              <button class="icon-btn" on:click={convert}
+              <button class="icon-btn" on:click={() => convert()}
                 title={kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}
                 aria-label={kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}>
                 <span class="material-symbols-rounded">{kind === 'text' ? 'checklist' : 'notes'}</span>
@@ -1090,7 +1140,7 @@
     <button class="sheet-item" on:click={() => { addOpen = false; tick().then(() => audioInput?.click()); }}>
       <span class="material-symbols-rounded">audio_file</span>{$_('voice.add_file')}
     </button>
-    <button class="sheet-item" on:click={() => fromSheet(convert, addAnchor)}>
+    <button class="sheet-item" on:click={() => fromSheet(() => convert(), addAnchor)}>
       <span class="material-symbols-rounded">{kind === 'text' ? 'checklist' : 'notes'}</span>{kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}
     </button>
   </div>
@@ -1128,7 +1178,7 @@
         {/if}
       {/if}
       {#if !contentLocked}
-        <button class="sheet-item" on:click={() => fromSheet(convert, moreAnchor)}>
+        <button class="sheet-item" on:click={() => fromSheet(() => convert(), moreAnchor)}>
           <span class="material-symbols-rounded">{kind === 'text' ? 'checklist' : 'notes'}</span>{kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}
         </button>
       {/if}

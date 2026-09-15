@@ -32,7 +32,9 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
-    z-index: 200;
+    /* Above the editor (200), the Trace panel (450), and dialogs (600): an
+       Undo has to be clickable wherever the action was taken. */
+    z-index: 900;
     pointer-events: none;
     max-width: calc(100vw - 32px);
   }
