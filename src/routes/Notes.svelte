@@ -43,6 +43,7 @@
   import { FILTER_TYPES, emptyFilters, hasFilters, matchesFilters, toggleFilter } from '../lib/note-filters.js';
   import { recordingSupported } from '../lib/voice-recorder.js';
   import { longpress } from '../lib/long-press.js';
+  import { growOnScroll } from '../lib/grow-on-scroll.js';
   import { portal } from '../lib/portal.js';
   import { NOTE_COLORS, colorDot } from '../lib/note-colors.js';
 
@@ -296,7 +297,16 @@
   }
   $: if (splitPane && editing && !moving) moveOverlayToPane();
   $: if (!splitPane && pane && !moving) movePaneToOverlay(true);
-  $: listGroups = listMode ? groupNotes(filtered, $listGroupBy, { labels: $labels, pinnedFirst: view === 'notes' }) : [];
+  // Long libraries draw a screenful at a time and add more as you scroll, so a
+  // few thousand notes don't all land in the page at once.
+  const PAGE = 60;
+  let shown = PAGE;
+  $: filtered, view, query, (shown = PAGE);
+  $: windowed = filtered.slice(0, shown);
+  $: othersShown = others.slice(0, shown);
+  $: moreToShow = shown < (listMode ? filtered.length : others.length);
+  const showMore = () => { if (moreToShow) shown += PAGE; };
+  $: listGroups = listMode ? groupNotes(windowed, $listGroupBy, { labels: $labels, pinnedFirst: view === 'notes' }) : [];
   function groupTitle(g) {
     if (g.kind === 'pinned') return $_('notes.pinned');
     if (g.kind === 'others') return $_('notes.others');
@@ -602,10 +612,16 @@
     const el = document.activeElement?.closest?.('[data-note-id]');
     return el ? notes.find(n => n.id === Number(el.dataset.noteId)) : null;
   }
-  function focusCardAt(step) {
+  async function focusCardAt(step) {
     const els = visibleOrder.map(n => document.querySelector(`[data-note-id="${n.id}"]:not(.drag-ghost)`)).filter(Boolean);
     if (!els.length) return;
     const cur = els.indexOf(document.activeElement?.closest?.('[data-note-id]'));
+    // At the end of what's drawn so far, draw more and keep going.
+    if (cur >= 0 && step > 0 && cur + step > els.length - 1 && moreToShow) {
+      showMore();
+      await tick();
+      return focusCardAt(step);
+    }
     const next = els[cur < 0 ? (step > 0 ? 0 : els.length - 1) : Math.max(0, Math.min(els.length - 1, cur + step))];
     next.focus();
     next.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -903,6 +919,7 @@
                   {/each}
                 </section>
               {/each}
+              {#if moreToShow}<div class="more-marker" use:growOnScroll={{ onGrow: showMore }} aria-hidden="true"></div>{/if}
             {/if}
           </div>
         </div>
@@ -959,6 +976,7 @@
             {/each}
           </section>
         {/each}
+        {#if moreToShow}<div class="more-marker" use:growOnScroll={{ onGrow: showMore }} aria-hidden="true"></div>{/if}
       </div>
     {:else if timeline}
       {#if pinned.length}
@@ -969,7 +987,7 @@
           </div>
         </section>
       {/if}
-      {#each groupByDay(others) as day (day.key)}
+      {#each groupByDay(othersShown) as day (day.key)}
         <section class="notes-section timeline">
           <h2 class="section-label"><span class="material-symbols-rounded">calendar_today</span>{dayLabel(day)}</h2>
           <div class="timeline-list">
@@ -977,6 +995,7 @@
           </div>
         </section>
       {/each}
+      {#if moreToShow}<div class="more-marker" use:growOnScroll={{ onGrow: showMore }} aria-hidden="true"></div>{/if}
     {:else}
       {#if pinned.length}
         <section class="notes-section">
@@ -988,9 +1007,10 @@
         <section class="notes-section">
           {#if pinned.length}<h2 class="section-label">{$_('notes.others')}</h2>{/if}
           {#if view === 'reminders' && pastReminders.length}<h2 class="section-label">{$_('reminders.upcoming')}</h2>{/if}
-          <NoteGrid notes={others} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} {swipeable} on:swipe={onSwipe} />
+          <NoteGrid notes={othersShown} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} {swipeable} on:swipe={onSwipe} />
         </section>
       {/if}
+      {#if moreToShow}<div class="more-marker" use:growOnScroll={{ onGrow: showMore }} aria-hidden="true"></div>{/if}
       {#if view === 'reminders' && pastReminders.length}
         <section class="notes-section">
           <h2 class="section-label">{$_('reminders.past')}</h2>
