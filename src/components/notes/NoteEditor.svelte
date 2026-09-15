@@ -12,6 +12,7 @@
    */
   import { onMount, onDestroy, createEventDispatcher, tick } from 'svelte';
   import { fade, fly } from 'svelte/transition';
+  import { disableAnimations } from '../../stores/settings.js';
   import { cubicOut } from 'svelte/easing';
   import { _ } from 'svelte-i18n';
   import { portal } from '../../lib/portal.js';
@@ -535,6 +536,33 @@
   }
   function onResize() { narrow = window.innerWidth < 600; }
 
+  // ── Open and close from the card ──────────────────────────────────
+  // Opened from a card, the editor grows out of it and shrinks back into
+  // it on close. Without a visible card (new note, a linked note, reduced
+  // motion) it rises into place instead.
+  export let originId = null;
+  const _reduceMotion = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  function _cardRect() {
+    const id = originId ?? noteId;
+    if (id == null) return null;
+    const el = document.querySelector(`.note-card[data-note-id="${id}"]:not(.drag-ghost)`);
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.bottom > 0 && r.top < window.innerHeight ? r : null;
+  }
+  function morph(node) {
+    const from = !_reduceMotion && !$disableAnimations && originId != null ? _cardRect() : null;
+    if (!from) return fly(node, { y: narrow ? 30 : 16, duration: $disableAnimations ? 0 : 220, easing: cubicOut });
+    const to = node.getBoundingClientRect();
+    const sx = from.width / to.width, sy = from.height / to.height;
+    const dx = from.left - to.left, dy = from.top - to.top;
+    return {
+      duration: 300,
+      easing: cubicOut,
+      css: (t, u) => `transform-origin: 0 0; transform: translate(${dx * u}px, ${dy * u}px) scale(${1 + (sx - 1) * u}, ${1 + (sy - 1) * u}); opacity: ${Math.min(1, 0.25 + t * 1.5)};`,
+    };
+  }
+
   // Note-level commands typed as /checklist, /image, /voice, /reminder.
   function onSlash(key) {
     const rect = document.querySelector('.editor-panel .tiptap-host')?.getBoundingClientRect() || null;
@@ -614,11 +642,11 @@
 <!-- The host stays in place while the backdrop moves to <body>. Without a fixed
      first node, closing the editor left its other top-level nodes behind. -->
 <div class="editor-host">
-<div use:portal class="editor-backdrop" on:click|self={() => close()} transition:fade={{ duration: 160 }}>
+<div use:portal class="editor-backdrop" on:click|self={() => close()} transition:fade|global={{ duration: $disableAnimations ? 0 : 160 }}>
   <div class="editor-panel" class:narrow class:kb-open={narrow && kb > 0} class:drag-over={dragOver} style="{noteColorStyle(color)} --kb:{narrow ? kb : 0}px"
     on:paste={onPaste} on:dragover={onDragOver} on:dragleave={() => dragOver = false} on:drop={onDrop}
     role="dialog" aria-modal="true" aria-label={title || $_('notes.untitled')}
-    in:fly={{ y: narrow ? 30 : 16, duration: 220, easing: cubicOut }}>
+    in:morph|global out:morph|global>
 
     {#if showHistory && noteId}
       <div class="editor-scroll">

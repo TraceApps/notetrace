@@ -157,7 +157,7 @@
   });
 
   // ── Editor ─────────────────────────────────────────────────────────
-  function openNote(e) { editing = { note: e.detail }; }
+  function openNote(e) { editing = { note: e.detail, originId: e.detail.id }; }
   function newNote(kind = 'text') {
     editing = { kind, labels: labelId != null ? [labelId] : [] };
   }
@@ -716,7 +716,7 @@
        would otherwise resume that editor with the previous note's state. -->
   {#key editing}
     <NoteEditor note={editing.note || null} initialKind={editing.kind || 'text'} initialLabels={editing.labels || []}
-      prefill={editing.prefill || null} on:close={closeEditor} />
+      prefill={editing.prefill || null} originId={editing.originId ?? null} on:close={closeEditor} />
   {/key}
 {/if}
 
