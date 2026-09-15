@@ -930,6 +930,11 @@
                   <span class="material-symbols-rounded">text_format</span>
                 </button>
               {/if}
+              {#if canRecord}
+                <button class="icon-btn" data-record on:mousedown|preventDefault on:click={openRecorder} aria-label={$_('voice.record')} title={$_('voice.record')}>
+                  <span class="material-symbols-rounded">mic</span>
+                </button>
+              {/if}
               <button class="icon-btn" on:mousedown|preventDefault on:click={openColor} aria-label={$_('notes.color')} title={$_('notes.color')}>
                 <span class="material-symbols-rounded">palette</span>
               </button>

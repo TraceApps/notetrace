@@ -43,6 +43,7 @@
   import { FILTER_TYPES, emptyFilters, hasFilters, matchesFilters, toggleFilter } from '../lib/note-filters.js';
   import { recordingSupported } from '../lib/voice-recorder.js';
   import { longpress } from '../lib/long-press.js';
+  import { portal } from '../lib/portal.js';
   import { NOTE_COLORS, colorDot } from '../lib/note-colors.js';
 
   export let params = {};
@@ -343,10 +344,18 @@
   onDestroy(() => document.documentElement.style.setProperty('--page-fab-space', '0px'));
   // Holding the + button on a phone starts a voice note instead of a text note.
   let fabHeld = false;
+  // On a phone the + button opens a small menu (text, list, voice, image), like
+  // Google Keep; holding it goes straight to a voice note.
+  let fabMenu = false;
   function onFabClick() {
     if (fabHeld) { fabHeld = false; return; }
-    newNote('text');
+    fabMenu = !fabMenu;
   }
+  function fromFabMenu(action) {
+    fabMenu = false;
+    action();
+  }
+  $: if (selecting || editing) fabMenu = false;
 
   // Opened from a reminder notification: /?note=<id>
   $: openFromQuery($querystring);
@@ -988,13 +997,39 @@
   </div>
 
   {#if canCapture}
-    <button class="fab" class:hidden-fab={selecting} on:click={onFabClick} on:pointerdown={() => fabHeld = false} aria-label={$_('notes.new_note')}
-      aria-description={canRecordVoice ? $_('notes.hold_for_voice') : undefined}
+    <button class="fab" class:hidden-fab={selecting || fabMenu} on:click={onFabClick} on:pointerdown={() => fabHeld = false} aria-label={$_('notes.new_note')}
+      aria-haspopup="menu" aria-expanded={fabMenu}
+      title={canRecordVoice ? $_('notes.hold_for_voice') : undefined}
       use:longpress on:longpress={() => { if (canRecordVoice) { fabHeld = true; navigator.vibrate?.(20); newVoiceNote(); } }}>
       <span class="material-symbols-rounded">add</span>
     </button>
   {/if}
 </div>
+
+{#if fabMenu}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div class="fab-scrim" use:portal on:click={() => fabMenu = false} transition:fade={{ duration: 150 }}></div>
+  <div class="fab-menu" use:portal role="menu" tabindex="-1" aria-label={$_('notes.new_note')}
+    on:keydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); fabMenu = false; } }}>
+    {#each [
+      ['image', 'add_photo_alternate', 'notes.menu_image', () => captureImageInput.click()],
+      ...(canRecordVoice ? [['voice', 'mic', 'notes.menu_voice', newVoiceNote]] : []),
+      ['list', 'checklist', 'notes.menu_list', () => newNote('checklist')],
+      ['text', 'edit_note', 'notes.menu_text', () => newNote('text')],
+    ] as [key, icon, label, action], i (key)}
+      <button class="fab-item" role="menuitem" on:click={() => fromFabMenu(action)}
+        in:fly|global={{ y: 12, duration: 180, delay: (3 - i) * 30 }} out:fade|global={{ duration: 100 }}>
+        <span class="fab-item-label">{$_(label)}</span>
+        <span class="material-symbols-rounded fab-item-icon">{icon}</span>
+      </button>
+    {/each}
+    <!-- svelte-ignore a11y-autofocus -->
+    <button class="fab fab-close" on:click={() => fabMenu = false} aria-label={$_('common.close')} autofocus>
+      <span class="material-symbols-rounded">close</span>
+    </button>
+  </div>
+{/if}
 
 {#if editing}
   <!-- Keyed per open: reopening while the last editor is still fading out
@@ -1370,6 +1405,36 @@
   }
   .fab .material-symbols-rounded { font-size: 30px; }
   .fab.hidden-fab { visibility: hidden; }
+  /* The + menu sits above everything, Trace's button included. */
+  :global(.fab-scrim) {
+    position: fixed; inset: 0; z-index: 430;
+    background: color-mix(in srgb, var(--bg) 70%, transparent);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  :global(.fab-menu) {
+    position: fixed; z-index: 431;
+    right: 16px; bottom: calc(var(--tabbar-h, var(--nav-h)) + var(--safe-bottom) + 16px);
+    display: flex; flex-direction: column; align-items: flex-end; gap: 12px;
+  }
+  :global(.fab-menu .fab-item) {
+    display: flex; align-items: center; gap: 12px; padding: 0 0 0 4px;
+    color: var(--text-1); font-size: 15px; font-weight: 600;
+  }
+  :global(.fab-menu .fab-item-label) {
+    padding: 8px 14px; border-radius: 12px;
+    background: var(--surface-2); border: 1px solid var(--border-strong); box-shadow: var(--shadow-md);
+  }
+  :global(.fab-menu .fab-item-icon) {
+    width: 52px; height: 52px; margin-right: 4px; border-radius: 16px;
+    display: flex; align-items: center; justify-content: center; font-size: 25px;
+    background: var(--accent-dim); color: var(--accent);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); box-shadow: var(--shadow-md);
+  }
+  :global(.fab-menu .fab-close) {
+    position: static; display: flex; width: 60px; height: 60px; border-radius: 20px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: var(--accent-text); box-shadow: var(--shadow-lg);
+  }
+  :global(.fab-menu .fab-close .material-symbols-rounded) { font-size: 28px; }
   @media (max-width: 600px) {
     .capture { display: none; }
     .fab { display: flex; }
