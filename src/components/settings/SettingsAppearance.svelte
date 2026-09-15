@@ -10,7 +10,7 @@
   import { applyAppearance, applyAccentColor } from '../../stores/settings.js';
   import {
     appearance, accentColor, navStyle, sidebarPersistent, disableAnimations,
-    bannerStyle, bannerAnimation, startPage, forceMobileLayout, sidebarRail, linkPreviews, noteSort, keyboardShortcuts,
+    bannerStyle, bannerAnimation, startPage, forceMobileLayout, sidebarRail, linkPreviews, noteSort, keyboardShortcuts, cardDensity,
   } from '../../stores/settings.js';
   import ShortcutsHelp from '../notes/ShortcutsHelp.svelte';
   let shortcutsOpen = false;
@@ -135,6 +135,19 @@
         <div class="setting-desc">Keep the mobile single-column layout even on wide screens.</div>
       </div>
       <input type="checkbox" class="toggle-cb" checked={$forceMobileLayout} on:change={e => forceMobileLayout.set(e.target.checked)} />
+    </div>
+    <div class="setting-divider"></div>
+    <div class="setting-row">
+      <div>
+        <span class="setting-label">{$_('settings_page.appearance.density')}</span>
+        <div class="setting-desc">{$_('settings_page.appearance.density_desc')}</div>
+      </div>
+      <div class="select-wrap" style="width:160px">
+        <select class="select sel-sm" value={$cardDensity} on:change={e => cardDensity.set(e.target.value)}>
+          <option value="comfortable">{$_('settings_page.appearance.density_comfortable')}</option>
+          <option value="compact">{$_('settings_page.appearance.density_compact')}</option>
+        </select>
+      </div>
     </div>
     <div class="setting-divider"></div>
     <div class="setting-row">

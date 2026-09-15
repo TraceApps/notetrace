@@ -352,6 +352,21 @@
   }
   .note-card.selecting .card-pin, .note-card.selecting .card-actions { visibility: hidden; }
 
+  /* Compact density (Settings, Appearance) */
+  :global(html.density-compact) .note-card { padding: 11px 13px 9px; gap: 7px; border-radius: var(--radius-md); }
+  :global(html.density-compact) .card-title { font-size: 16px; padding-right: 22px; }
+  :global(html.density-compact) .card-body { font-size: 13px; line-height: 1.45; -webkit-line-clamp: 8; }
+  :global(html.density-compact) .card-items { gap: 4px; }
+  :global(html.density-compact) .card-items li { font-size: 13px; gap: 8px; }
+  :global(html.density-compact) .card-items li:nth-child(n+7):not(.card-more) { display: none; }
+  :global(html.density-compact) .card-check { width: 14px; height: 14px; }
+  :global(html.density-compact) .chip { height: 21px; font-size: 10.5px; padding: 0 7px; }
+  :global(html.density-compact) .card-pin { top: 4px; right: 4px; width: 30px; height: 30px; }
+  :global(html.density-compact) .card-act { width: 30px; height: 30px; }
+  :global(html.density-compact) .link-image { display: none; }
+  :global(html.density-compact) .link-text { padding: 6px 8px; }
+  :global(html.density-compact) .note-card :global(.grid.card) { margin: -11px -13px 0; }
+
   /* Link preview */
   .card-link {
     display: flex; flex-direction: column; overflow: hidden;

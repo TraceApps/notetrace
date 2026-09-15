@@ -11,7 +11,7 @@
   import Toast     from './components/ui/Toast.svelte';
   import ConfirmDialogMount from './components/ui/ConfirmDialogMount.svelte';
   import { DB }    from './lib/db.js';
-  import { navStyle, applyAccentColor, accentColor, applyAppearance, appearance, disableAnimations, sidebarPersistent, sidebarRail, pageBanners, bannerStyle, bannerAnimation, forceMobileLayout, startPage } from './stores/settings.js';
+  import { navStyle, applyAccentColor, accentColor, applyAppearance, appearance, disableAnimations, sidebarPersistent, sidebarRail, cardDensity, pageBanners, bannerStyle, bannerAnimation, forceMobileLayout, startPage } from './stores/settings.js';
   import { _ } from 'svelte-i18n';
   import { currentUser, userMgmtActive, setupRequired, loadAuthState, handleOidcCallback } from './stores/auth.js';
   import { needsNativeSetup, isNative, getNativeMode, getServerUrl, apiUrl } from './lib/platform.js';
@@ -281,6 +281,7 @@
 
   $: if (typeof document !== 'undefined') {
     document.documentElement.classList.toggle('no-animations', !!$disableAnimations);
+    document.documentElement.classList.toggle('density-compact', $cardDensity === 'compact');
     // Apply exactly one `banner-animation-<style>` class on documentElement
     // so the CSS animation rules in base.css can target a single decorative
     // style without conflicting selectors. Only active when bannerStyle is

@@ -4,6 +4,7 @@
   import NoteCard from './NoteCard.svelte';
   import { cardDrag } from '../../lib/card-drag.js';
   import { moveId } from '../../lib/note-order.js';
+  import { cardDensity } from '../../stores/settings.js';
 
   export let notes = [];
   export let view = 'notes';
@@ -24,10 +25,11 @@
   let width = 0;
   let ro;
   const GAP = 16;
-  const CARD_MAX = 300;
+  $: compact = $cardDensity === 'compact';
+  $: CARD_MAX = compact ? 240 : 300;
 
-  $: minCard = width < 560 ? 150 : 236;
-  $: gap = width < 560 ? 10 : GAP;
+  $: minCard = width < 560 ? (compact ? 130 : 150) : (compact ? 190 : 236);
+  $: gap = width < 560 ? (compact ? 8 : 10) : (compact ? 10 : GAP);
   $: columns = Math.max(1, Math.min(6, Math.floor((width + gap) / (minCard + gap)) || 1));
   $: cols = deal(notes, columns);
 

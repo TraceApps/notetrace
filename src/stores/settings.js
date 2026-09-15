@@ -35,6 +35,7 @@ export const DEVICE_PREFS = new Set([
   'appearance','navStyle','sidebarPersistent','disableAnimations',
   'sidebarRail', 'sidebarLabelsCollapsed', // per-device sidebar shape
   'keyboardShortcuts',     // single-key shortcuts on this device
+  'cardDensity',           // 'comfortable' or 'compact' note cards
   'forceMobileLayout',     // per-device layout opt-out (mirrors NT/LT)
   'biometricLoginEnabled', // Android-only, per-device biometric unlock for sign-in
   'appLockEnabled',        // Android-only: require biometric / device credential to open the app
@@ -265,6 +266,7 @@ export const linkPreviews      = createSettingStore('linkPreviews',      true);
 export const noteSort          = createSettingStore('noteSort',          'edited');
 export const noteOrder         = createSettingStore('noteOrder',         []);
 export const keyboardShortcuts = createSettingStore('keyboardShortcuts', true);
+export const cardDensity       = createSettingStore('cardDensity',       'comfortable');
 export const appLockTimeoutMin = createSettingStore('appLockTimeoutMin', 1);
 // Force-mobile layout: keep the mobile single-column pattern even on
 // wide viewports. Gates every desktop @media rule via the
