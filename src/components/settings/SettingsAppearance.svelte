@@ -10,7 +10,7 @@
   import { applyAppearance, applyAccentColor } from '../../stores/settings.js';
   import {
     appearance, accentColor, navStyle, sidebarPersistent, disableAnimations,
-    bannerStyle, bannerAnimation, startPage, forceMobileLayout, sidebarRail, linkPreviews, noteSort, keyboardShortcuts, cardDensity, swipeToArchive,
+    bannerStyle, bannerAnimation, startPage, forceMobileLayout, linkPreviews, noteSort, keyboardShortcuts, cardDensity, swipeToArchive,
   } from '../../stores/settings.js';
   import ShortcutsHelp from '../notes/ShortcutsHelp.svelte';
   let shortcutsOpen = false;
@@ -117,16 +117,6 @@
         </div>
         <input type="checkbox" class="toggle-cb" checked={$sidebarPersistent} on:change={e => sidebarPersistent.set(e.target.checked)} />
       </div>
-      {#if $sidebarPersistent}
-        <div class="setting-divider"></div>
-        <div class="setting-row">
-          <div>
-            <span class="setting-label">{$_('settings_page.appearance.sidebar_rail')}</span>
-            <div class="setting-desc">{$_('settings_page.appearance.sidebar_rail_desc')}</div>
-          </div>
-          <input type="checkbox" class="toggle-cb" checked={$sidebarRail} on:change={e => sidebarRail.set(e.target.checked)} />
-        </div>
-      {/if}
     {/if}
     <div class="setting-divider"></div>
     <div class="setting-row">
@@ -136,7 +126,56 @@
       </div>
       <input type="checkbox" class="toggle-cb" checked={$forceMobileLayout} on:change={e => forceMobileLayout.set(e.target.checked)} />
     </div>
+    {#if START_PAGE_OPTS.length > 1}
     <div class="setting-divider"></div>
+    <div class="setting-row">
+      <span class="setting-label">{$_('settings_page.appearance.start_page')}</span>
+      <div class="select-wrap" style="width:160px">
+        <select class="select sel-sm" value={$startPage} on:change={e => startPage.set(e.target.value)}>
+          {#each START_PAGE_OPTS as o}<option value={o.value}>{o.label}</option>{/each}
+        </select>
+      </div>
+    </div>
+    {/if}
+    <div class="setting-divider"></div>
+    <div class="setting-row">
+      <span class="setting-label">{$_('settings_page.appearance.reduce_motion')}</span>
+      <input type="checkbox" class="toggle-cb" checked={$disableAnimations} on:change={e => disableAnimations.set(e.target.checked)} />
+    </div>
+    <div class="setting-divider"></div>
+    <div class="setting-row">
+      <div>
+        <span class="setting-label">{$_('settings_page.appearance.page_banners')}</span>
+        <div class="setting-desc">Header style at the top of every page. Animated is a compact accent-gradient bar with a chosen motion style; Gradient is the same bar, static; Off is a plain glass header.</div>
+      </div>
+      <div class="select-wrap" style="width:130px">
+        <select class="select sel-sm" value={$bannerStyle} on:change={e => bannerStyle.set(e.currentTarget.value)}>
+          <option value="animated">{$_('settings_page.appearance.banner_animated')}</option>
+          <option value="gradient">{$_('settings_page.appearance.banner_gradient')}</option>
+          <option value="off">Off</option>
+        </select>
+      </div>
+    </div>
+    {#if $bannerStyle === 'animated'}
+      <div class="setting-row">
+        <div>
+          <span class="setting-label">{$_('settings_page.appearance.animation_style')}</span>
+          <div class="setting-desc">Shimmer is a soft white sweep, Drift is a slow hue rotation, Pulse is a gentle breathing, Aurora is a soft accent-tinted cloud-of-light. All honour Reduce Motion.</div>
+        </div>
+        <div class="select-wrap" style="width:130px">
+          <select class="select sel-sm" value={$bannerAnimation} on:change={e => bannerAnimation.set(e.currentTarget.value)}>
+            <option value="shimmer">{$_('settings_page.appearance.anim_shimmer')}</option>
+            <option value="drift">{$_('settings_page.appearance.anim_drift')}</option>
+            <option value="pulse">{$_('settings_page.appearance.anim_pulse')}</option>
+            <option value="aurora">{$_('settings_page.appearance.anim_aurora')}</option>
+          </select>
+        </div>
+      </div>
+    {/if}
+  </div>
+
+  <p class="sub-label">{$_('settings_page.appearance.notes_group')}</p>
+  <div class="card settings-card">
     <div class="setting-row">
       <div>
         <span class="setting-label">{$_('settings_page.appearance.density')}</span>
@@ -193,52 +232,6 @@
         <input type="checkbox" class="toggle-cb" checked={$linkPreviews} on:change={e => linkPreviews.set(e.target.checked)} />
       </div>
     {/if}
-    {#if START_PAGE_OPTS.length > 1}
-    <div class="setting-divider"></div>
-    <div class="setting-row">
-      <span class="setting-label">{$_('settings_page.appearance.start_page')}</span>
-      <div class="select-wrap" style="width:160px">
-        <select class="select sel-sm" value={$startPage} on:change={e => startPage.set(e.target.value)}>
-          {#each START_PAGE_OPTS as o}<option value={o.value}>{o.label}</option>{/each}
-        </select>
-      </div>
-    </div>
-    {/if}
-    <div class="setting-divider"></div>
-    <div class="setting-row">
-      <span class="setting-label">{$_('settings_page.appearance.reduce_motion')}</span>
-      <input type="checkbox" class="toggle-cb" checked={$disableAnimations} on:change={e => disableAnimations.set(e.target.checked)} />
-    </div>
-    <div class="setting-divider"></div>
-    <div class="setting-row">
-      <div>
-        <span class="setting-label">{$_('settings_page.appearance.page_banners')}</span>
-        <div class="setting-desc">Header style at the top of every page. Animated is a compact accent-gradient bar with a chosen motion style; Gradient is the same bar, static; Off is a plain glass header.</div>
-      </div>
-      <div class="select-wrap" style="width:130px">
-        <select class="select sel-sm" value={$bannerStyle} on:change={e => bannerStyle.set(e.currentTarget.value)}>
-          <option value="animated">{$_('settings_page.appearance.banner_animated')}</option>
-          <option value="gradient">{$_('settings_page.appearance.banner_gradient')}</option>
-          <option value="off">Off</option>
-        </select>
-      </div>
-    </div>
-    {#if $bannerStyle === 'animated'}
-      <div class="setting-row">
-        <div>
-          <span class="setting-label">{$_('settings_page.appearance.animation_style')}</span>
-          <div class="setting-desc">Shimmer is a soft white sweep, Drift is a slow hue rotation, Pulse is a gentle breathing, Aurora is a soft accent-tinted cloud-of-light. All honour Reduce Motion.</div>
-        </div>
-        <div class="select-wrap" style="width:130px">
-          <select class="select sel-sm" value={$bannerAnimation} on:change={e => bannerAnimation.set(e.currentTarget.value)}>
-            <option value="shimmer">{$_('settings_page.appearance.anim_shimmer')}</option>
-            <option value="drift">{$_('settings_page.appearance.anim_drift')}</option>
-            <option value="pulse">{$_('settings_page.appearance.anim_pulse')}</option>
-            <option value="aurora">{$_('settings_page.appearance.anim_aurora')}</option>
-          </select>
-        </div>
-      </div>
-    {/if}
   </div>
 </div>
 
@@ -269,6 +262,7 @@
      styles (which cover .settings-card + .setting-row + .setting-label
      etc.) but need the widget affordances too. Scoped so they don't
      override sibling sections. */
+  .sub-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); padding: 14px 2px 6px; margin: 0; }
   .select-wrap { position: relative; display: inline-block; }
   .select-wrap::after {
     content: '';
