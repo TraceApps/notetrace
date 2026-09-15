@@ -89,6 +89,7 @@ async function _hydrate(rows) {
     kind: r.kind,
     color: r.color,
     pinned: !!r.pinned,
+    in_tasks: !!r.in_tasks,
     archived: !!r.archived,
     trashed_at: r.trashed_at,
     reminder_at: r.reminder_at,
@@ -303,11 +304,11 @@ export const NotesNative = {
     const ts = _now();
     const kind = data.kind === 'checklist' ? 'checklist' : 'text';
     const id = await _insert(
-      `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived,
+      `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived, in_tasks,
                           reminder_at, reminder_rrule, reminder_tz, created_at, updated_at, sync_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
       [LOCAL_USER_ID, String(data.title ?? ''), kind === 'text' ? String(data.body_md ?? '') : '', kind,
-       NOTE_COLORS.includes(data.color) ? data.color : null, data.pinned ? 1 : 0, data.archived ? 1 : 0,
+       NOTE_COLORS.includes(data.color) ? data.color : null, data.pinned ? 1 : 0, data.archived ? 1 : 0, data.in_tasks ? 1 : 0,
        _reminderAt(data.reminder_at), REPEATS.includes(data.reminder_rrule) ? data.reminder_rrule : null,
        data.reminder_at ? (data.reminder_tz || null) : null, ts, ts]);
     if (kind === 'checklist' && Array.isArray(data.items)) {
@@ -333,6 +334,7 @@ export const NotesNative = {
     if ('body_md' in patch) { sets.push('body_md = ?'); args.push(String(patch.body_md ?? '')); }
     if ('color' in patch)   { sets.push('color = ?');   args.push(NOTE_COLORS.includes(patch.color) ? patch.color : null); }
     if ('pinned' in patch)  { sets.push('pinned = ?');  args.push(patch.pinned ? 1 : 0); }
+    if ('in_tasks' in patch) { sets.push('in_tasks = ?'); args.push(patch.in_tasks ? 1 : 0); }
     if ('archived' in patch) {
       sets.push('archived = ?'); args.push(patch.archived ? 1 : 0);
       if (patch.archived) sets.push('pinned = 0');
@@ -574,11 +576,11 @@ export const NotesNative = {
       if (dup) { result.skipped++; continue; }
       const reminderAt = _reminderAt(raw.reminder_at);
       const id = await _insert(
-        `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived, trashed_at,
+        `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived, in_tasks, trashed_at,
                             reminder_at, reminder_rrule, reminder_tz, created_at, updated_at, sync_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
         [LOCAL_USER_ID, title, body, kind, NOTE_COLORS.includes(raw.color) ? raw.color : null,
-         raw.pinned && !raw.archived && !raw.trashed ? 1 : 0, raw.archived ? 1 : 0, raw.trashed ? ts : null,
+         raw.pinned && !raw.archived && !raw.trashed ? 1 : 0, raw.archived ? 1 : 0, kind === 'checklist' && raw.in_tasks ? 1 : 0, raw.trashed ? ts : null,
          reminderAt, reminderAt && REPEATS.includes(raw.reminder_rrule) ? raw.reminder_rrule : null,
          reminderAt ? (raw.reminder_tz || null) : null, created, updated]);
       for (let i = 0; i < items.length; i++) {

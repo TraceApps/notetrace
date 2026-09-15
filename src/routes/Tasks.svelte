@@ -1,6 +1,7 @@
 <script>
   /**
-   * Tasks: every open checklist item from every note, in one list.
+   * Tasks: open checklist items that have a due date, plus everything on
+   * checklists shown in Tasks (or every checklist, with that setting on).
    *
    * Nothing new is stored: a task is a checklist item, so checking one here
    * checks it in its note (and syncs the same way). Group by due date
@@ -12,7 +13,8 @@
   import { fly, slide } from 'svelte/transition';
   import { flip } from 'svelte/animate';
   import { _ } from 'svelte-i18n';
-  import { bannerStyle, tasksGroupBy } from '../stores/settings.js';
+  import { bannerStyle, tasksGroupBy, tasksAllChecklists } from '../stores/settings.js';
+  import { isTask, isTasksInbox } from '../../server/lib/task-rules.js';
   import { NoteApi } from '../lib/api.js';
   import { notesChanged, signalNotesChanged } from '../stores/notes.js';
   import { showError, showUndo } from '../stores/toast.js';
@@ -43,8 +45,9 @@
 
   // Items being checked stay on screen for a moment, struck through.
   let leaving = new Set();
+  // A task: an open item with a due date, or on a checklist shown in Tasks (see task-rules.js).
   $: tasks = notes.flatMap(n => (n.items || [])
-    .filter(i => (!i.checked || leaving.has(i.uuid)) && String(i.text || '').trim())
+    .filter(i => leaving.has(i.uuid) ? String(i.text || '').trim() : isTask(n, i, { allChecklists: $tasksAllChecklists || isTasksInbox(n, $_('tasks.inbox_title')) }))
     .map(i => ({ ...i, key: i.uuid, note: n, editable: canEdit(n) })));
   $: groups = $tasksGroupBy === 'note'
     ? notes.map(n => ({ key: `n${n.id}`, note: n, items: tasks.filter(t => t.note.id === n.id) })).filter(g => g.items.length)
@@ -99,8 +102,9 @@
     adding = true;
     try {
       const title = $_('tasks.inbox_title');
-      let inbox = notes.find(n => n.title.trim().toLowerCase() === title.toLowerCase() && n.share_role !== 'view' && n.share_role !== 'edit');
-      if (!inbox) inbox = await NoteApi.createNote({ title, kind: 'checklist', items: [] });
+      let inbox = notes.find(n => isTasksInbox(n, title) && n.share_role !== 'view' && n.share_role !== 'edit');
+      if (!inbox) inbox = await NoteApi.createNote({ title, kind: 'checklist', items: [], in_tasks: true });
+      else if (!inbox.in_tasks) await NoteApi.updateNote(inbox.id, { in_tasks: true });
       const uuid = globalThis.crypto?.randomUUID?.() || `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
       await NoteApi.addItem(inbox.id, { uuid, text, due_date: newDue });
       newText = '';

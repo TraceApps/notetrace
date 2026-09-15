@@ -8,7 +8,7 @@
  *
  * Normalized note shape used by every importer:
  *   { title, body_md, kind: 'text'|'checklist', items: [{ text, checked }],
- *     color, pinned, archived, trashed, labels: [name], created_at,
+ *     color, pinned, in_tasks, archived, trashed, labels: [name], created_at,
  *     updated_at, reminder_at, reminder_rrule, reminder_tz }
  * Timestamps are 'YYYY-MM-DD HH:MM:SS' UTC or null.
  *
@@ -232,6 +232,7 @@ export function parseMarkdownNote(path, text, { tagsToLabels = true } = {}) {
     items,
     color: NOTE_COLORS.includes(data.color) ? data.color : null,
     pinned: data.pinned === true,
+    in_tasks: kind === 'checklist' && data.in_tasks === true,
     archived: data.archived === true || /(^|\/)archive\//i.test(path || ''),
     trashed: false,
     labels: [...labels],
@@ -263,6 +264,7 @@ export function noteToMarkdown(note, labelNames = [], imagePaths = []) {
   put('labels', labelNames);
   put('color', note.color);
   put('pinned', !!note.pinned);
+  if (note.kind === 'checklist') put('in_tasks', !!note.in_tasks);
   put('archived', !!note.archived);
   if (note.reminder_at) {
     put('reminder', sqlToIso(note.reminder_at));

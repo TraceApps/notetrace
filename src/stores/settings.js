@@ -23,7 +23,7 @@ export const USER_PREFS = new Set([
   'autoTranscribe','autoReadImages','aiTranscribeModel',
   // Note cards
   'linkPreviews', 'noteSort', 'noteOrder',
-  'tasksGroupBy',
+  'tasksGroupBy', 'tasksAllChecklists',
   // Notifications
   'notifPushService',
   'appriseUrl','appriseTag','gotifyUrl','gotifyToken','ntfyUrl','ntfyTopic','ntfyToken',
@@ -281,6 +281,8 @@ export const noteOrder         = createSettingStore('noteOrder',         []);
 export const keyboardShortcuts = createSettingStore('keyboardShortcuts', true);
 // Tasks view: 'due' (by due date) or 'note'.
 export const tasksGroupBy      = createSettingStore('tasksGroupBy',      'due');
+// Tasks shows every open item from every checklist, not just dated items and lists shown in Tasks.
+export const tasksAllChecklists = createSettingStore('tasksAllChecklists', false);
 export const cardDensity       = createSettingStore('cardDensity',       'comfortable');
 export const labelTreeCollapsed = createSettingStore('labelTreeCollapsed', []);
 export const swipeToArchive    = createSettingStore('swipeToArchive',    true);

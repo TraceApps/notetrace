@@ -13,7 +13,7 @@
   import LabelGlyph from './LabelGlyph.svelte';
   import { onMount, onDestroy, createEventDispatcher, tick } from 'svelte';
   import { fade, fly } from 'svelte/transition';
-  import { disableAnimations } from '../../stores/settings.js';
+  import { disableAnimations, tasksAllChecklists } from '../../stores/settings.js';
   import { cubicOut } from 'svelte/easing';
   import { _ } from 'svelte-i18n';
   import { portal } from '../../lib/portal.js';
@@ -67,6 +67,7 @@
   let kind = note?.kind ?? initialKind;
   let color = note?.color ?? null;
   let pinned = !!note?.pinned;
+  let inTasks = !!note?.in_tasks;
   let archived = !!note?.archived;
   let trashed = !!note?.trashed_at;
   let noteLabels = note?.labels ? [...note.labels] : [...initialLabels];
@@ -123,6 +124,7 @@
     noteId = n.id;
     updatedAt = n.updated_at;
     pinned = !!n.pinned;
+    inTasks = !!n.in_tasks;
     archived = !!n.archived;
     trashed = !!n.trashed_at;
     color = n.color;
@@ -140,7 +142,7 @@
   async function ensureNote() {
     if (noteId) return noteId;
     const created = await NoteApi.createNote({
-      title, body_md: kind === 'text' ? body : '', kind, color, pinned,
+      title, body_md: kind === 'text' ? body : '', kind, color, pinned, in_tasks: kind === 'checklist' && inTasks,
       reminder_at: reminderAt, reminder_rrule: reminderRepeat, reminder_tz: reminderTz,
       labels: noteLabels,
       attachments,
@@ -174,7 +176,7 @@
     touched = true;
     return enqueue(async () => {
       if (!noteId) {
-        if (isEmptyNote({ title, body_md: body, items, attachments }) && !p.labels && !p.pinned && !p.reminder_at) return;
+        if (isEmptyNote({ title, body_md: body, items, attachments }) && !p.labels && !p.pinned && !p.in_tasks && !p.reminder_at) return;
         await ensureNote();
         if (!('archived' in p)) return;
       }
@@ -380,6 +382,8 @@
 
   // ── Actions ───────────────────────────────────────────────────────
   function togglePin() { pinned = !pinned; patch({ pinned }); }
+  function toggleInTasks() { inTasks = !inTasks; patch({ in_tasks: inTasks }); }
+  $: canShowInTasks = kind === 'checklist' && !readOnly && !$tasksAllChecklists;
   function setColor(c) { color = c; patch({ color: c }); }
   function setLabels(ids) { noteLabels = ids; patch({ labels: ids }); }
 
@@ -906,6 +910,12 @@
             <button class="icon-btn" on:click={openLabels} title={$_('notes.labels')} aria-label={$_('notes.labels')}>
               <span class="material-symbols-rounded">label</span>
             </button>
+            {#if canShowInTasks}
+              <button class="icon-btn" class:on={inTasks} on:click={toggleInTasks} aria-pressed={inTasks}
+                title={inTasks ? $_('tasks.shown_in_tasks') : $_('tasks.show_in_tasks')} aria-label={$_('tasks.show_in_tasks')}>
+                <span class="material-symbols-rounded" class:fill={inTasks}>task_alt</span>
+              </button>
+            {/if}
             {#if !contentLocked}
               <button class="icon-btn" on:click={convert}
                 title={kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}
@@ -968,6 +978,12 @@
 </Popover>
 <Popover bind:open={moreOpen} anchor={moreAnchor}>
   <div class="sheet-menu">
+    {#if canShowInTasks}
+      <button class="sheet-item" role="menuitemcheckbox" aria-checked={inTasks} on:click={() => { toggleInTasks(); moreOpen = false; }}>
+        <span class="material-symbols-rounded" class:fill={inTasks}>task_alt</span>{$_('tasks.show_in_tasks')}
+        {#if inTasks}<span class="material-symbols-rounded sheet-check">check</span>{/if}
+      </button>
+    {/if}
     {#if inline}
       {#if tightBar}
         {#if !contentLocked}
@@ -1192,6 +1208,7 @@
   .sheet-item .material-symbols-rounded { color: var(--text-2); font-size: 22px; }
   .sheet-item:hover { background: color-mix(in srgb, var(--text-1) 7%, transparent); }
   .sheet-item.danger, .sheet-item.danger .material-symbols-rounded { color: var(--danger); }
+  .sheet-item .sheet-check { margin-left: auto; color: var(--accent); }
   .done { height: 40px; }
 
   .icon-btn {

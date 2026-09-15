@@ -11,6 +11,7 @@
  * server and the client bundle and tested against a fake api.
  */
 import { REPEATS, toUtcString, localTimeZone, nextOccurrence, zonedToUtc } from './reminders.js';
+import { isTask } from './task-rules.js';
 
 const BODY_LIMIT = 4000;
 const RESULT_LIMIT = 25;
@@ -60,12 +61,13 @@ export const NOTE_TOOLS = [
         labels: { type: 'array', items: { type: 'string' }, description: 'Label names.' },
         color: { type: 'string', enum: ['ember', 'clay', 'amber', 'sand', 'lime', 'moss', 'sage', 'mint', 'sky', 'tide', 'indigo', 'plum', 'orchid', 'rose', 'bark', 'slate'] },
         pinned: { type: 'boolean' },
+        show_in_tasks: { type: 'boolean', description: 'Checklists only: show every item in the Tasks list. Use for to-do lists, not shopping or packing lists.' },
       },
     },
   },
   {
     name: 'update_note',
-    description: "Change a note's title, replace its Markdown text, or change color, pinned, or archived. The previous text is kept in version history. To add to a note without replacing it, use append_to_note.",
+    description: "Change a note's title, replace its Markdown text, or change color, pinned, archived, or whether a checklist shows in Tasks. The previous text is kept in version history. To add to a note without replacing it, use append_to_note.",
     parameters: {
       type: 'object',
       properties: {
@@ -75,6 +77,7 @@ export const NOTE_TOOLS = [
         color: { type: 'string', enum: ['ember', 'clay', 'amber', 'sand', 'lime', 'moss', 'sage', 'mint', 'sky', 'tide', 'indigo', 'plum', 'orchid', 'rose', 'bark', 'slate', 'none'] },
         pinned: { type: 'boolean' },
         archived: { type: 'boolean' },
+        show_in_tasks: { type: 'boolean', description: 'Checklists only: show every item in the Tasks list.' },
       },
       required: ['id'],
     },
@@ -103,13 +106,14 @@ export const NOTE_TOOLS = [
   },
   {
     name: 'list_tasks',
-    description: 'List open checklist items across every checklist: overdue and due soon first, then undated. Use for "what do I need to do", "what\'s due this week", and similar.',
+    description: 'List the user\'s tasks: open checklist items that have a due date, plus every open item on checklists shown in Tasks. Overdue and due soon first, then undated. Use for "what do I need to do", "what\'s due this week", and similar. Shopping and packing lists aren\'t tasks unless an item has a due date.',
     parameters: {
       type: 'object',
       properties: {
         due_by: { type: 'string', description: 'Only items due on or before this date, YYYY-MM-DD. Leave out for every open item.' },
         include_undated: { type: 'boolean', description: 'Include items without a due date. Default true, unless due_by is given.' },
         limit: { type: 'integer', description: 'Maximum items, up to 100. Default 40.' },
+        all_checklists: { type: 'boolean', description: 'Include open items from every checklist, such as shopping lists. Default false.' },
       },
     },
   },
@@ -194,6 +198,7 @@ function _summary(note, labelName) {
     labels: (note.labels || []).map(id => labelName.get(id)).filter(Boolean),
     pinned: !!note.pinned,
     archived: !!note.archived,
+    ...(note.kind === 'checklist' ? { show_in_tasks: !!note.in_tasks } : {}),
     reminder: _reminder(note),
     images: (note.attachments || []).length,
     updated_at: note.updated_at,
@@ -212,6 +217,7 @@ function _full(note, labelName) {
     color: note.color || null,
     pinned: !!note.pinned,
     archived: !!note.archived,
+    show_in_tasks: note.kind === 'checklist' ? !!note.in_tasks : undefined,
     trashed: !!note.trashed_at,
     reminder: _reminder(note),
     images: (note.attachments || []).filter(a => !/^audio\//i.test(a.mime || '')).map(a => ({ text: a.extracted_text || null })),
@@ -341,6 +347,7 @@ export async function executeNoteTool(name, args = {}, api, opts = {}) {
         labels,
         color: a.color || null,
         pinned: !!a.pinned,
+        in_tasks: kind === 'checklist' && !!a.show_in_tasks,
       });
       return { ok: true, note: _full(note, await _labelNames(api)) };
     }
@@ -359,6 +366,10 @@ export async function executeNoteTool(name, args = {}, api, opts = {}) {
       if (a.color !== undefined) patch.color = a.color === 'none' ? null : a.color;
       if (a.pinned !== undefined) patch.pinned = !!a.pinned;
       if (a.archived !== undefined) patch.archived = !!a.archived;
+      if (a.show_in_tasks !== undefined) {
+        if (note.kind !== 'checklist') return { error: 'Only checklists can show in Tasks.' };
+        patch.in_tasks = !!a.show_in_tasks;
+      }
       const updated = await api.updateNote(note.id, patch);
       return { ok: true, note: _full(updated, await _labelNames(api)) };
     }
@@ -391,9 +402,10 @@ export async function executeNoteTool(name, args = {}, api, opts = {}) {
       if (a.due_by != null && !dueBy) return { error: `Couldn't read "${a.due_by}". Use YYYY-MM-DD.` };
       const undated = a.include_undated != null ? a.include_undated !== false : !dueBy;
       const limit = Math.min(100, Math.max(1, Number(a.limit) || 40));
+      const allChecklists = !!a.all_checklists;
       const notes = (await api.getNotes({ view: 'notes' })).filter(n => n.kind === 'checklist');
       const tasks = notes.flatMap(n => (n.items || [])
-        .filter(i => !i.checked && String(i.text || '').trim())
+        .filter(i => isTask(n, i, { allChecklists }))
         .map(i => ({ text: i.text, due: i.due_date || null, note_id: n.id, list: n.title || '' })))
         .filter(t => t.due ? (!dueBy || t.due <= dueBy) : undated)
         .sort((x, y) => (x.due ? 0 : 1) - (y.due ? 0 : 1) || String(x.due || '').localeCompare(String(y.due || '')));

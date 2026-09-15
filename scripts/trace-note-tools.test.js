@@ -25,7 +25,7 @@ function fakeApi() {
     async getNote(id) { return notes.has(id) ? clone(notes.get(id)) : null; },
     async createNote(d) {
       const n = { id: nextId++, title: d.title || '', body_md: d.body_md || '', kind: d.kind, labels: d.labels || [], color: d.color || null,
-        pinned: !!d.pinned, archived: false, reminder_at: null, share_role: 'owner',
+        pinned: !!d.pinned, in_tasks: !!d.in_tasks, archived: false, reminder_at: null, share_role: 'owner',
         items: (d.items || []).map((i, k) => ({ uuid: `u${nextId}-${k}`, text: i.text, checked: !!i.checked })) };
       notes.set(n.id, n);
       return clone(n);
@@ -113,16 +113,24 @@ test('due dates: add with due, set, clear, and list tasks', async () => {
   assert.match((await executeNoteTool('add_checklist_items', { id: list.id, items: ['x'], due: 'soon' }, api)).error, /YYYY-MM-DD/);
   assert.equal((await executeNoteTool('set_due_date', { id: list.id, item: 'sweep', due: '2099-01-02' }, api)).due, '2099-01-02');
   assert.match((await executeNoteTool('set_due_date', { id: list.id, item: 'sweep', due: '2099-02-30' }, api)).error, /YYYY-MM-DD/);
+  // Chores isn't shown in Tasks, so its undated item only counts with all_checklists.
+  await api.addItem(list.id, { text: 'Mop' });
   let all = await executeNoteTool('list_tasks', {}, api);
   assert.deepEqual(all.tasks.map(t => t.text), ['Sweep', 'Taxes', 'Bins']);
+  assert.deepEqual((await executeNoteTool('list_tasks', { all_checklists: true }, api)).tasks.map(t => t.text), ['Sweep', 'Taxes', 'Bins', 'Mop']);
+  assert.equal((await executeNoteTool('update_note', { id: list.id, show_in_tasks: true }, api)).note.show_in_tasks, true);
+  all = await executeNoteTool('list_tasks', {}, api);
+  assert.deepEqual(all.tasks.map(t => t.text), ['Sweep', 'Taxes', 'Bins', 'Mop']);
   assert.equal(all.tasks[0].list, 'Chores');
   const soon = await executeNoteTool('list_tasks', { due_by: '2099-03-01' }, api);
   assert.deepEqual(soon.tasks.map(t => t.text), ['Sweep']);
-  assert.equal((await executeNoteTool('list_tasks', { due_by: '2099-03-01', include_undated: true }, api)).count, 1);
+  assert.equal((await executeNoteTool('list_tasks', { due_by: '2099-03-01', include_undated: true }, api)).count, 2);
   assert.match((await executeNoteTool('list_tasks', { due_by: 'tomorrow' }, api)).error, /YYYY-MM-DD/);
   assert.equal((await executeNoteTool('set_due_date', { id: list.id, item: 'Taxes', clear: true }, api)).due, null);
   all = await executeNoteTool('list_tasks', { due_by: '2099-12-31' }, api);
   assert.deepEqual(all.tasks.map(t => t.text), ['Sweep', 'Bins']);
+  const text = await api.createNote({ title: 'Plain again', kind: 'text' });
+  assert.match((await executeNoteTool('update_note', { id: text.id, show_in_tasks: true }, api)).error, /Only checklists/);
 });
 
 test('MCP tiers cover every tool exactly once', async () => {

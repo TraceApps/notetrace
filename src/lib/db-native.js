@@ -44,6 +44,7 @@ const SCHEMA = `
     color          TEXT,
     pinned         INTEGER NOT NULL DEFAULT 0,
     archived       INTEGER NOT NULL DEFAULT 0,
+    in_tasks       INTEGER NOT NULL DEFAULT 0,
     trashed_at     TEXT,
     reminder_at    TEXT,
     reminder_rrule TEXT,
@@ -248,6 +249,10 @@ async function _migrateShareColumns() {
     if (!have.has('share_role')) await db.run(`ALTER TABLE notes ADD COLUMN share_role TEXT DEFAULT 'owner'`);
     if (!have.has('share_owner')) await db.run(`ALTER TABLE notes ADD COLUMN share_owner TEXT`);
     if (!have.has('share_count')) await db.run(`ALTER TABLE notes ADD COLUMN share_count INTEGER DEFAULT 0`);
+    if (have.size && !have.has('in_tasks')) {
+      await db.run(`ALTER TABLE notes ADD COLUMN in_tasks INTEGER NOT NULL DEFAULT 0`);
+      await db.run(`UPDATE notes SET in_tasks = 1 WHERE kind = 'checklist' AND lower(trim(title)) = 'tasks'`);
+    }
     const att = await db.query(`PRAGMA table_info(note_attachments)`);
     const attCols = new Set((att?.values || []).map(c => c.name));
     if (attCols.size && !attCols.has('duration_ms')) await db.run(`ALTER TABLE note_attachments ADD COLUMN duration_ms INTEGER`);

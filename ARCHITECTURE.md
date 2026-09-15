@@ -183,11 +183,15 @@ in the browser.
 
 ### Tasks are checklist items
 
-The Tasks view (`src/routes/Tasks.svelte`) reads the normal notes list and
-shows unchecked items; there's no task table. The only new data is
-`checklist_items.due_date` (a `YYYY-MM-DD` calendar day, synced with the item),
-and `src/lib/due-dates.js` groups items by it. Quick add appends to a checklist
-titled "Tasks".
+The Tasks view (`src/routes/Tasks.svelte`) reads the normal notes list; there's
+no task table. `server/lib/task-rules.js` decides what counts: an unchecked item
+with `checklist_items.due_date` (a `YYYY-MM-DD` calendar day, synced with the
+item), or any unchecked item on a checklist with `in_tasks` set, or everything
+when the `tasksAllChecklists` setting is on. Like pinned and archived,
+`in_tasks` lives on `notes` for the owner and on `note_members` for someone the
+note is shared with. `src/lib/due-dates.js` groups the items. Quick add appends
+to a checklist titled "Tasks", which is always shown. Trace and MCP's
+`list_tasks` use the same rule.
 
 The daily Tasks Due notification follows the reminder paths. The digest text
 comes from the pure `server/lib/task-digest-core.js`. On Android,

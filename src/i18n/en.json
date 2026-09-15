@@ -42,7 +42,9 @@
     "group_none":      "No Due Date",
     "done":            "Done: {text}",
     "empty_title":     "Nothing to Do",
-    "empty_body":      "Unchecked items from every checklist show up here. Add one above, or give a checklist item a due date."
+    "empty_body":      "Checklist items with a due date show up here, along with everything on checklists you show in Tasks. Add a task above, or open a checklist's menu and choose Show in Tasks.",
+    "show_in_tasks":   "Show in Tasks",
+    "shown_in_tasks":  "Shown in Tasks"
   },
   "due": {
     "title":     "Due Date",
@@ -930,6 +932,8 @@
       "density_desc":           "Compact fits more notes on the screen, with smaller text and no link images.",
       "density_comfortable":    "Comfortable",
       "density_compact":        "Compact",
+      "tasks_all":              "Show Every Checklist in Tasks",
+      "tasks_all_desc":         "Tasks lists every open item from every checklist, including shopping and packing lists. Off: only items with a due date and checklists you show in Tasks.",
       "swipe":                  "Swipe to Archive",
       "swipe_desc":             "Swipe a note card sideways to archive it, with Undo. In Archive, a swipe brings it back.",
       "shortcuts":              "Keyboard Shortcuts",

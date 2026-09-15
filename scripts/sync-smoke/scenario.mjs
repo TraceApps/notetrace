@@ -25,6 +25,10 @@ let nb = (await B.N.getNotes())[0];
 const bLabels = await B.N.getLabels();
 ok(nb && nb.items.length === 2 && nb.labels.length === 1 && nb.labels[0] === bLabels[0].id, 'B: pulled note has items and the label mapped to its local id');
 ok(bLabels[0].icon === 'home', 'B: the label icon syncs');
+await A.N.updateNote(na.id, { in_tasks: true });
+await sync(A);
+await sync(B);
+ok((await B.N.getNotes()).find(n => n.title === 'Groceries')?.in_tasks === true, 'B: Show in Tasks syncs');
 
 // 3. Concurrent offline item edits on both devices.
 const limes = na.items.find(i => i.text === 'Limes').uuid;

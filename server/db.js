@@ -322,6 +322,13 @@ if (!columnExists('note_attachments', 'extracted_text')) db.exec(`ALTER TABLE no
 // Optional due date on a checklist item (YYYY-MM-DD, the user's calendar day).
 if (!columnExists('checklist_items', 'due_date')) db.exec(`ALTER TABLE checklist_items ADD COLUMN due_date TEXT`);
 if (!columnExists('labels', 'icon')) db.exec(`ALTER TABLE labels ADD COLUMN icon TEXT`);
+// Show in Tasks: the owner's choice on notes, a member's own on note_members.
+// A checklist named Tasks (the Tasks view's own list) starts out shown.
+if (!columnExists('notes', 'in_tasks')) {
+  db.exec(`ALTER TABLE notes ADD COLUMN in_tasks INTEGER NOT NULL DEFAULT 0`);
+  db.exec(`UPDATE notes SET in_tasks = 1 WHERE kind = 'checklist' AND lower(trim(title)) = 'tasks'`);
+}
+if (!columnExists('note_members', 'in_tasks')) db.exec(`ALTER TABLE note_members ADD COLUMN in_tasks INTEGER NOT NULL DEFAULT 0`);
 
 // Search covers transcripts and image text too.
 {

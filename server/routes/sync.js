@@ -20,7 +20,7 @@
  *                 revoked_notes: [serverNoteId, ...] }
  *
  * Shared notes: a member's devices pull the notes shared with them (with
- * the member's own pin/archive, no reminder) plus share_role / share_owner
+ * the member's own pin/archive/Show in Tasks, no reminder) plus share_role / share_owner
  * / share_count. revoked_notes lists shared notes to drop locally (member
  * removed, left, or the owner trashed or deleted the note). A member's
  * push may change content only with 'edit'; pin and archive go to their
@@ -68,7 +68,7 @@ const userArgs   = (u) => u == null ? [] : [u];
 const TABLES = {
   notes: {
     cols: [
-      'title', 'body_md', 'kind', 'color', 'pinned', 'archived',
+      'title', 'body_md', 'kind', 'color', 'pinned', 'archived', 'in_tasks',
       'trashed_at', 'reminder_at', 'reminder_rrule', 'reminder_tz',
     ],
     parents: {},
@@ -342,6 +342,7 @@ function _pullNotes(u, since) {
     `SELECT n.id, n.title, n.body_md, n.kind, n.color,
             CASE WHEN m.id IS NULL THEN n.pinned ELSE m.pinned END AS pinned,
             CASE WHEN m.id IS NULL THEN n.archived ELSE m.archived END AS archived,
+            CASE WHEN m.id IS NULL THEN n.in_tasks ELSE m.in_tasks END AS in_tasks,
             n.trashed_at,
             CASE WHEN m.id IS NULL THEN n.reminder_at END AS reminder_at,
             CASE WHEN m.id IS NULL THEN n.reminder_rrule END AS reminder_rrule,
@@ -367,7 +368,7 @@ function _pushSharedNote(u, existing, incoming) {
 
   const mine = [];
   const mineArgs = [];
-  for (const col of ['pinned', 'archived']) {
+  for (const col of ['pinned', 'archived', 'in_tasks']) {
     if (incoming[col] === undefined) continue;
     const v = incoming[col] ? 1 : 0;
     if (v !== access.member[col]) { mine.push(`${col} = ?`); mineArgs.push(v); }

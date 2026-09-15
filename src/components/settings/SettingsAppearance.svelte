@@ -11,7 +11,7 @@
   import { applyAppearance, applyAccentColor } from '../../stores/settings.js';
   import {
     appearance, accentColor, navStyle, sidebarPersistent, disableAnimations,
-    bannerStyle, bannerAnimation, startPage, forceMobileLayout, linkPreviews, noteSort, keyboardShortcuts, cardDensity, swipeToArchive,
+    bannerStyle, bannerAnimation, startPage, forceMobileLayout, linkPreviews, noteSort, keyboardShortcuts, cardDensity, swipeToArchive, tasksAllChecklists,
   } from '../../stores/settings.js';
   import ShortcutsHelp from '../notes/ShortcutsHelp.svelte';
   let shortcutsOpen = false;
@@ -202,6 +202,14 @@
           <option value="custom">{$_('settings_page.appearance.note_order_custom')}</option>
         </select>
       </div>
+    </div>
+    <div class="setting-divider"></div>
+    <div class="setting-row">
+      <div>
+        <span class="setting-label">{$_('settings_page.appearance.tasks_all')}</span>
+        <div class="setting-desc">{$_('settings_page.appearance.tasks_all_desc')}</div>
+      </div>
+      <input type="checkbox" class="toggle-cb" checked={$tasksAllChecklists} on:change={e => tasksAllChecklists.set(e.target.checked)} />
     </div>
     {#if !hasKeyboard}
       <div class="setting-divider"></div>

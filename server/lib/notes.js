@@ -159,6 +159,7 @@ function _hydrate(rows, u) {
       kind: r.kind,
       color: r.color,
       pinned: !!(member ? r.m_pinned : r.pinned),
+      in_tasks: !!(member ? r.m_in_tasks : r.in_tasks),
       archived: !!(member ? r.m_archived : r.archived),
       trashed_at: r.trashed_at,
       reminder_at: member ? null : r.reminder_at,
@@ -182,13 +183,13 @@ function _hydrate(rows, u) {
 function _selectNotes(u, { join = '', where = [], args = [], order = 'n.updated_at DESC', joinArgs = [] } = {}) {
   if (u == null) {
     return db.prepare(
-      `SELECT n.*, NULL AS m_role, NULL AS m_pinned, NULL AS m_archived FROM notes n${join}
+      `SELECT n.*, NULL AS m_role, NULL AS m_pinned, NULL AS m_archived, NULL AS m_in_tasks FROM notes n${join}
         WHERE n.user_id IS NULL AND n.deleted_at IS NULL${where.length ? ' AND ' + where.join(' AND ') : ''}
         ORDER BY ${order}`
     ).all(...joinArgs, ...args);
   }
   return db.prepare(
-    `SELECT n.*, m.role AS m_role, m.pinned AS m_pinned, m.archived AS m_archived
+    `SELECT n.*, m.role AS m_role, m.pinned AS m_pinned, m.archived AS m_archived, m.in_tasks AS m_in_tasks
        FROM notes n
        LEFT JOIN note_members m ON m.note_id = n.id AND m.user_id = ? AND m.deleted_at IS NULL${join}
       WHERE n.deleted_at IS NULL
@@ -388,11 +389,11 @@ export const createNote = db.transaction((u, data = {}) => {
   const ts = now();
   const kind = NOTE_KINDS.has(data.kind) ? data.kind : 'text';
   const info = db.prepare(
-    `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived,
+    `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived, in_tasks,
                         reminder_at, reminder_rrule, reminder_tz, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(u, _cleanTitle(data.title), kind === 'text' ? _cleanBody(data.body_md) : '',
-        kind, _cleanColor(data.color), data.pinned ? 1 : 0, data.archived ? 1 : 0,
+        kind, _cleanColor(data.color), data.pinned ? 1 : 0, data.archived ? 1 : 0, data.in_tasks ? 1 : 0,
         _cleanReminderAt(data.reminder_at), _cleanRepeat(data.reminder_rrule), _cleanTz(data.reminder_tz), ts, ts);
   const id = Number(info.lastInsertRowid);
   if (kind === 'checklist' && Array.isArray(data.items)) {
@@ -422,6 +423,7 @@ export const updateNote = db.transaction((u, id, patch = {}) => {
   if ('body_md' in patch) { sets.push('body_md = ?'); args.push(_cleanBody(patch.body_md)); }
   if ('color' in patch)   { sets.push('color = ?');   args.push(_cleanColor(patch.color)); }
   if ('pinned' in patch)  { sets.push('pinned = ?');  args.push(patch.pinned ? 1 : 0); }
+  if ('in_tasks' in patch) { sets.push('in_tasks = ?'); args.push(patch.in_tasks ? 1 : 0); }
   if ('archived' in patch) {
     sets.push('archived = ?'); args.push(patch.archived ? 1 : 0);
     if (patch.archived) { sets.push('pinned = 0'); }
@@ -453,6 +455,7 @@ function _updateAsMember(u, { row, role, member }, patch) {
   const mine = [];
   const mineArgs = [];
   if ('pinned' in patch) { mine.push('pinned = ?'); mineArgs.push(patch.pinned ? 1 : 0); }
+  if ('in_tasks' in patch) { mine.push('in_tasks = ?'); mineArgs.push(patch.in_tasks ? 1 : 0); }
   if ('archived' in patch) {
     mine.push('archived = ?'); mineArgs.push(patch.archived ? 1 : 0);
     if (patch.archived) mine.push('pinned = 0');
@@ -827,7 +830,8 @@ export const addMember = db.transaction((u, noteId, { username, role = 'edit' } 
      ON CONFLICT(note_id, user_id) DO UPDATE SET
        role = excluded.role, updated_at = excluded.updated_at, deleted_at = NULL,
        pinned = CASE WHEN note_members.deleted_at IS NULL THEN note_members.pinned ELSE 0 END,
-       archived = CASE WHEN note_members.deleted_at IS NULL THEN note_members.archived ELSE 0 END`
+       archived = CASE WHEN note_members.deleted_at IS NULL THEN note_members.archived ELSE 0 END,
+       in_tasks = CASE WHEN note_members.deleted_at IS NULL THEN note_members.in_tasks ELSE 0 END`
   ).run(noteId, target.id, cleanRole, u, now(), stamp);
   restampNote(noteId);
   return { ok: true, ...listMembers(u, noteId) };
@@ -927,11 +931,11 @@ export const importNotes = db.transaction((u, list = []) => {
 
     const reminderAt = _cleanReminderAt(raw.reminder_at);
     const info = db.prepare(
-      `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived, trashed_at,
+      `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived, in_tasks, trashed_at,
                           reminder_at, reminder_rrule, reminder_tz, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(u, title, body, kind, _cleanColor(raw.color),
-          raw.pinned && !raw.archived && !raw.trashed ? 1 : 0, raw.archived ? 1 : 0,
+          raw.pinned && !raw.archived && !raw.trashed ? 1 : 0, raw.archived ? 1 : 0, kind === 'checklist' && raw.in_tasks ? 1 : 0,
           raw.trashed ? ts : null,
           reminderAt, reminderAt ? _cleanRepeat(raw.reminder_rrule) : null, reminderAt ? _cleanTz(raw.reminder_tz) : null,
           created, updated);
