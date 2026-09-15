@@ -48,6 +48,8 @@ NoteTrace is in active development toward its first release candidate. Working t
 - **Links and timeline.** `[[Note title]]` links with suggestions as you type and a Linked From section on the linked note; renaming a note updates the links. Switch the grid to a timeline grouped by day.
 - **Voice notes and image text.** Record voice notes on any note, transcribed by Trace and searchable. Trace can also read the text in images, so a photo of a receipt or a whiteboard turns up in search.
 - **Trace in your notes.** Tidy Up, Summarize, and Make a Checklist from the editor, and a Trace chat that can find, create, and update notes, check items off, and set reminders. The same note tools are on the MCP endpoint for external AI agents.
+- **Organize fast.** Filter search by type, color, and label; select many notes and pin, color, label, remind, archive, or trash them at once; drag notes into your own order; nest labels (`Home/Garage`); a Shared with Me view; and link previews on cards, fetched by your server.
+- **Polish.** A sidebar that collapses to icons, keyboard shortcuts (press `?`), slash commands in the editor, compact cards, swipe to archive and pull to refresh on phones, and a note that grows out of its card when opened.
 - **CookTrace.** Send a checklist's open items to your CookTrace shopping list.
 - **Share from anywhere.** Share text, links, and photos into a new note from any Android app or into the installed web app, and an optional fingerprint, face, or PIN app lock on Android.
 
@@ -130,6 +132,7 @@ Open `http://localhost:3004` and a first-run wizard walks you through creating a
 | `MCP_ENABLED` / `MCP_WRITE_ENABLED` / `MCP_DESTROY_ENABLED` | unset | Model Context Protocol endpoint and its write / destructive tiers. |
 | `WEBHOOKS_ENABLED` | unset | Outgoing signed webhooks. |
 | `ALLOW_PRIVATE_COOKTRACE_URLS` | unset | Allow Send to CookTrace to reach a CookTrace on a LAN or Docker network address. |
+| `ALLOW_PRIVATE_LINK_PREVIEWS` | unset | Show link previews for links to LAN, loopback, or Docker network addresses. |
 
 Env values take priority over Settings-UI values and lock the field for all users. The full annotated list is in [.env.example](.env.example).
 

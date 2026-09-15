@@ -169,6 +169,33 @@ rename from the title it opened with (`rename_links_from`), so partial
 titles never rewrite links. A rename is skipped when another note has
 the old or the new title.
 
+### Card order, selection, and gestures are client state
+
+Custom order is a user setting (`noteOrder`, a list of note keys: `s<server id>`,
+or `l<device id>` for a note that never reached a server) applied on top of the
+normal list (`src/lib/note-order.js`), so reordering never touches `updated_at`,
+version history, or sync conflict rules. Dragging (`src/lib/card-drag.js`) and
+swiping (`src/lib/card-swipe.js`) are actions on the grid that read
+`data-note-id` from the cards; a mouse drag starts after a few pixels, a touch
+drag after a long press (which also selects), and a swipe only for a quick
+sideways move. Search filters (`src/lib/note-filters.js`) filter the loaded list
+in the browser.
+
+### Nested labels are names
+
+`Home/Garage` is an ordinary label whose name contains a slash;
+`src/lib/label-tree.js` builds the tree for the sidebar and pickers, and a
+parent view also shows its nested labels' notes. Renaming a parent renames the
+labels under it. Nothing in the schema or sync knows about nesting.
+
+### Link previews are fetched by the server
+
+`server/lib/link-preview.js` fetches the first link on a card through the SSRF
+guard (every redirect hop re-checked), reads Open Graph tags
+(`link-preview-core.js`, shared with the client and unit tested), and caches
+the result in `link_previews` for a week. Images and icons are served only for
+pages already in that cache, so the route can't be used as an open proxy.
+
 ### Imports parse on the client
 
 Google Keep, Evernote, Blinko, Memos, and Markdown imports are read and parsed in

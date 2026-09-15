@@ -59,6 +59,20 @@ Items marked ~~strikethrough~~ have been implemented.
 - ~~MCP note tools~~
 - ~~CookTrace integration: send a checklist to a CookTrace shopping list~~
 
+## Polish
+
+- ~~Sidebar that collapses to icons, with a sliding highlight, a reminders-due badge, sync status, and foldable labels~~
+- ~~Shared with Me view~~
+- ~~Search filter chips (type, color, label)~~
+- ~~Select several notes and act on them at once~~
+- ~~Link previews on note cards~~
+- ~~Drag notes into your own order~~
+- ~~Keyboard shortcuts and slash commands~~
+- ~~Compact card density~~
+- ~~Nested labels~~
+- ~~Swipe to archive and pull to refresh on phones~~
+- ~~Card-to-editor animation~~
+
 ## Wear OS Companion
 
 - Home screen with pinned checklists and upcoming reminders
