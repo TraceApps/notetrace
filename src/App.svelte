@@ -548,7 +548,7 @@
     if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'k') return;
     if (document.querySelector('.editor-backdrop, [role="dialog"][aria-modal="true"]')) return;
     e.preventDefault();
-    const onNotes = $location === '/' || /^\/(archive|trash|reminders|label\/)/.test($location);
+    const onNotes = $location === '/' || /^\/(notes|shared|archive|trash|reminders|label\/)/.test($location);
     if (!onNotes) { await push('/'); await new Promise(r => setTimeout(r, 60)); }
     window.dispatchEvent(new CustomEvent('note:focus-search'));
   }

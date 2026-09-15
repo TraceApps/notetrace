@@ -197,7 +197,7 @@
   // runs on the index, before drill-in.
   const SECTION_KEYWORDS = {
     profile:       ['profile','my profile','account','name','avatar','log out','logout','sign out','password','change password'],
-    appearance:    ['appearance','theme','dark','light','accent','color','navigation','sidebar','persistent','start page','animations','collapse sidebar','icon sidebar','rail','link previews','link preview','previews','note order','sort','custom order','drag','reorder','arrange','reduce motion','banner','page banner','force mobile','mobile layout','mobile view','phone layout','narrow layout'],
+    appearance:    ['appearance','theme','dark','light','accent','color','navigation','sidebar','persistent','start page','animations','collapse sidebar','icon sidebar','rail','link previews','link preview','previews','note order','sort','custom order','drag','reorder','arrange','keyboard','shortcuts','hotkeys','keys','reduce motion','banner','page banner','force mobile','mobile layout','mobile view','phone layout','narrow layout'],
     regional:      ['regional','date','time','12h','24h','units','energy','kcal','kj','calories','kilojoules','imperial','metric','measurement system'],
     ai:            ['ai','trace','assistant','provider','model','custom model','model id','api key','chat','claude','openai','gemini','sonnet','opus','haiku','gpt','gemini 3','base url','artificial intelligence','smart log','smartlog','quick log','voice','dictate','hold to record','mic','transcribe','transcription','whisper','voice notes','read text','ocr','image text'],
     cooktrace:     ['cooktrace','cook trace','shopping','shopping list','groceries','grocery','send to cooktrace','integration','integrations','link','traceapps','recipes'],

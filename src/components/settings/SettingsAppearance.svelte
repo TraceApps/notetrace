@@ -10,8 +10,11 @@
   import { applyAppearance, applyAccentColor } from '../../stores/settings.js';
   import {
     appearance, accentColor, navStyle, sidebarPersistent, disableAnimations,
-    bannerStyle, bannerAnimation, startPage, forceMobileLayout, sidebarRail, linkPreviews, noteSort,
+    bannerStyle, bannerAnimation, startPage, forceMobileLayout, sidebarRail, linkPreviews, noteSort, keyboardShortcuts,
   } from '../../stores/settings.js';
+  import ShortcutsHelp from '../notes/ShortcutsHelp.svelte';
+  let shortcutsOpen = false;
+  const hasKeyboard = typeof window !== 'undefined' && window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
   import { linkPreviewsAvailable } from '../../lib/link-preview.js';
   import { openColorPicker } from '../../stores/color-picker.js';
 
@@ -146,6 +149,17 @@
         </select>
       </div>
     </div>
+    {#if hasKeyboard}
+      <div class="setting-divider"></div>
+      <div class="setting-row">
+        <div>
+          <span class="setting-label">{$_('settings_page.appearance.shortcuts')}</span>
+          <div class="setting-desc">{$_('settings_page.appearance.shortcuts_desc')}</div>
+        </div>
+        <button class="btn btn-secondary" style="height:34px" on:click={() => shortcutsOpen = true}>{$_('settings_page.appearance.shortcuts_view')}</button>
+        <input type="checkbox" class="toggle-cb" checked={$keyboardShortcuts} on:change={e => keyboardShortcuts.set(e.target.checked)} aria-label={$_('settings_page.appearance.shortcuts')} />
+      </div>
+    {/if}
     {#if linkPreviewsAvailable}
       <div class="setting-divider"></div>
       <div class="setting-row">
@@ -204,6 +218,8 @@
     {/if}
   </div>
 </div>
+
+<ShortcutsHelp bind:open={shortcutsOpen} />
 
 <style>
   /* Accent-swatch styles live with the section that owns them so the

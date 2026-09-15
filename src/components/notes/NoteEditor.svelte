@@ -525,6 +525,8 @@
   }
 
   function onKey(e) {
+    // Ctrl/Cmd+Enter finishes the note, like the Done button.
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !showHistory) { e.preventDefault(); close(); return; }
     if (e.key === 'Escape' && viewerIndex == null && !colorOpen && !labelsOpen && !reminderOpen && !shareOpen && !traceOpen && !recordOpen && !cookOpen && !addOpen && !moreOpen) {
       e.preventDefault();
       if (showHistory) showHistory = false;

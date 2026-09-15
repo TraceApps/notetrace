@@ -27,7 +27,9 @@
   import { ensureReminderPermission, rescheduleReminders } from '../lib/note-reminders.js';
   import { isOwner, canEdit } from '../lib/note-sharing.js';
   import { groupByDay } from '../lib/timeline.js';
-  import { notesLayout, noteSort, noteOrder } from '../stores/settings.js';
+  import { notesLayout, noteSort, noteOrder, keyboardShortcuts } from '../stores/settings.js';
+  import ShortcutsHelp from '../components/notes/ShortcutsHelp.svelte';
+  import { push as pushRoute } from 'svelte-spa-router';
   import { noteKey, applyOrder, mergeOrder } from '../lib/note-order.js';
   import { isNative } from '../lib/platform.js';
   import NoteCard from '../components/notes/NoteCard.svelte';
@@ -370,7 +372,72 @@
   }
   function selectAll() { selectedIds = new Set(visibleOrder.map(n => n.id)); }
   function onSelectKey(e) {
-    if (e.key === 'Escape' && selecting && !editing) { e.preventDefault(); clearSelection(); }
+    if (e.key === 'Escape' && selecting && !editing) { e.preventDefault(); clearSelection(); return; }
+    onShortcut(e);
+  }
+
+  // ── Keyboard shortcuts (? shows them all) ──────────────────────────
+  let helpOpen = false;
+  let _goPending = 0;
+  const typingIn = (el) => !!el?.closest?.('input, textarea, select, [contenteditable="true"]');
+  function focusedCard() {
+    const el = document.activeElement?.closest?.('.note-card[data-note-id]');
+    return el ? notes.find(n => n.id === Number(el.dataset.noteId)) : null;
+  }
+  function focusCardAt(step) {
+    const els = visibleOrder.map(n => document.querySelector(`.note-card[data-note-id="${n.id}"]:not(.drag-ghost)`)).filter(Boolean);
+    if (!els.length) return;
+    const cur = els.indexOf(document.activeElement?.closest?.('.note-card'));
+    const next = els[cur < 0 ? (step > 0 ? 0 : els.length - 1) : Math.max(0, Math.min(els.length - 1, cur + step))];
+    next.focus();
+    next.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+  function onShortcut(e) {
+    if (e.defaultPrevented || editing || e.altKey || typingIn(e.target)) return;
+    if (document.querySelector('[role="dialog"][aria-modal="true"], .pop-backdrop, .as-backdrop')) return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+      if (!visibleOrder.length) return;
+      e.preventDefault(); selectAll(); return;
+    }
+    if (e.ctrlKey || e.metaKey) return;
+    if (e.key === '?') { e.preventDefault(); helpOpen = true; return; }
+    if (!$keyboardShortcuts) return;
+    if (Date.now() - _goPending < 1200) {
+      _goPending = 0;
+      const to = { n: '/', r: '/reminders', a: '/archive', t: '/trash', s: '/settings' }[e.key.toLowerCase()];
+      if (to) { e.preventDefault(); pushRoute(to); }
+      return;
+    }
+    const card = focusedCard();
+    const targets = selecting ? selectedNotes : card ? [card] : [];
+    switch (e.key) {
+      case 'g': _goPending = Date.now(); break;
+      case 'c': if (canCapture) { e.preventDefault(); newNote('text'); } break;
+      case 'l': if (canCapture) { e.preventDefault(); newNote('checklist'); } break;
+      case '/': e.preventDefault(); focusSearch(); break;
+      case 'j': e.preventDefault(); focusCardAt(1); break;
+      case 'k': e.preventDefault(); focusCardAt(-1); break;
+      case 'x': if (card) { e.preventDefault(); onSelect({ detail: { note: card, range: false } }); } break;
+      case 'f':
+        if (targets.length && view === 'notes') {
+          e.preventDefault();
+          if (selecting) bulkPin(); else runAction(card, 'pin');
+        }
+        break;
+      case 'e':
+        if (targets.length && view !== 'trash') {
+          e.preventDefault();
+          const archivedNow = view === 'archive';
+          if (selecting) bulkArchive(!archivedNow); else runAction(card, archivedNow ? 'unarchive' : 'archive');
+        }
+        break;
+      case '#':
+        if (targets.length && view !== 'trash') {
+          e.preventDefault();
+          if (selecting) bulkTrash(); else if (isOwner(card)) runAction(card, 'trash');
+        }
+        break;
+    }
   }
   onMount(() => window.addEventListener('keydown', onSelectKey));
   onDestroy(() => window.removeEventListener('keydown', onSelectKey));
@@ -698,6 +765,7 @@
 <Popover bind:open={bulkReminderOpen} anchor={bulkReminderAnchor}>
   <ReminderPicker reminderAt={null} repeat={null} tz={null} on:set={(e) => bulkReminder(e.detail)} on:clear={bulkClearReminder} />
 </Popover>
+<ShortcutsHelp bind:open={helpOpen} />
 <ActionSheet bind:open={menuOpen} title={menuNote?.title || ''} actions={menuActions} on:select={onMenuSelect} />
 
 <style>
