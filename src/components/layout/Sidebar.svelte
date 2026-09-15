@@ -10,7 +10,7 @@
   import { updateAvailable } from '../../lib/updates.js';
   import { pwaUpdateReady } from '../../lib/pwa-update.js';
   import { labels, refreshLabels, notesChanged } from '../../stores/notes.js';
-  import { sidebarRail, sidebarLabelsCollapsed, sidebarPersistent } from '../../stores/settings.js';
+  import { sidebarRail, sidebarLabelsCollapsed } from '../../stores/settings.js';
   import { colorDot } from '../../lib/note-colors.js';
   import { sharingAvailable } from '../../lib/note-sharing.js';
   import { NoteApi } from '../../lib/api.js';
@@ -25,13 +25,22 @@
 
   export let open = false;
   export let persistent = false;
-  /** Wide enough to pin: the slide-out menu offers to keep the sidebar as icons. */
-  export let canPin = false;
   const dispatch = createEventDispatcher();
 
   // The icon rail only applies to the pinned desktop sidebar; the phone
   // drawer always opens full width.
   $: rail = persistent && $sidebarRail;
+
+  // Collapsed, each icon names itself in a label beside the rail on hover or focus.
+  let tip = null;   // { text, top, left }
+  function showTip(e) {
+    const el = rail && e.target.closest?.('[data-tip]');
+    if (!el) { tip = null; return; }
+    const r = el.getBoundingClientRect();
+    tip = { text: el.dataset.tip, top: Math.round(r.top + r.height / 2), left: Math.round(r.right + 12) };
+  }
+  const hideTip = () => { tip = null; };
+  $: if (!rail) tip = null;
 
   async function handleLogout() {
     await logout();
@@ -177,28 +186,28 @@
     in:fly={{ x: -280, duration: persistent ? 0 : 280, easing: cubicOut }}
     out:fly={{ x: -280, duration: persistent ? 0 : 200 }}
     aria-label="Navigation menu"
+    on:mouseover={showTip} on:focusin={showTip} on:mouseleave={hideTip} on:focusout={hideTip} on:click={hideTip}
   >
     <!-- App branding -->
     <div class="sidebar-brand">
-      <img class="brand-icon" src={iconUrl('/icons/logo.png')} alt="NoteTrace" />
-      {#if !rail}
+      {#if rail}
+        <!-- Collapsed: just the expand button, centered. -->
+        <button class="rail-toggle" on:click={() => sidebarRail.set(false)}
+          data-tip={$_('sidebar.expand')} aria-label={$_('sidebar.expand')} aria-expanded="false">
+          <span class="material-symbols-rounded">menu</span>
+        </button>
+      {:else}
+        <img class="brand-icon" src={iconUrl('/icons/logo.png')} alt="NoteTrace" />
         <div class="brand-text">
           <span class="brand-name">{$_('sidebar_ct.brand')}</span>
           <span class="brand-tagline">Trace Every Thought</span>
         </div>
-      {/if}
-      {#if persistent}
-        <button class="rail-toggle" on:click={() => sidebarRail.set(!$sidebarRail)}
-          title={rail ? $_('sidebar.expand') : $_('sidebar.collapse')} aria-label={rail ? $_('sidebar.expand') : $_('sidebar.collapse')}
-          aria-expanded={!rail}>
-          <span class="material-symbols-rounded">{rail ? 'left_panel_open' : 'left_panel_close'}</span>
-        </button>
-      {:else if canPin}
-        <!-- From the slide-out menu on a wide screen: pin the sidebar as icons. -->
-        <button class="rail-toggle" on:click={() => { sidebarPersistent.set(true); sidebarRail.set(true); }}
-          title={$_('sidebar.pin_icons')} aria-label={$_('sidebar.pin_icons')}>
-          <span class="material-symbols-rounded">left_panel_close</span>
-        </button>
+        {#if persistent}
+          <button class="rail-toggle" on:click={() => sidebarRail.set(true)}
+            title={$_('sidebar.collapse')} aria-label={$_('sidebar.collapse')} aria-expanded="true">
+            <span class="material-symbols-rounded">menu_open</span>
+          </button>
+        {/if}
       {/if}
     </div>
 
@@ -214,7 +223,7 @@
           class="sidebar-item"
           class:active={isTabActive(item.path, activePath)}
           on:click={() => go(item.path)}
-          title={rail ? (item.badge ? `${item.label}: ${$_(item.badgeKey || 'sidebar.due_today', { values: { count: item.badge } })}` : item.label) : undefined}
+          data-tip={rail ? (item.badge ? `${item.label}: ${$_(item.badgeKey || 'sidebar.due_today', { values: { count: item.badge } })}` : item.label) : undefined}
           aria-label={rail ? item.label : undefined}
         >
           <span class="material-symbols-rounded sidebar-icon">
@@ -237,7 +246,7 @@
         <div class="sidebar-divider nav-divider"></div>
         {#each $labels as l (l.id)}
           <button class="sidebar-item rail-label" class:active={activePath === `/label/${l.id}`} on:click={() => go(`/label/${l.id}`)}
-            title={l.name} aria-label={l.name}>
+            data-tip={l.name} aria-label={l.name}>
             <span class="sidebar-icon label-dot-wrap"><span class="label-dot" style="background:{colorDot(l.color)}"></span></span>
           </button>
         {/each}
@@ -270,7 +279,7 @@
 
       <div class="sidebar-divider nav-divider"></div>
       <button class="sidebar-item" class:active={isTabActive(settingsItem.path, activePath)} on:click={() => go(settingsItem.path)}
-        title={rail ? settingsItem.label : undefined} aria-label={rail ? settingsItem.label : undefined}>
+        data-tip={rail ? settingsItem.label : undefined} aria-label={rail ? settingsItem.label : undefined}>
         <span class="material-symbols-rounded sidebar-icon">
           {settingsItem.icon}
           {#if $updateAvailable.available || $pwaUpdateReady}
@@ -286,7 +295,7 @@
       {#if $userMgmtActive && $currentUser}
         <div class="sidebar-user">
           <button class="user-avatar" on:click={() => go('/profile')}
-            title={rail ? `${$currentUser.full_name || $currentUser.username} · ${APP_VERSION}` : undefined}
+            data-tip={rail ? `${$currentUser.full_name || $currentUser.username} · ${APP_VERSION}` : undefined}
             aria-label={$currentUser.full_name || $currentUser.username}>
             {#if $currentUser.avatar_url}
               <img src={resolveAssetUrl($currentUser.avatar_url)} alt="" class="user-avatar-img" />
@@ -308,12 +317,16 @@
           {/if}
         </div>
       {:else}
-        <span class="sidebar-version" title={rail ? APP_VERSION : undefined}>
+        <span class="sidebar-version" data-tip={rail ? APP_VERSION : undefined}>
           {rail ? APP_VERSION.replace(/-.*/, '') : APP_VERSION}{#if syncText && !rail}<span class="sync-sep"> · </span><span class="sync-text" class:bad={syncBad}>{syncText}</span>{/if}
         </span>
       {/if}
     </div>
   </aside>
+{/if}
+
+{#if tip}
+  <div class="rail-tip" role="tooltip" style="top: {tip.top}px; left: {tip.left}px">{tip.text}</div>
 {/if}
 
 <LabelManager bind:open={labelManagerOpen} />
@@ -357,7 +370,8 @@
     padding: 20px 12px 16px 20px;
     position: relative;
   }
-  .rail .sidebar-brand { flex-direction: column; gap: 10px; padding: 18px 0 12px; }
+  .rail .sidebar-brand { justify-content: center; padding: 20px 0 16px; min-height: 80px; }
+  .sidebar-panel { overflow: hidden; white-space: nowrap; }
   .brand-icon {
     width: 44px;
     height: 44px;
@@ -385,6 +399,19 @@
   }
   .rail-toggle:hover { background: var(--surface-2); color: var(--text-1); }
   .rail-toggle .material-symbols-rounded { font-size: 20px; }
+  .rail .rail-toggle { width: 44px; height: 44px; border-radius: var(--radius-md); }
+  .rail .rail-toggle .material-symbols-rounded { font-size: 24px; }
+
+  .rail-tip {
+    position: fixed; z-index: 500; transform: translateY(-50%);
+    padding: 6px 10px; border-radius: 8px;
+    background: var(--surface-3, var(--surface-2)); color: var(--text-1);
+    border: 1px solid var(--border); box-shadow: var(--shadow-md, 0 6px 20px rgba(0,0,0,.35));
+    font-size: 13px; font-weight: 500; white-space: nowrap; pointer-events: none;
+    animation: rail-tip-in 120ms ease-out;
+  }
+  @keyframes rail-tip-in { from { opacity: 0; transform: translate(-4px, -50%); } }
+  :global(html.no-animations) .rail-tip { animation: none; }
 
   .sidebar-divider { height: 1px; background: var(--border); margin: 0 16px 8px; }
   .rail .sidebar-divider { margin: 0 14px 8px; }

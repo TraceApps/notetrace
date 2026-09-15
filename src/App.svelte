@@ -591,7 +591,7 @@
 
 {#if $appLocked}<LockScreen />{/if}
 
-<Sidebar bind:open={sidebarOpen} persistent={sidebarPinned} canPin={_hasSidebar && _persistentAllowed} on:close={() => { if (!sidebarPinned) sidebarOpen = false; }} />
+<Sidebar bind:open={sidebarOpen} persistent={sidebarPinned} on:close={() => { if (!sidebarPinned) sidebarOpen = false; }} />
 
 
 <!-- In-app update banner (native only). Renders only if the OS-level
@@ -741,11 +741,11 @@
        wide element on any page (Recipes was the reported culprit)
        never lets the whole view drift left/right. */
     overflow-x: hidden;
-    transition: left 0.25s ease;
+    transition: left 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   :global(.bottom-nav) {
     left: var(--sidebar-w, 0px) !important;
-    transition: left 0.25s ease !important;
+    transition: left 240ms cubic-bezier(0.2, 0.8, 0.2, 1) !important;
   }
 
   .conn-badge {
