@@ -226,6 +226,12 @@ const _NoteApiHttp = {
     const res = await this._fetch('POST', '/api/upload', form, true);
     return res.url;
   },
+  /** Audio through the server, which can convert it to M4A: { url, mime, duration_ms }. */
+  async uploadAudio(file, { convert = false } = {}) {
+    const form = new FormData();
+    form.append('file', file);
+    return this._fetch('POST', `/api/upload/audio${convert ? '?convert=1' : ''}`, form, true);
+  },
 };
 
 import { NoteApiNative } from './api-native.js';
@@ -242,7 +248,7 @@ const SERVER_ONLY_METHODS = new Set([
   'getMembers', 'addMember', 'updateMember', 'removeMember',
   // Imports run on the server (keeping original dates) and reach this
   // device through sync.
-  'importNotes', 'importUploadImage', 'importAddAttachments',
+  'importNotes', 'importUploadImage', 'importAddAttachments', 'uploadAudio',
   // Low-level HTTP primitives, used by components that don't have a
   // dedicated NoteApi wrapper (invite list, session config, admin OIDC
   // CRUD, etc.). NoteApiNative stubs these to throw in pure local mode;

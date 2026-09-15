@@ -3,7 +3,8 @@
  *
  * Takeout writes one JSON file per note under Takeout/Keep/. Text,
  * checklists, labels, colors, pins, archive, trash, links, and edit
- * dates are imported, and photos and drawings come along as images
+ * dates are imported, photos and drawings come along as images, and voice
+ * recordings as voice notes (converted by the server when needed)
  * (`files`, uploaded by the importer). Voice recordings are counted so the
  * summary can say what was left behind.
  */
@@ -57,9 +58,9 @@ export function parseKeepNote(obj) {
   const updated = usecToTs(obj.userEditedTimestampUsec);
   const created = usecToTs(obj.createdTimestampUsec) || updated;
   const all = Array.isArray(obj.attachments) ? obj.attachments : [];
-  // Photos and drawings are images; voice recordings aren't imported.
-  const images = all.filter(a => typeof a?.filePath === 'string' && /^image\//i.test(String(a.mimetype || '')));
-  const attachments = all.length - images.length;
+  // Photos, drawings, and voice recordings come along; anything else is counted as left out.
+  const kept = all.filter(a => typeof a?.filePath === 'string' && /^(image|audio)\//i.test(String(a.mimetype || '')));
+  const attachments = all.length - kept.length;
   const note = {
     title: String(obj.title ?? '').trim().slice(0, 1000),
     body_md: body,
@@ -77,7 +78,7 @@ export function parseKeepNote(obj) {
     reminder_at: null,
     reminder_rrule: null,
     reminder_tz: null,
-    files: images.map(a => ({ name: a.filePath.split('/').pop() })),
+    files: kept.map(a => ({ name: a.filePath.split('/').pop(), ...(/^audio\//i.test(a.mimetype) ? { mime: String(a.mimetype).toLowerCase() } : {}) })),
   };
   const empty = !note.title && !note.body_md.trim() && !note.items.length && !note.files.length;
   return { note: empty ? null : note, attachments };

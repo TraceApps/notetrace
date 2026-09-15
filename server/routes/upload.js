@@ -5,6 +5,7 @@ import fs from 'fs';
 import { requireAuth } from '../middleware/auth.js';
 import { makeRateLimiter } from '../middleware/rate-limit.js';
 import { detectImageType } from '../lib/image-magic.js';
+import { audioToolsAvailable, convertToM4a, probeDurationMs } from '../lib/audio-tools.js';
 
 const uploadLimit = makeRateLimiter({ max: 60, windowMs: 60_000, label: 'upload' });
 
@@ -65,6 +66,35 @@ router.post('/', uploadLimit, (req, res, next) => {
     }
     res.json({ url: `/uploads/${req.file.filename}` });
   });
+});
+
+// Audio from a file or an import. ?convert=1 turns a format browsers can't play
+// (Keep's 3GP/AMR and the like) into M4A. Replies { url, mime, duration_ms }.
+router.post('/audio', uploadLimit, (req, res, next) => {
+  upload.single('file')(req, res, async (err) => {
+    if (err) return next(err);
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const src = req.file.path;
+    const convert = req.query.convert === '1';
+    if (!convert) {
+      return res.json({ url: `/uploads/${req.file.filename}`, mime: req.file.mimetype, duration_ms: await probeDurationMs(src) });
+    }
+    if (!(await audioToolsAvailable())) {
+      try { fs.unlinkSync(src); } catch {}
+      return res.status(501).json({ error: 'This server can\'t convert audio (ffmpeg isn\'t installed).' });
+    }
+    const name = `${path.basename(req.file.filename, path.extname(req.file.filename))}.m4a`;
+    const dest = path.join(uploadsPath, name);
+    const ok = await convertToM4a(src, dest);
+    try { fs.unlinkSync(src); } catch {}
+    if (!ok) return res.status(415).json({ error: 'That audio file couldn\'t be read.' });
+    res.json({ url: `/uploads/${name}`, mime: 'audio/mp4', duration_ms: await probeDurationMs(dest) });
+  });
+});
+
+/** { audio_convert }: what the server can do with audio. */
+router.get('/capabilities', async (req, res) => {
+  res.json({ audio_convert: await audioToolsAvailable() });
 });
 
 export default router;

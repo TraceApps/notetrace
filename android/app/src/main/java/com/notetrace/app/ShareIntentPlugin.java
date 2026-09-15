@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Receives text, links, and images shared to NoteTrace from other apps (the
+ * Receives text, links, images, and audio shared to NoteTrace from other apps (the
  * Android share sheet) and hands them to the web layer, which opens a new
  * note pre-filled with the shared content.
  *
@@ -41,7 +41,7 @@ import java.util.UUID;
 public class ShareIntentPlugin extends Plugin {
     private static final String TAG = "ShareIntent";
     private static final int MAX_IMAGES = 20;
-    private static final long MAX_IMAGE_BYTES = 50L * 1024 * 1024;
+    private static final long MAX_IMAGE_BYTES = 100L * 1024 * 1024;
 
     private static String pendingTitle = null;
     private static String pendingText = null;
@@ -62,7 +62,8 @@ public class ShareIntentPlugin extends Plugin {
         String text = intent.getStringExtra(Intent.EXTRA_TEXT);
         String subject = intent.getStringExtra(Intent.EXTRA_SUBJECT);
         List<Uri> images = new ArrayList<>();
-        if (type.startsWith("image/")) {
+        // Images and audio (voice recordings) come in as files; "*/*" is a mixed share.
+        if (type.startsWith("image/") || type.startsWith("audio/") || type.equals("*/*")) {
             if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
                 ArrayList<Uri> list = IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri.class);
                 if (list != null) images.addAll(list);
@@ -120,7 +121,7 @@ public class ShareIntentPlugin extends Plugin {
         ContentResolver cr = ctx.getContentResolver();
         for (Uri uri : uris) {
             String mime = cr.getType(uri);
-            if (mime == null || !mime.startsWith("image/")) continue;
+            if (mime == null || !(mime.startsWith("image/") || mime.startsWith("audio/"))) continue;
             String ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime);
             String name = displayName(cr, uri);
             File target = new File(dir, UUID.randomUUID() + "." + (ext != null ? ext : "img"));

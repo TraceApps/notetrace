@@ -48,8 +48,8 @@ test('keep: text note keeps line breaks, links, labels, color, pin, and dates', 
   assert.equal(note.pinned, true);
   assert.equal(note.created_at, '2024-09-10 20:26:40');
   assert.equal(note.updated_at, '2024-09-12 14:06:40');
-  assert.deepEqual(note.files, [{ name: 'a.jpg' }]);
-  assert.equal(attachments, 1); // the voice recording
+  assert.deepEqual(note.files, [{ name: 'a.jpg' }, { name: 'memo.3gp', mime: 'audio/3gpp' }]);
+  assert.equal(attachments, 0); // the voice recording comes along too
 });
 
 test('keep: checklist keeps order and checked state, drops blank items', () => {
@@ -63,9 +63,11 @@ test('keep: checklist keeps order and checked state, drops blank items', () => {
 test('keep: non-note JSON is ignored and attachment-only notes are counted', () => {
   assert.equal(isKeepNote({ name: 'Labels' }), false);
   assert.equal(parseKeepNote([1, 2]), null);
-  const r = parseKeepNote({ textContent: '', title: '', isTrashed: false, attachments: [{ filePath: 'a.m4a', mimetype: 'audio/mp4' }, {}] });
+  const r = parseKeepNote({ textContent: '', title: '', isTrashed: false, attachments: [{ filePath: 'doc.pdf', mimetype: 'application/pdf' }, {}] });
   assert.equal(r.note, null);
   assert.equal(r.attachments, 2);
+  const voiceOnly = parseKeepNote({ textContent: '', title: '', isTrashed: false, attachments: [{ filePath: 'a.m4a', mimetype: 'audio/mp4' }] });
+  assert.equal(voiceOnly.note.files[0].mime, 'audio/mp4'); // a recording-only note is a note
   const photoOnly = parseKeepNote({ textContent: '', title: '', isTrashed: false, attachments: [{ filePath: 'p.png', mimetype: 'image/png' }] });
   assert.equal(photoOnly.note.files.length, 1); // a photo-only note is still a note
 });

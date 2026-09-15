@@ -46,6 +46,7 @@
   import AttachmentGrid from './AttachmentGrid.svelte';
   import ImageViewer from './ImageViewer.svelte';
   import { uploadNoteImages, isImageFile } from '../../lib/note-images.js';
+  import { isAudioFile, prepareAudioFile } from '../../lib/voice-files.js';
   import { sharingAvailable } from '../../lib/note-sharing.js';
 
   /** Existing note, or null to create one. */
@@ -304,8 +305,9 @@
   /** A waveform measured for a recording saved without one. */
   function saveWaveform({ uuid, waveform }) {
     attachments = attachments.map(a => a.uuid === uuid ? { ...a, waveform } : a);
-    if (!noteId || contentLocked) return;
-    enqueue(async () => { await NoteApi.updateAttachment(noteId, uuid, { waveform }); });
+    if (contentLocked) return;
+    // Queued, so a note still being created gets its id first.
+    enqueue(async () => { if (noteId) await NoteApi.updateAttachment(noteId, uuid, { waveform }); });
   }
 
   /** Put a transcript or image text into the note: a paragraph, or checklist items. */
@@ -358,11 +360,46 @@
       apply(await NoteApi.deleteAttachment(noteId, uuid));
     });
   }
+  // Images and audio files, however they arrive (picker, paste, drop, share).
+  function addFiles(fileList) {
+    const files = [...(fileList || [])];
+    const images = files.filter(isImageFile);
+    const audio = files.filter(f => !isImageFile(f) && isAudioFile(f));
+    if (images.length) addImages(images);
+    if (audio.length) addAudioFiles(audio);
+    return images.length + audio.length;
+  }
+  async function addAudioFiles(files) {
+    if (contentLocked) return;
+    touched = true;
+    showInfo($_('voice.saving'));
+    for (const file of files) {
+      let att;
+      try {
+        att = await prepareAudioFile(file);
+      } catch (err) {
+        showError(err.message === 'unsupported' ? $_('voice.unsupported_file', { values: { name: file.name || '' } }) : (err.message || $_('notes.save_failed')));
+        continue;
+      }
+      attachments = [...attachments, att];
+      await enqueue(async () => {
+        if (!noteId) { await ensureNote(); return; }
+        apply(await NoteApi.addAttachments(noteId, [att]));
+      });
+      if ($autoTranscribe && $extractSupport.transcribe) extractText(att, att.mime === file.type ? file : null);
+    }
+  }
+  function openAudioPicker() {
+    recordOpen = false;
+    tick().then(() => audioInput?.click());
+  }
+  let audioInput;
+
   function onPaste(e) {
-    const files = [...(e.clipboardData?.files || [])].filter(isImageFile);
+    const files = [...(e.clipboardData?.files || [])].filter(f => isImageFile(f) || isAudioFile(f));
     if (!files.length || contentLocked) return;
     e.preventDefault();
-    addImages(files);
+    addFiles(files);
   }
   function onDragOver(e) {
     if (contentLocked || ![...(e.dataTransfer?.types || [])].includes('Files')) return;
@@ -371,10 +408,10 @@
   }
   function onDrop(e) {
     dragOver = false;
-    const files = [...(e.dataTransfer?.files || [])].filter(isImageFile);
+    const files = [...(e.dataTransfer?.files || [])].filter(f => isImageFile(f) || isAudioFile(f));
     if (!files.length || contentLocked) return;
     e.preventDefault();
-    addImages(files);
+    addFiles(files);
   }
 
   // ── Trace actions ─────────────────────────────────────────────────
@@ -664,7 +701,7 @@
     await tick();
     if (!noteId) {
       if (prefill?.title || prefill?.body_md) scheduleText(); // shared content saves without needing an edit
-      if (prefill?.images?.length) addImages(prefill.images);
+      if (prefill?.images?.length) addFiles(prefill.images);
       else if (kind === 'text' && !voiceFirst) titleEl?.focus();
     }
   });
@@ -992,6 +1029,9 @@
 
 <input bind:this={imageInput} class="note-image-input" type="file" accept="image/*" multiple hidden
   on:change={(e) => { addImages(e.target.files); e.target.value = ''; }} />
+<input bind:this={audioInput} class="note-audio-input" type="file" multiple hidden
+  accept="audio/*,.m4a,.mp3,.wav,.ogg,.opus,.webm,.flac,.aac,.amr,.3gp"
+  on:change={(e) => { addAudioFiles([...e.target.files]); e.target.value = ''; }} />
 {#if viewerIndex != null}
   <ImageViewer attachments={imageAttachments} index={viewerIndex} canRead={$extractSupport.readImages && !contentLocked}
     canAdd={!contentLocked} busy={extracting}
@@ -1008,6 +1048,9 @@
         <span class="material-symbols-rounded">mic</span>{$_('voice.record')}
       </button>
     {/if}
+    <button class="sheet-item" on:click={() => { addOpen = false; tick().then(() => audioInput?.click()); }}>
+      <span class="material-symbols-rounded">audio_file</span>{$_('voice.add_file')}
+    </button>
     <button class="sheet-item" on:click={() => fromSheet(convert, addAnchor)}>
       <span class="material-symbols-rounded">{kind === 'text' ? 'checklist' : 'notes'}</span>{kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}
     </button>
@@ -1094,7 +1137,7 @@
 </Popover>
 <Popover bind:open={recordOpen} anchor={recordAnchor}>
   {#if recordOpen}
-    <VoiceRecorder on:done={onRecorded} on:cancel={onRecordCancel} />
+    <VoiceRecorder canAddFile={!contentLocked} on:done={onRecorded} on:cancel={onRecordCancel} on:file={openAudioPicker} />
   {/if}
 </Popover>
 <Popover bind:open={traceOpen} anchor={traceAnchor}>

@@ -7,6 +7,8 @@
   import { _ } from 'svelte-i18n';
   import { startRecording, formatDuration, recordingSupported } from '../../lib/voice-recorder.js';
 
+  /** Offer to pick an audio file instead of recording. */
+  export let canAddFile = false;
   const dispatch = createEventDispatcher();
   const BARS = 32;
   let handle = null;
@@ -82,7 +84,10 @@
     <div class="vr-meter" class:paused aria-hidden="true">
       {#each meter as v, i (i)}<span style="height:{Math.max(6, Math.round(v * 100))}%"></span>{/each}
     </div>
-    <p class="vr-hint">{$_('voice.limit')}</p>
+    <p class="vr-hint">
+      {$_('voice.limit')}
+      {#if canAddFile}<button class="vr-file" on:click={() => { stopping = true; handle?.cancel(); dispatch('file'); }}>{$_('voice.add_file_instead')}</button>{/if}
+    </p>
     <div class="vr-buttons">
       <button class="btn btn-secondary vr-discard" on:click={cancel}>{$_('voice.cancel')}</button>
       <button class="btn btn-secondary vr-pause" on:click={togglePause} disabled={!handle || stopping}
@@ -107,7 +112,9 @@
   .vr-meter { display: flex; align-items: center; gap: 3px; height: 48px; padding: 0 2px; }
   .vr-meter span { flex: 1; min-height: 3px; border-radius: 3px; background: var(--accent); transition: height 90ms linear; }
   .vr-meter.paused span { background: var(--text-3); }
-  .vr-hint { font-size: 12px; color: var(--text-3); }
+  .vr-hint { font-size: 12px; color: var(--text-3); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+  .vr-file { font-size: 12px; color: var(--accent); padding: 0; }
+  .vr-file:hover { text-decoration: underline; }
   .vr-error { font-size: 14px; color: var(--text-1); line-height: 1.5; }
   .vr-buttons { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
   .vr-buttons .btn { display: inline-flex; align-items: center; gap: 6px; }

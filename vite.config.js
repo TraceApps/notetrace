@@ -92,7 +92,7 @@ export default defineConfig({
             title: 'title',
             text: 'text',
             url: 'url',
-            files: [{ name: 'images', accept: ['image/*', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic'] }],
+            files: [{ name: 'images', accept: ['image/*', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', 'audio/*', '.m4a', '.mp3', '.wav', '.ogg', '.opus', '.webm', '.aac', '.amr', '.3gp'] }],
           },
         },
         icons: [

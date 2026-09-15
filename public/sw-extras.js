@@ -37,7 +37,7 @@ self.addEventListener('fetch', (event) => {
         const v = form.get(k);
         if (typeof v === 'string' && v) params.set(k, v.slice(0, 20000));
       }
-      const images = form.getAll('images').filter(f => f && typeof f === 'object' && /^image\//.test(f.type)).slice(0, 20);
+      const images = form.getAll('images').filter(f => f && typeof f === 'object' && /^(image|audio)\//.test(f.type)).slice(0, 20);
       if (images.length) {
         const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const cache = await caches.open(SHARE_CACHE);

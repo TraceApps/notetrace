@@ -12,6 +12,7 @@
 import { NoteApi } from '../api.js';
 import { isNative, getServerUrl, resolveAssetUrl } from '../platform.js';
 import { uploadNoteImages } from '../note-images.js';
+import { isAudioFile, prepareAudioFile } from '../voice-files.js';
 import { parseKeepNote } from './keep.js';
 import { parseBlinkoBackup, isBlinkoBackup } from './blinko.js';
 import { parseEnex, notebookFromFileName } from './evernote.js';
@@ -20,7 +21,8 @@ import { parseMarkdownNote, noteToMarkdown, exportFileName } from './markdown.js
 
 const BATCH = 200;
 const MD_RE = /\.(md|markdown|txt)$/i;
-const MIME_BY_EXT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', heic: 'image/heic', heif: 'image/heif', avif: 'image/avif' };
+const MIME_BY_EXT = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', heic: 'image/heic', heif: 'image/heif', avif: 'image/avif',
+  '3gp': 'audio/3gpp', amr: 'audio/amr', m4a: 'audio/mp4', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', webm: 'audio/webm', aac: 'audio/aac' };
 const EXT_BY_MIME = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'image/bmp': 'bmp', 'image/heic': 'heic', 'image/avif': 'avif', 'audio/webm': 'webm', 'audio/mp4': 'm4a', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/wav': 'wav' };
 
 async function _jszip() {
@@ -109,7 +111,7 @@ export async function parseImportFile(file, source, options = {}) {
     const blob = await entry.async('blob');
     const name = entry.name.split('/').pop();
     const ext = (name.split('.').pop() || '').toLowerCase();
-    return new File([blob], name, { type: MIME_BY_EXT[ext] || blob.type || 'application/octet-stream' });
+    return new File([blob], name, { type: ref.mime || MIME_BY_EXT[ext] || blob.type || 'application/octet-stream' });
   }
   return { notes, attachments, unreadable, trashedSkipped, readFile };
 }
@@ -139,7 +141,7 @@ async function _uploadWithRetry(files) {
  */
 export async function importParsedNotes(parsed, onProgress) {
   const { notes, readFile } = parsed;
-  const total = { imported: 0, skipped: 0, labels_created: 0, images: 0, imagesMissing: 0, imagesFailed: 0 };
+  const total = { imported: 0, skipped: 0, labels_created: 0, images: 0, imagesMissing: 0, imagesFailed: 0, voice: 0, voiceFailed: 0 };
   const withImages = [];
   for (let i = 0; i < notes.length; i += BATCH) {
     const batch = notes.slice(i, i + BATCH);
@@ -157,7 +159,22 @@ export async function importParsedNotes(parsed, onProgress) {
     const found = [];
     for (const ref of files) {
       const f = readFile ? await readFile(ref).catch(() => null) : null;
-      if (f) found.push(f); else total.imagesMissing++;
+      if (f) found.push(f); else if (ref.mime) total.voiceFailed++; else total.imagesMissing++;
+    }
+    // Voice recordings: uploaded as they are, or converted to M4A by the server.
+    const audio = found.filter(f => isAudioFile(f) && !/^image\//.test(f.type));
+    if (audio.length) {
+      const voice = [];
+      for (const f of audio) {
+        try { voice.push(await prepareAudioFile(f)); } catch { total.voiceFailed++; }
+      }
+      if (voice.length) {
+        try {
+          await NoteApi.importAddAttachments(id, voice);
+          total.voice += voice.length;
+        } catch { total.voiceFailed += voice.length; }
+      }
+      found.splice(0, found.length, ...found.filter(f => !audio.includes(f)));
     }
     if (found.length) {
       const up = await _uploadWithRetry(found);

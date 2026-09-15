@@ -10,6 +10,27 @@ RUN npm install
 COPY . .
 RUN npm run build
 
+# ── Stage 1b: a small audio-only ffmpeg ─────────────────────────────────────
+# Converts voice recordings imported from Google Keep (3GP/AMR) to M4A and
+# splits long recordings for transcription. Built with only the audio formats
+# NoteTrace handles, so it adds a few MB instead of a full ffmpeg's 125 MB.
+FROM node:20-alpine AS ffmpeg
+RUN apk add --no-cache build-base curl xz
+ARG FFMPEG_VERSION=7.1.1
+RUN curl -fsSL https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz | tar -xJ -C /tmp \
+ && cd /tmp/ffmpeg-${FFMPEG_VERSION} \
+ && ./configure --prefix=/opt/ffmpeg --disable-everything --disable-autodetect --disable-doc --disable-debug \
+      --disable-network --disable-x86asm --disable-ffplay --enable-small \
+      --enable-protocol=file,pipe \
+      --enable-demuxer=mov,matroska,ogg,mp3,wav,flac,amr,aac \
+      --enable-decoder=aac,opus,libopus,vorbis,mp3,mp3float,flac,pcm_s16le,pcm_s24le,pcm_f32le,amrnb,amrwb \
+      --enable-parser=aac,opus,vorbis,mpegaudio,flac \
+      --enable-encoder=aac \
+      --enable-muxer=ipod,mp4,segment,wav,webm,ogg,matroska \
+      --enable-filter=aresample,aformat,anull \
+      --enable-swresample \
+ && make -j"$(nproc)" && make install && strip /opt/ffmpeg/bin/ffmpeg /opt/ffmpeg/bin/ffprobe
+
 # ── Stage 2: Express server + static frontend ────────────────────────────────
 FROM node:20-alpine
 # python3 + make + g++ are needed by better-sqlite3's native build.
@@ -21,6 +42,7 @@ COPY server/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 COPY server/ .
 COPY --from=build /app/dist ./dist
+COPY --from=ffmpeg /opt/ffmpeg/bin/ffmpeg /opt/ffmpeg/bin/ffprobe /usr/local/bin/
 # Also ship the root package.json so the server can read APP_VERSION
 # from it at runtime. The `COPY server/package*.json ./` step above
 # put the SERVER package.json at /app/package.json; overwriting it
