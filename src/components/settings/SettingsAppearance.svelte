@@ -33,6 +33,7 @@
   $: START_PAGE_OPTS = [
     { value: '/', label: $_('nav.notes') },
     { value: '/reminders', label: $_('nav.reminders') },
+    { value: '/tasks', label: $_('nav.tasks') },
     { value: '/archive', label: $_('nav.archive') },
   ];
   const ACCENT_COLORS = [

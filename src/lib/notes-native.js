@@ -56,7 +56,7 @@ async function _hydrate(rows) {
   const ids = rows.map(r => r.id);
   const ph = ids.map(() => '?').join(',');
   const items = await _q(
-    `SELECT note_id, uuid, text, checked, position FROM checklist_items
+    `SELECT note_id, uuid, text, checked, position, due_date FROM checklist_items
       WHERE note_id IN (${ph}) AND deleted_at IS NULL ORDER BY position ASC, id ASC`, ids);
   const files = await _q(
     `SELECT note_id, uuid, url, mime, width, height, position, duration_ms, extracted_text FROM note_attachments
@@ -68,7 +68,7 @@ async function _hydrate(rows) {
   const itemMap = new Map();
   for (const it of items) {
     if (!itemMap.has(it.note_id)) itemMap.set(it.note_id, []);
-    itemMap.get(it.note_id).push({ uuid: it.uuid, text: it.text, checked: !!it.checked, position: it.position });
+    itemMap.get(it.note_id).push({ uuid: it.uuid, text: it.text, checked: !!it.checked, position: it.position, due_date: it.due_date || null });
   }
   const fileMap = new Map();
   for (const a of files) {
@@ -136,7 +136,7 @@ function _searchClause(q) {
 
 async function _itemsJson(noteId) {
   const rows = await _q(
-    `SELECT uuid, text, checked, position FROM checklist_items
+    `SELECT uuid, text, checked, position, due_date FROM checklist_items
       WHERE note_id = ? AND deleted_at IS NULL ORDER BY position ASC, id ASC`, [noteId]);
   return rows.length ? JSON.stringify(rows.map(r => ({ ...r, checked: !!r.checked }))) : null;
 }
@@ -169,15 +169,16 @@ async function _upsertItem(noteId, it, ts) {
   const existing = (await _q(`SELECT id FROM checklist_items WHERE uuid = ?`, [uuid]))[0];
   const text = String(it.text ?? '').slice(0, 5000);
   const position = Number.isFinite(+it.position) ? +it.position : 0;
+  const due = /^\d{4}-\d{2}-\d{2}$/.test(String(it.due_date || '')) ? String(it.due_date) : null;
   if (existing) {
     await _run(
-      `UPDATE checklist_items SET text = ?, checked = ?, position = ?, updated_at = ?, deleted_at = NULL, sync_status = 'pending' WHERE id = ?`,
-      [text, it.checked ? 1 : 0, position, ts, existing.id]);
+      `UPDATE checklist_items SET text = ?, checked = ?, position = ?, due_date = ?, updated_at = ?, deleted_at = NULL, sync_status = 'pending' WHERE id = ?`,
+      [text, it.checked ? 1 : 0, position, due, ts, existing.id]);
   } else {
     await _insert(
-      `INSERT INTO checklist_items (uuid, user_id, note_id, text, checked, position, created_at, updated_at, sync_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
-      [uuid, LOCAL_USER_ID, noteId, text, it.checked ? 1 : 0, position, ts, ts]);
+      `INSERT INTO checklist_items (uuid, user_id, note_id, text, checked, position, due_date, created_at, updated_at, sync_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+      [uuid, LOCAL_USER_ID, noteId, text, it.checked ? 1 : 0, position, due, ts, ts]);
   }
   return uuid;
 }
@@ -451,7 +452,7 @@ export const NotesNative = {
       const max = (await _q(`SELECT MAX(position) AS p FROM checklist_items WHERE note_id = ? AND deleted_at IS NULL`, [noteId]))[0];
       position = (max?.p || 0) + 1;
     }
-    await _upsertItem(noteId, { uuid: data.uuid, text: data.text, checked: data.checked, position }, ts);
+    await _upsertItem(noteId, { uuid: data.uuid, text: data.text, checked: data.checked, position, due_date: data.due_date }, ts);
     await _touch(noteId, ts);
     return _note(noteId);
   },
@@ -466,6 +467,7 @@ export const NotesNative = {
       text: 'text' in patch ? patch.text : item.text,
       checked: 'checked' in patch ? patch.checked : item.checked,
       position: 'position' in patch ? patch.position : item.position,
+      due_date: 'due_date' in patch ? patch.due_date : item.due_date,
     }, ts);
     await _touch(noteId, ts);
     return _note(noteId);

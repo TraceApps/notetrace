@@ -17,6 +17,7 @@
   import { nextOccurrence } from '../../lib/reminders.js';
   import { syncState } from '../../lib/sync.js';
   import { relativeTime } from '../../lib/relative-time.js';
+  import { todayStr } from '../../lib/due-dates.js';
   import LabelManager from '../notes/LabelManager.svelte';
   import LabelTreeItem from './LabelTreeItem.svelte';
   import { buildLabelTree } from '../../lib/label-tree.js';
@@ -49,6 +50,7 @@
   $: navItems = [
     { path: '/notes',     icon: 'sticky_note_2', label: $_('nav.notes') },
     { path: '/reminders', icon: 'notifications', label: $_('nav.reminders'), badge: dueToday },
+    { path: '/tasks',     icon: 'task_alt',      label: $_('nav.tasks'),     badge: tasksDue, badgeKey: 'sidebar.tasks_due' },
     ...($sharingAvailable ? [{ path: '/shared', icon: 'group', label: $_('nav.shared') }] : []),
     { path: '/archive',   icon: 'archive',       label: $_('nav.archive') },
     { path: '/trash',     icon: 'delete',        label: $_('nav.trash') },
@@ -64,6 +66,7 @@
 
   // ── Reminders due today (the badge on Reminders) ──────────────────
   let dueToday = 0;
+  let tasksDue = 0;   // open checklist items due today or overdue
   let _dueTimer;
   async function countDueToday() {
     try {
@@ -74,6 +77,10 @@
         const next = nextOccurrence(n.reminder_at, n.reminder_rrule, n.reminder_tz, now);
         return next && next >= now && next < end;
       }).length;
+      const all = await NoteApi.getNotes({ view: 'notes' });
+      const today = todayStr(now);
+      tasksDue = (all || []).filter(n => n.kind === 'checklist')
+        .flatMap(n => n.items || []).filter(i => !i.checked && i.due_date && i.due_date <= today).length;
     } catch { /* keep the last count */ }
   }
   $: $notesChanged, countDueToday();
@@ -199,7 +206,7 @@
           class="sidebar-item"
           class:active={isTabActive(item.path, activePath)}
           on:click={() => go(item.path)}
-          title={rail ? (item.badge ? `${item.label}: ${$_('sidebar.due_today', { values: { count: item.badge } })}` : item.label) : undefined}
+          title={rail ? (item.badge ? `${item.label}: ${$_(item.badgeKey || 'sidebar.due_today', { values: { count: item.badge } })}` : item.label) : undefined}
           aria-label={rail ? item.label : undefined}
         >
           <span class="material-symbols-rounded sidebar-icon">
@@ -209,7 +216,7 @@
           {#if !rail}
             <span class="sidebar-label">{item.label}</span>
             {#if item.badge}
-              <span class="nav-badge" title={$_('sidebar.due_today', { values: { count: item.badge } })}>{item.badge > 99 ? '99+' : item.badge}</span>
+              <span class="nav-badge" title={$_(item.badgeKey || 'sidebar.due_today', { values: { count: item.badge } })}>{item.badge > 99 ? '99+' : item.badge}</span>
             {/if}
           {/if}
           {#if isTabActive(item.path, activePath)}

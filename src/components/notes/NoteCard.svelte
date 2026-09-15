@@ -11,6 +11,7 @@
   import { formatDuration } from '../../lib/voice-recorder.js';
   import { isOwner, canEdit, isShared } from '../../lib/note-sharing.js';
   import { linkPreviews } from '../../stores/settings.js';
+  import { dueLabel, dueStatus } from '../../lib/due-dates.js';
   import { isNative } from '../../lib/platform.js';
   import { firstNoteUrl, getLinkPreview, previewImageUrl, previewIconUrl } from '../../lib/link-preview.js';
 
@@ -146,7 +147,7 @@
       {#each shownItems as item (item.uuid)}
         <li>
           <button class="card-check" aria-label={$_('notes.check_item')} disabled={!editable} on:click={(e) => toggleItem(e, item)}></button>
-          <span class="card-item-text">{item.text}</span>
+          <span class="card-item-text">{item.text}{#if item.due_date}<span class="card-due due-{dueStatus(item.due_date)}">{dueLabel(item.due_date, $_)}</span>{/if}</span>
         </li>
       {/each}
       {#if hiddenOpen > 0}
@@ -430,6 +431,9 @@
   .card-items { list-style: none; display: flex; flex-direction: column; gap: 7px; }
   .card-items li { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.4; color: color-mix(in srgb, var(--text-1) 82%, transparent); }
   .card-item-text { overflow-wrap: anywhere; }
+  .card-due { margin-left: 6px; font-size: 11px; font-weight: 600; color: var(--text-3); white-space: nowrap; }
+  .card-due.due-overdue { color: var(--danger); }
+  .card-due.due-today { color: var(--accent); }
   .card-check {
     width: 16px; height: 16px; margin-top: 1px; flex-shrink: 0;
     border-radius: 5px;

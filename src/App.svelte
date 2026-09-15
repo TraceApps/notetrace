@@ -7,6 +7,7 @@
 
   import BottomNav from './components/layout/BottomNav.svelte';
   import Sidebar   from './components/layout/Sidebar.svelte';
+  import Tasks     from './routes/Tasks.svelte';
   import UpdateBanner from './components/UpdateBanner.svelte';
   import Toast     from './components/ui/Toast.svelte';
   import ConfirmDialogMount from './components/ui/ConfirmDialogMount.svelte';
@@ -209,6 +210,7 @@
     '/trash':              Notes,
     '/label/:id':          Notes,
     '/shared':             Notes,
+    '/tasks':              Tasks,
     '/settings':           Settings,
     '/settings/:section':  Settings,
     '/wizard':             Wizard,
@@ -310,7 +312,7 @@
   onMount(async () => {
     // Start Page: only when the app opens on the default route, never over a
     // deep link, a share, or a notification tap.
-    if (['', '#', '#/'].includes(window.location.hash) && ['/reminders', '/archive'].includes($startPage)) {
+    if (['', '#', '#/'].includes(window.location.hash) && ['/reminders', '/tasks', '/archive'].includes($startPage)) {
       import('svelte-spa-router').then(({ replace }) => replace($startPage)).catch(() => {});
     }
 

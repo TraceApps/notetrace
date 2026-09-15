@@ -177,7 +177,7 @@ function _full(note, labelName) {
     title: note.title,
     kind: note.kind,
     text: note.kind === 'text' ? (body.length > BODY_LIMIT ? `${body.slice(0, BODY_LIMIT)}\n…(truncated)` : body) : undefined,
-    items: note.kind === 'checklist' ? (note.items || []).map(i => ({ text: i.text, checked: !!i.checked })) : undefined,
+    items: note.kind === 'checklist' ? (note.items || []).map(i => ({ text: i.text, checked: !!i.checked, ...(i.due_date ? { due: i.due_date } : {}) })) : undefined,
     labels: (note.labels || []).map(id => labelName.get(id)).filter(Boolean),
     color: note.color || null,
     pinned: !!note.pinned,

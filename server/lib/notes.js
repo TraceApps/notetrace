@@ -63,14 +63,14 @@ function _itemsFor(noteIds) {
   if (!noteIds.length) return new Map();
   const ph = noteIds.map(() => '?').join(',');
   const rows = db.prepare(
-    `SELECT note_id, uuid, text, checked, position FROM checklist_items
+    `SELECT note_id, uuid, text, checked, position, due_date FROM checklist_items
       WHERE note_id IN (${ph}) AND deleted_at IS NULL
       ORDER BY position ASC, id ASC`
   ).all(...noteIds);
   const map = new Map();
   for (const r of rows) {
     if (!map.has(r.note_id)) map.set(r.note_id, []);
-    map.get(r.note_id).push({ uuid: r.uuid, text: r.text, checked: !!r.checked, position: r.position });
+    map.get(r.note_id).push({ uuid: r.uuid, text: r.text, checked: !!r.checked, position: r.position, due_date: r.due_date || null });
   }
   return map;
 }
@@ -283,7 +283,7 @@ export function getNote(u, id) {
 
 function _itemsJson(noteId) {
   const rows = db.prepare(
-    `SELECT uuid, text, checked, position FROM checklist_items
+    `SELECT uuid, text, checked, position, due_date FROM checklist_items
       WHERE note_id = ? AND deleted_at IS NULL ORDER BY position ASC, id ASC`
   ).all(noteId);
   return rows.length ? JSON.stringify(rows.map(r => ({ ...r, checked: !!r.checked }))) : null;
@@ -338,7 +338,7 @@ export const restoreVersion = db.transaction((u, noteId, versionId) => {
     const items = v.items_json ? JSON.parse(v.items_json) : [];
     db.prepare(`UPDATE checklist_items SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND deleted_at IS NULL`)
       .run(ts, ts, noteId);
-    items.forEach((it, i) => _upsertItem(row.user_id, noteId, { text: it.text, checked: it.checked, position: i + 1 }, ts));
+    items.forEach((it, i) => _upsertItem(row.user_id, noteId, { text: it.text, checked: it.checked, position: i + 1, due_date: it.due_date }, ts));
   }
   return getNote(u, noteId);
 });
@@ -361,17 +361,25 @@ function _cleanTz(v) {
 
 // Items always carry the note owner's user_id, whoever adds them, so the
 // owner's queries and sync see every item on their note.
+/** A due date as YYYY-MM-DD, or null. */
+export function cleanDueDate(v) {
+  const s = String(v ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const d = new Date(`${s}T00:00:00Z`);
+  return Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === s ? s : null;
+}
+
 function _upsertItem(u, noteId, it, ts) {
   const uuid = typeof it.uuid === 'string' && it.uuid ? it.uuid : randomUUID();
   db.prepare(
-    `INSERT INTO checklist_items (uuid, user_id, note_id, text, checked, position, created_at, updated_at, deleted_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)
+    `INSERT INTO checklist_items (uuid, user_id, note_id, text, checked, position, due_date, created_at, updated_at, deleted_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
      ON CONFLICT(uuid) DO UPDATE SET
        text = excluded.text, checked = excluded.checked, position = excluded.position,
-       updated_at = excluded.updated_at, deleted_at = NULL
+       due_date = excluded.due_date, updated_at = excluded.updated_at, deleted_at = NULL
      WHERE checklist_items.note_id = excluded.note_id`
   ).run(uuid, u, noteId, String(it.text ?? '').slice(0, 5000), it.checked ? 1 : 0,
-        Number.isFinite(+it.position) ? +it.position : 0, ts, ts);
+        Number.isFinite(+it.position) ? +it.position : 0, cleanDueDate(it.due_date), ts, ts);
   return uuid;
 }
 
@@ -581,7 +589,7 @@ export const addItem = db.transaction((u, noteId, data = {}) => {
     const max = db.prepare(`SELECT MAX(position) AS p FROM checklist_items WHERE note_id = ? AND deleted_at IS NULL`).get(noteId);
     position = (max.p || 0) + 1;
   }
-  _upsertItem(row.user_id, noteId, { uuid: data.uuid, text: data.text, checked: data.checked, position }, ts);
+  _upsertItem(row.user_id, noteId, { uuid: data.uuid, text: data.text, checked: data.checked, position, due_date: data.due_date }, ts);
   _touch(noteId, ts);
   return getNote(u, noteId);
 });
@@ -598,6 +606,7 @@ export const updateItem = db.transaction((u, noteId, uuid, patch = {}) => {
     text: 'text' in patch ? patch.text : item.text,
     checked: 'checked' in patch ? patch.checked : item.checked,
     position: 'position' in patch ? patch.position : item.position,
+    due_date: 'due_date' in patch ? patch.due_date : item.due_date,
   }, ts);
   _touch(noteId, ts);
   if (!wasComplete && _checklistCompleted(noteId)) {

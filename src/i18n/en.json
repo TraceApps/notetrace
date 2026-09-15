@@ -7,7 +7,36 @@
     "labels":   "Labels",
     "settings": "Settings",
     "shared":   "Shared with Me",
-    "search":   "Search"
+    "search":   "Search",
+    "tasks":    "Tasks"
+  },
+  "tasks": {
+    "add_placeholder": "Add a task",
+    "add":             "Add",
+    "inbox_title":     "Tasks",
+    "group_by":        "Group Tasks",
+    "by_due":          "By Due Date",
+    "by_note":         "By List",
+    "group_overdue":   "Overdue",
+    "group_today":     "Today",
+    "group_tomorrow":  "Tomorrow",
+    "group_week":      "This Week",
+    "group_later":     "Later",
+    "group_none":      "No Due Date",
+    "done":            "Done: {text}",
+    "empty_title":     "Nothing to Do",
+    "empty_body":      "Unchecked items from every checklist show up here. Add one above, or give a checklist item a due date."
+  },
+  "due": {
+    "title":     "Due Date",
+    "add":       "Add a due date",
+    "change":    "Change the due date",
+    "today":     "Today",
+    "tomorrow":  "Tomorrow",
+    "yesterday": "Yesterday",
+    "next_week": "Next Week",
+    "pick":      "Pick a Date",
+    "clear":     "No Due Date"
   },
   "slash": {
     "title":     "Insert",
@@ -94,6 +123,7 @@
     "expand_label":    "Show nested labels",
     "collapse_label":  "Hide nested labels",
     "due_today":       "{count, plural, one {# reminder due today} other {# reminders due today}}",
+    "tasks_due":       "{count, plural, one {# task due or overdue} other {# tasks due or overdue}}",
     "synced":          "Synced {when}",
     "syncing":         "Syncing…",
     "offline":         "Offline",

@@ -31,7 +31,7 @@
       if (t.path.startsWith('#')) continue;
       if (norm === t.path || norm.startsWith(t.path + '/')) return i;
     }
-    return 0;
+    return -1;
   })();
 
   async function go(path) {
@@ -49,6 +49,7 @@
 
 <nav class="bottom-nav" role="navigation" aria-label="Main navigation">
   <div
+    class:hidden-pill={activeIdx < 0}
     class="nav-pill"
     style="left: calc({(activeIdx / tabs.length * 100).toFixed(2)}%); width: calc(100% / {tabs.length})"
   ></div>
@@ -73,6 +74,7 @@
 </nav>
 
 <style>
+  .hidden-pill { opacity: 0; }
   .bottom-nav {
     position: fixed;
     bottom: 0;

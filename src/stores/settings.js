@@ -23,6 +23,7 @@ export const USER_PREFS = new Set([
   'autoTranscribe','autoReadImages','aiTranscribeModel',
   // Note cards
   'linkPreviews', 'noteSort', 'noteOrder',
+  'tasksGroupBy',
   // Notifications
   'notifPushService',
   'appriseUrl','appriseTag','gotifyUrl','gotifyToken','ntfyUrl','ntfyTopic','ntfyToken',
@@ -268,6 +269,8 @@ export const linkPreviews      = createSettingStore('linkPreviews',      true);
 export const noteSort          = createSettingStore('noteSort',          'edited');
 export const noteOrder         = createSettingStore('noteOrder',         []);
 export const keyboardShortcuts = createSettingStore('keyboardShortcuts', true);
+// Tasks view: 'due' (by due date) or 'note'.
+export const tasksGroupBy      = createSettingStore('tasksGroupBy',      'due');
 export const cardDensity       = createSettingStore('cardDensity',       'comfortable');
 export const labelTreeCollapsed = createSettingStore('labelTreeCollapsed', []);
 export const swipeToArchive    = createSettingStore('swipeToArchive',    true);

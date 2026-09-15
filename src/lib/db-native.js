@@ -70,6 +70,7 @@ const SCHEMA = `
     text        TEXT NOT NULL DEFAULT '',
     checked     INTEGER NOT NULL DEFAULT 0,
     position    REAL NOT NULL DEFAULT 0,
+    due_date    TEXT,
     created_at  TEXT DEFAULT (datetime('now')),
     updated_at  TEXT DEFAULT (datetime('now')),
     deleted_at  TEXT DEFAULT NULL,
@@ -250,6 +251,9 @@ async function _migrateShareColumns() {
     const attCols = new Set((att?.values || []).map(c => c.name));
     if (attCols.size && !attCols.has('duration_ms')) await db.run(`ALTER TABLE note_attachments ADD COLUMN duration_ms INTEGER`);
     if (attCols.size && !attCols.has('extracted_text')) await db.run(`ALTER TABLE note_attachments ADD COLUMN extracted_text TEXT`);
+    const itemInfo = await db.query(`PRAGMA table_info(checklist_items)`);
+    const itemCols = new Set((itemInfo?.values || []).map(c => c.name));
+    if (itemCols.size && !itemCols.has('due_date')) await db.run(`ALTER TABLE checklist_items ADD COLUMN due_date TEXT`);
   } catch { /* best-effort */ }
 }
 

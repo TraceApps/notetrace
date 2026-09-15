@@ -12,6 +12,9 @@
   import { slide } from 'svelte/transition';
   import { _ } from 'svelte-i18n';
   import { dragHandleZone, dragHandle } from 'svelte-dnd-action';
+  import Popover from './Popover.svelte';
+  import DuePicker from './DuePicker.svelte';
+  import { dueLabel, dueStatus } from '../../lib/due-dates.js';
 
   export let items = [];
   export let editable = true;
@@ -27,6 +30,17 @@
   let textTimers = {};
 
   $: open = list.filter(i => !i.checked);
+
+  // Due dates
+  let dueFor = null, dueAnchor = null, dueOpen = false;
+  function openDue(e, item) { dueFor = item; dueAnchor = e.currentTarget.getBoundingClientRect(); dueOpen = true; }
+  function setDue(value) {
+    dueOpen = false;
+    const item = dueFor;
+    if (!item) return;
+    list = list.map(i => i.uuid === item.uuid ? { ...i, due_date: value } : i);
+    dispatch('update', { uuid: item.uuid, patch: { due_date: value } });
+  }
   $: done = list.filter(i => i.checked);
 
   function uuid() {
@@ -166,6 +180,16 @@
           on:keydown={(e) => onKeydown(e, item)}
           on:blur={() => textTimers[item.uuid] && flushText(item.uuid)}
         ></textarea>
+        {#if item.due_date}
+          <button type="button" class="due-chip due-{dueStatus(item.due_date)}" disabled={!editable}
+            on:click={(e) => openDue(e, item)} title={$_('due.change')}>
+            <span class="material-symbols-rounded">event</span>{dueLabel(item.due_date, $_)}
+          </button>
+        {:else if editable}
+          <button type="button" class="due-add" on:click={(e) => openDue(e, item)} aria-label={$_('due.add')} title={$_('due.add')}>
+            <span class="material-symbols-rounded">event</span>
+          </button>
+        {/if}
         {#if editable}
           <button type="button" class="remove" aria-label={$_('notes.remove_item')} on:click={() => remove(item)}>
             <span class="material-symbols-rounded">close</span>
@@ -208,7 +232,30 @@
   {/if}
 </div>
 
+<Popover bind:open={dueOpen} anchor={dueAnchor}>
+  {#if dueOpen}<DuePicker value={dueFor?.due_date || null} on:select={(e) => setDue(e.detail)} />{/if}
+</Popover>
+
 <style>
+  .due-chip {
+    flex-shrink: 0; height: 26px; margin-top: 3px; padding: 0 9px 0 7px;
+    display: inline-flex; align-items: center; gap: 4px;
+    border-radius: var(--radius-full); font-size: 12px; font-weight: 600; white-space: nowrap;
+    background: color-mix(in srgb, var(--text-1) 8%, transparent); color: var(--text-2);
+  }
+  .due-chip .material-symbols-rounded { font-size: 15px; }
+  .due-chip.due-overdue { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
+  .due-chip.due-today { background: var(--accent-dim); color: var(--accent); }
+  .due-chip:disabled { cursor: default; }
+  .due-add {
+    flex-shrink: 0; width: 30px; height: 30px; margin-top: 1px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; color: var(--text-3);
+    opacity: 0; transition: opacity var(--dur-fast);
+  }
+  .due-add .material-symbols-rounded { font-size: 18px; }
+  .item:hover .due-add, .item:focus-within .due-add { opacity: 1; }
+  @media (hover: none) { .item:not(:focus-within) .due-add { display: none; } }
+  .due-add:hover { background: color-mix(in srgb, var(--text-1) 8%, transparent); color: var(--text-1); }
   .checklist { display: flex; flex-direction: column; }
   .items { list-style: none; display: flex; flex-direction: column; }
   .item {
