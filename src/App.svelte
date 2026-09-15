@@ -354,10 +354,11 @@
       // scheduled set in step with the notes.
       import('./lib/note-reminders.js').then(({ registerReminderActions, rescheduleReminders }) => {
         registerReminderActions(
-          (id) => push(`/?note=${id}`),
+          (id) => (Number(id) < 0 ? push('/tasks') : push(`/?note=${id}`)),
           () => signalNotesChanged(),
         );
         rescheduleReminders();
+        window.addEventListener('note:tasks-digest-changed', () => rescheduleReminders());
       }).catch(() => { /* ignore */ });
     } else {
       // Browser reminders while a NoteTrace tab is open.

@@ -19,7 +19,7 @@ self.addEventListener('notificationclick', (event) => {
       tab.postMessage({ type: 'open-note', noteId });
       return;
     }
-    await self.clients.openWindow(`${scope}#/?note=${encodeURIComponent(noteId)}`);
+    await self.clients.openWindow(noteId === 'tasks' ? `${scope}#/tasks` : `${scope}#/?note=${encodeURIComponent(noteId)}`);
   })());
 });
 

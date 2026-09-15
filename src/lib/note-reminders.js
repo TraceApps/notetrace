@@ -16,7 +16,9 @@ import { registerPlugin } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { isNative } from './platform.js';
 import { NoteApi } from './api.js';
-import { REPEATS } from './reminders.js';
+import { REPEATS, zonedToUtc, toUtcString, localTimeZone } from './reminders.js';
+import { buildTaskDigest, cleanDigestTime } from '../../server/lib/task-digest-core.js';
+import { DB } from './db.js';
 import { reminderNotificationText } from './note-preview.js';
 
 const NoteReminders = isNative ? registerPlugin('NoteReminders') : null;
@@ -69,7 +71,37 @@ async function _reschedule() {
       const { title, body } = reminderNotificationText(n, fallback);
       return { id: n.id, title, body, at: n.reminder_at, rrule: n.reminder_rrule || null, tz: n.reminder_tz || null };
     });
+  reminders.push(...await _taskDigestAlarms());
   await NoteReminders.reschedule({ reminders });
+}
+
+// Tasks Due: one alarm per upcoming day that has something due, at the
+// Tasks Due time. Negative ids keep them apart from note ids; a tap opens Tasks.
+export const TASK_DIGEST_ID_BASE = -100;
+const DIGEST_DAYS = 14;
+async function _taskDigestAlarms() {
+  const enabled = DB.getSetting('notifTasksDue', true);
+  if (enabled === false || enabled === 'false') return [];
+  let notes = [];
+  try { notes = await NoteApi.getNotes({ view: 'notes' }); } catch { return []; }
+  const tasks = (notes || []).filter(n => n.kind === 'checklist')
+    .flatMap(n => (n.items || []).map(i => ({ ...i, list: n.title || '' })));
+  if (!tasks.some(t => t.due_date && !t.checked)) return [];
+  const tz = localTimeZone();
+  const [hh, mm] = cleanDigestTime(DB.getSetting('tasksDigestTime', '09:00')).split(':').map(Number);
+  const out = [];
+  const now = Date.now();
+  const today = new Date();
+  for (let i = 0; i < DIGEST_DAYS; i++) {
+    const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() + i);
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const digest = buildTaskDigest(tasks, dateStr);
+    if (!digest) continue;
+    const at = zonedToUtc(d.getFullYear(), d.getMonth() + 1, d.getDate(), hh, mm, tz);
+    if (at.getTime() <= now) continue;
+    out.push({ id: TASK_DIGEST_ID_BASE - i, title: digest.title, body: digest.body, at: toUtcString(at), rrule: null, tz });
+  }
+  return out;
 }
 
 /** Hand the native side the current reminder list. Debounced; safe to call after every change. */
@@ -117,6 +149,7 @@ export async function registerReminderActions(openNote, onChanged) {
   await _clearLegacy();
   try {
     await NoteReminders.addListener('reminderOpen', ({ noteId }) => { if (noteId) openNote(noteId); });
+    // Tasks Due alarms carry negative ids: openNote routes those to Tasks.
     // Done while the app runs; updateNote queues the change for sync.
     await NoteReminders.addListener('remindersChanged', () => { _applyDone(onChanged); });
     // Done while the app was closed: picked up at start and on every resume.

@@ -201,7 +201,7 @@
     regional:      ['regional','date','time','12h','24h','units','energy','kcal','kj','calories','kilojoules','imperial','metric','measurement system'],
     ai:            ['ai','trace','assistant','provider','model','custom model','model id','api key','chat','claude','openai','gemini','sonnet','opus','haiku','gpt','gemini 3','base url','artificial intelligence','smart log','smartlog','quick log','voice','dictate','hold to record','mic','transcribe','transcription','whisper','voice notes','read text','ocr','image text'],
     cooktrace:     ['cooktrace','cook trace','shopping','shopping list','groceries','grocery','send to cooktrace','integration','integrations','link','traceapps','recipes'],
-    notifications: ['notifications','reminders','cook day','thaw','alerts','push','apprise','gotify','ntfy','expiration','expiry','expires','expiring','pantry expiry','digest','weekly summary','shopping nudge'],
+    notifications: ['notifications','reminders','tasks due','task digest','due dates','cook day','thaw','alerts','push','apprise','gotify','ntfy','expiration','expiry','expires','expiring','pantry expiry','digest','weekly summary','shopping nudge'],
     email:         ['email','smtp','mail','password reset','invite','from address','tls','outgoing','send test','test email','recipient','test recipient','connection status','change password','change smtp'],
     importexport:  ['import','export','google keep','keep','takeout','markdown','obsidian','memos','joplin','blinko','bko','usememos','evernote','enex','zip','migrate','move from','images'],
     backup:        ['backup','export','import','restore','json','full backup','reset','danger zone'],

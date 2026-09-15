@@ -1308,7 +1308,10 @@
     "ntfy_token":                  "Bearer Token (Optional)",
     "reminders":                   "Reminders",
     "note_reminders":              "Note Reminders",
-    "note_reminders_desc":         "Get a notification when a note's reminder time comes due."
+    "note_reminders_desc":         "Get a notification when a note's reminder time comes due.",
+    "tasks_due":                   "Tasks Due",
+    "tasks_due_desc":              "Once a day, a notification listing checklist items due today and overdue.",
+    "tasks_due_time":              "Time"
   },
   "time_picker_ct": {
     "hour":                      "Hour",

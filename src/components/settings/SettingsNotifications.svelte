@@ -32,6 +32,8 @@
     return v === true || v === 'true';
   }
   let notifNoteReminders   = getBool('notifNoteReminders', true);
+  let notifTasksDue        = getBool('notifTasksDue', true);
+  let tasksDigestTime      = String(DB.getSetting('tasksDigestTime', '09:00') || '09:00');
   let browserPermission = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
 
   // Android: reminders fire at the exact minute only with the exact-alarm
@@ -233,11 +235,28 @@
       <input type="checkbox" class="toggle-cb" checked={notifNoteReminders}
         on:change={e => { notifNoteReminders = e.target.checked; toggleReminder('notifNoteReminders', e.target.checked); }} />
     </div>
+    <div class="setting-divider"></div>
+    <div class="setting-row">
+      <div>
+        <span class="setting-label">{$_('settings_notifications.tasks_due')}</span>
+        <span class="setting-desc">{$_('settings_notifications.tasks_due_desc')}</span>
+      </div>
+      <input type="checkbox" class="toggle-cb" checked={notifTasksDue}
+        on:change={e => { notifTasksDue = e.target.checked; toggleReminder('notifTasksDue', e.target.checked); window.dispatchEvent(new CustomEvent('note:tasks-digest-changed')); }} />
+    </div>
+    {#if notifTasksDue}
+      <div class="setting-row">
+        <span class="setting-label">{$_('settings_notifications.tasks_due_time')}</span>
+        <input class="input time-input" type="time" value={tasksDigestTime}
+          on:change={e => { tasksDigestTime = e.target.value || '09:00'; setS('tasksDigestTime', tasksDigestTime); window.dispatchEvent(new CustomEvent('note:tasks-digest-changed')); }} />
+      </div>
+    {/if}
   </div>
 </div>
 
 <style>
   .notif-body { display: flex; flex-direction: column; gap: 10px; }
+  .time-input { width: 130px; }
   .sub-label {
     font-size: 11px;
     font-weight: 700;

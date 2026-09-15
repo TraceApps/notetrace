@@ -15,6 +15,7 @@ import db from '../db.js';
 import { logger } from '../logger.js';
 import { purgeExpiredTrash } from './notes.js';
 import { deliverDueReminders, pruneReminderLog } from './reminder-delivery.js';
+import { deliverTaskDigests } from './task-digest.js';
 import { purgeOrphanUploads } from './upload-cleanup.js';
 
 const TICK_MS = 15 * 60 * 1000; // 15 minutes
@@ -30,6 +31,8 @@ async function _reminderTick() {
   try {
     const n = await deliverDueReminders();
     if (n > 0) logger.info?.(`[scheduler] delivered ${n} reminder(s)`);
+    const d = await deliverTaskDigests();
+    if (d > 0) logger.info?.(`[scheduler] sent ${d} tasks-due notification(s)`);
   } catch (e) {
     logger.warn(`[scheduler] reminder tick error: ${e.message}`);
   } finally {

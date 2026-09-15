@@ -28,6 +28,7 @@ export const USER_PREFS = new Set([
   'notifPushService',
   'appriseUrl','appriseTag','gotifyUrl','gotifyToken','ntfyUrl','ntfyTopic','ntfyToken',
   'notifNoteReminders',
+  'notifTasksDue', 'tasksDigestTime',
   // Hours between automatic update checks: 1, 4, 12, 24, or 0 for manual only.
   'updateCheckInterval',
 ]);
