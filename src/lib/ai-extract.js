@@ -14,6 +14,7 @@ import { aiProvider, aiApiKey, aiModel, aiBaseUrl, envLocks, aiTranscribeModel }
 import { traceReady } from './trace-run.js';
 import { apiUrl, isNative, getServerUrl, getAuthToken, resolveAssetUrl } from './platform.js';
 import { AI_DEFAULT_MODELS } from './aiChat.js';
+import { TIMED_TRANSCRIBE_PROMPT, parseTimedText, fromVerboseJson, mergePieces, whisperStyle, transcribeLimitBytes, chunkSeconds } from '../../server/lib/transcript.js';
 
 export const TRANSCRIBE_PROMPT = 'Transcribe this audio exactly, in its own language. Reply with only the transcript. If there is no speech, reply NONE.';
 export const IMAGE_TEXT_PROMPT = 'Read all the text in this image, in reading order, keeping line breaks. Reply with only the text. If there is no readable text, reply NONE.';
@@ -67,35 +68,89 @@ export async function fetchAttachmentBlob(url) {
   return res.blob();
 }
 
-export async function transcribeAudio(blob, mime = blob.type || 'audio/webm') {
-  if (get(envLocks).ai) {
-    const form = new FormData();
-    form.append('file', new File([blob], `voice-note.${mime.includes('mp4') ? 'm4a' : 'webm'}`, { type: mime }));
-    const res = await fetch(apiUrl('/api/ai/transcribe'), { method: 'POST', credentials: 'include', headers: _authHeaders(), body: form });
-    return cleanExtracted((await _json(res, 'Transcription')).text);
-  }
+const _audioExt = (mime) => (mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : mime.includes('wav') ? 'wav' : mime.includes('mpeg') ? 'mp3' : 'webm');
+
+/** One request's worth of audio to { text, segments } with the user's own provider. */
+async function _transcribePiece(blob, mime) {
   const cfg = _cfg();
   if (!AUDIO_PROVIDERS.includes(cfg.provider)) throw new Error('This AI provider can\'t transcribe audio. Use OpenAI, Gemini, or an OpenAI-compatible Whisper server.');
   if (cfg.provider === 'gemini') {
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${cfg.model}:generateContent?key=${cfg.apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: mime.split(';')[0], data: await _blobToBase64(blob) } }, { text: TRANSCRIBE_PROMPT }] }] }),
+      body: JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: mime.split(';')[0], data: await _blobToBase64(blob) } }, { text: TIMED_TRANSCRIBE_PROMPT }] }] }),
     });
     const data = await _json(res, 'Transcription');
-    return cleanExtracted(data.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '');
+    const raw = cleanExtracted(data.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '');
+    return raw ? parseTimedText(raw) : { text: '', segments: null };
   }
   const base = cfg.provider === 'openai' ? 'https://api.openai.com' : cfg.baseUrl;
   if (!base) throw new Error('Set a Base URL for the OpenAI-compatible provider in Settings, Trace.');
-  const form = new FormData();
-  form.append('file', new File([blob], `voice-note.${mime.includes('mp4') ? 'm4a' : 'webm'}`, { type: mime }));
-  form.append('model', get(aiTranscribeModel) || (cfg.provider === 'openai' ? 'gpt-4o-mini-transcribe' : 'whisper-1'));
-  const res = await fetch(`${base}/v1/audio/transcriptions`, {
-    method: 'POST',
-    headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {},
-    body: form,
+  const model = get(aiTranscribeModel) || (cfg.provider === 'openai' ? 'gpt-4o-mini-transcribe' : 'whisper-1');
+  const send = (timed) => {
+    const form = new FormData();
+    form.append('file', new File([blob], `voice-note.${_audioExt(mime)}`, { type: mime }));
+    form.append('model', model);
+    // Whisper-style models give times per sentence; the gpt-4o ones only text.
+    if (timed) { form.append('response_format', 'verbose_json'); form.append('timestamp_granularities[]', 'segment'); }
+    else if (cfg.provider === 'openai') form.append('chunking_strategy', 'auto');
+    return fetch(`${base}/v1/audio/transcriptions`, { method: 'POST', headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}, body: form });
+  };
+  const timed = whisperStyle(model);
+  let res = await send(timed);
+  if (timed && res.status === 400) res = await send(false);
+  const data = await _json(res, 'Transcription');
+  const r = data.segments ? fromVerboseJson(data) : { text: String(data.text || ''), segments: null };
+  const text = cleanExtracted(r.text);
+  return text ? { text, segments: r.segments } : { text: '', segments: null };
+}
+
+const _serverUpload = (url) => /^\/uploads\/[A-Za-z0-9._-]+$/.test(String(url || '')) && (!isNative || !!getServerUrl());
+
+/**
+ * Transcribe a voice note: { text, segments } (segments when the provider gives
+ * times). A recording too big for one request is split by the server and
+ * transcribed in pieces.
+ */
+export async function transcribeVoiceNote(att, blob = null) {
+  const mime = String(att?.mime || blob?.type || 'audio/webm').split(';')[0];
+  if (get(envLocks).ai) {
+    if (_serverUpload(att?.url)) {
+      const res = await fetch(apiUrl('/api/ai/transcribe'), {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ..._authHeaders() },
+        body: JSON.stringify({ url: att.url, mime }),
+      });
+      return _json(res, 'Transcription');
+    }
+    const file = blob || await fetchAttachmentBlob(att.url);
+    const form = new FormData();
+    form.append('file', new File([file], `voice-note.${_audioExt(mime)}`, { type: mime }));
+    const res = await fetch(apiUrl('/api/ai/transcribe'), { method: 'POST', credentials: 'include', headers: _authHeaders(), body: form });
+    return _json(res, 'Transcription');
+  }
+  const file = blob || await fetchAttachmentBlob(att.url);
+  const limit = transcribeLimitBytes(_cfg().provider);
+  if (file.size <= limit) return _transcribePiece(file, mime);
+  if (!_serverUpload(att?.url)) throw new Error('This recording is too long to transcribe in one request.');
+  const seconds = chunkSeconds(file.size, (att.duration_ms || 0) / 1000, limit);
+  const res = await fetch(apiUrl('/api/upload/split'), {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ..._authHeaders() },
+    body: JSON.stringify({ url: att.url, seconds }),
   });
-  return cleanExtracted((await _json(res, 'Transcription')).text);
+  const { pieces } = await _json(res, 'Splitting the recording');
+  const out = [];
+  for (const p of pieces) {
+    const part = await fetchAttachmentBlob(p.url);
+    out.push({ offset: p.offset, ...(await _transcribePiece(part, /\.m4a$/i.test(p.url) ? 'audio/mp4' : mime)) });
+  }
+  return mergePieces(out);
+}
+
+/** Plain transcript text for a recording within one request's size. */
+export async function transcribeAudio(blob, mime = blob.type || 'audio/webm') {
+  return (await transcribeVoiceNote({ mime }, blob)).text;
 }
 
 /** Downscale for reading (text stays legible at 1600px) and encode as JPEG. */

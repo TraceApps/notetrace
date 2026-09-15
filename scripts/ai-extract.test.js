@@ -26,12 +26,29 @@ async function fakeProvider(handler) {
 
 test('transcription posts the audio as multipart with the model and key', async () => {
   const p = await fakeProvider((url) => url.endsWith('/v1/audio/transcriptions') ? { json: { text: ' Buy stamps. ' } } : { status: 404, json: {} });
-  const text = await transcribeAudio({ provider: 'oai-compat', baseUrl: p.base, apiKey: 'k1' }, { buffer: Buffer.from('fake audio'), mime: 'audio/webm' });
+  const { text, segments } = await transcribeAudio({ provider: 'oai-compat', baseUrl: p.base, apiKey: 'k1' }, { buffer: Buffer.from('fake audio'), mime: 'audio/webm' });
   p.close();
   assert.equal(text, 'Buy stamps.');
+  assert.equal(segments, null);
   assert.equal(p.seen[0].auth, 'Bearer k1');
   assert.match(p.seen[0].type, /multipart\/form-data/);
   assert.match(p.seen[0].body.toString(), /whisper-1/);
+  // Whisper-style models are asked for timestamps.
+  assert.match(p.seen[0].body.toString(), /verbose_json/);
+});
+
+test('timestamps from verbose_json, and a server that refuses it falls back to text', async () => {
+  const p = await fakeProvider((url, body) => /verbose_json/.test(body.toString())
+    ? { json: { text: 'One. Two.', segments: [{ start: 0, end: 1.4, text: 'One.' }, { start: 1.4, end: 3, text: 'Two.' }] } }
+    : { json: { text: 'plain' } });
+  const r = await transcribeAudio({ provider: 'oai-compat', baseUrl: p.base }, { buffer: Buffer.from('x'), mime: 'audio/webm' });
+  assert.deepEqual(r.segments.map(s => s.start), [0, 1.4]);
+  const gpt = await transcribeAudio({ provider: 'oai-compat', baseUrl: p.base, transcribeModel: 'gpt-4o-mini-transcribe' }, { buffer: Buffer.from('x'), mime: 'audio/webm' });
+  assert.deepEqual(gpt, { text: 'plain', segments: null });
+  p.close();
+  const refuse = await fakeProvider((url, body) => /verbose_json/.test(body.toString()) ? { status: 400, json: { error: 'no' } } : { json: { text: 'fallback' } });
+  assert.deepEqual(await transcribeAudio({ provider: 'oai-compat', baseUrl: refuse.base }, { buffer: Buffer.from('x'), mime: 'audio/webm' }), { text: 'fallback', segments: null });
+  refuse.close();
 });
 
 test('image text sends a vision message and treats NONE as no text', async () => {

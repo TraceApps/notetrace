@@ -40,7 +40,7 @@
   import VoiceRecorder from './VoiceRecorder.svelte';
   import VoiceNotes from './VoiceNotes.svelte';
   import { recordingSupported, uploadVoiceNote } from '../../lib/voice-recorder.js';
-  import { extractSupport, transcribeAudio, readImageText, fetchAttachmentBlob, isAudio, isImage } from '../../lib/ai-extract.js';
+  import { extractSupport, transcribeVoiceNote, readImageText, fetchAttachmentBlob, isAudio, isImage } from '../../lib/ai-extract.js';
   import { autoTranscribe, autoReadImages } from '../../stores/settings.js';
   import { traceReady, askTrace, TRACE_ACTIONS, titleLine } from '../../lib/trace-run.js';
   import AttachmentGrid from './AttachmentGrid.svelte';
@@ -282,17 +282,18 @@
     if (extracting[att.uuid]) return;
     extracting = { ...extracting, [att.uuid]: true };
     try {
-      const file = blob || await fetchAttachmentBlob(att.url);
-      const text = isAudio(att) ? await transcribeAudio(file, att.mime || file.type) : await readImageText(file);
+      let text, segments = null;
+      if (isAudio(att)) ({ text, segments } = await transcribeVoiceNote(att, blob));
+      else text = await readImageText(blob || await fetchAttachmentBlob(att.url));
       if (!text) { showInfo(isAudio(att) ? $_('trace_extract.no_speech') : $_('trace_extract.no_text')); return; }
-      attachments = attachments.map(a => a.uuid === att.uuid ? { ...a, extracted_text: text } : a);
+      attachments = attachments.map(a => a.uuid === att.uuid ? { ...a, extracted_text: text, segments } : a);
       if (voiceFirst && isAudio(att)) {
         if (kind === 'text' && !body.trim() && !contentLocked) addTextToNote(text);
         if (!title.trim() && $traceReady) suggestTitle(text);
       }
       await enqueue(async () => {
         if (!noteId) return;
-        await NoteApi.updateAttachment(noteId, att.uuid, { extracted_text: text });
+        await NoteApi.updateAttachment(noteId, att.uuid, isAudio(att) ? { extracted_text: text, segments } : { extracted_text: text });
       });
     } catch (err) {
       showError($_('trace_extract.failed', { values: { error: err.message || '' } }));

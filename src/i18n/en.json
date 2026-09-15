@@ -455,7 +455,10 @@
     "pause_recording": "Pause",
     "resume":        "Resume",
     "position":      "Position in the voice note",
-    "speed":         "Play speed"
+    "speed":         "Play speed",
+    "play_from":     "Play from {time}",
+    "show_all":      "Show all {count} lines",
+    "show_less":     "Show less"
   },
   "cooktrace": {
     "section":          "CookTrace",

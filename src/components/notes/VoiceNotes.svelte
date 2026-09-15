@@ -11,6 +11,7 @@
   import { fetchAttachmentBlob } from '../../lib/ai-extract.js';
   import { voicePlaybackRate } from '../../stores/settings.js';
   import { WAVEFORM_BARS } from '../../../server/lib/voice-meta.js';
+  import { segmentAt } from '../../../server/lib/transcript.js';
 
   export let notes = [];          // audio attachments
   export let editable = false;
@@ -137,6 +138,18 @@
     else if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggle(a); }
   }
 
+  // ── Timestamped transcripts ───────────────────────────────────────
+  // Long transcripts show a few lines: the first ones, or the ones around what's playing.
+  const SHORT = 6;
+  let expanded = {};
+  function visibleSegments(a, at, isPlaying, open) {
+    const segs = a.segments || [];
+    if (open || segs.length <= SHORT + 2) return segs.map((s, i) => ({ s, i }));
+    const cur = isPlaying || at > 0 ? Math.max(0, segmentAt(segs, at)) : 0;
+    const from = Math.max(0, Math.min(segs.length - SHORT, cur - 1));
+    return segs.slice(from, from + SHORT).map((s, j) => ({ s, i: from + j }));
+  }
+
   // ── Waveforms for recordings saved without one ────────────────────
   const _asked = new Set();
   $: for (const a of notes) {
@@ -188,7 +201,30 @@
             </button>
           {/if}
         </div>
-        {#if a.extracted_text}
+        {#if a.extracted_text && a.segments?.length}
+          {@const cur = playing === a.uuid || at > 0 ? segmentAt(a.segments, at) : -1}
+          <ol class="vn-segs">
+            {#each visibleSegments(a, at, playing === a.uuid, expanded[a.uuid]) as { s, i } (i)}
+              <li>
+                <button class="vn-seg" class:current={i === cur} on:click={() => seek(a, s.start, true)}
+                  aria-label={$_('voice.play_from', { values: { time: formatDuration(s.start * 1000) } })}>
+                  <span class="vn-ts">{formatDuration(s.start * 1000)}</span><span class="vn-line">{s.text}</span>
+                </button>
+              </li>
+            {/each}
+          </ol>
+          {#if a.segments.length > SHORT + 2}
+            <button class="vn-link" on:click={() => expanded = { ...expanded, [a.uuid]: !expanded[a.uuid] }}>
+              <span class="material-symbols-rounded">{expanded[a.uuid] ? 'unfold_less' : 'unfold_more'}</span>
+              {expanded[a.uuid] ? $_('voice.show_less') : $_('voice.show_all', { values: { count: a.segments.length } })}
+            </button>
+          {/if}
+          {#if editable}
+            <button class="vn-link" on:click={() => dispatch('addtext', a.extracted_text)}>
+              <span class="material-symbols-rounded">note_add</span>{$_('trace_extract.add_to_note')}
+            </button>
+          {/if}
+        {:else if a.extracted_text}
           <p class="vn-text">{a.extracted_text}</p>
           {#if editable}
             <button class="vn-link" on:click={() => dispatch('addtext', a.extracted_text)}>
@@ -226,6 +262,17 @@
   .vn-rate:hover { color: var(--text-1); }
   .vn-x { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
   .vn-x:hover { color: var(--text-1); background: color-mix(in srgb, var(--text-1) 8%, transparent); }
+  .vn-segs { list-style: none; margin: 8px 0 2px; padding: 0; display: flex; flex-direction: column; }
+  .vn-seg {
+    width: 100%; display: flex; gap: 10px; align-items: baseline; text-align: left;
+    padding: 4px 6px; border-radius: 8px; font-size: 14px; line-height: 1.5; color: var(--text-1);
+    transition: background 120ms;
+  }
+  .vn-seg:hover { background: color-mix(in srgb, var(--text-1) 7%, transparent); }
+  .vn-seg.current { background: var(--accent-dim); }
+  .vn-seg.current .vn-ts { color: var(--accent); }
+  .vn-ts { flex-shrink: 0; min-width: 38px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-3); }
+  .vn-line { flex: 1; min-width: 0; }
   .vn-text { margin: 8px 2px 2px; font-size: 14px; line-height: 1.5; color: var(--text-1); white-space: pre-wrap; }
   .vn-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; padding: 4px 6px; border-radius: 8px; font-size: 13px; color: var(--accent); }
   .vn-link:hover:not(:disabled) { background: var(--accent-dim); }

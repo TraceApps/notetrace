@@ -5,7 +5,7 @@ import fs from 'fs';
 import { requireAuth } from '../middleware/auth.js';
 import { makeRateLimiter } from '../middleware/rate-limit.js';
 import { detectImageType } from '../lib/image-magic.js';
-import { audioToolsAvailable, convertToM4a, probeDurationMs } from '../lib/audio-tools.js';
+import { audioToolsAvailable, convertToM4a, probeDurationMs, splitAudio } from '../lib/audio-tools.js';
 
 const uploadLimit = makeRateLimiter({ max: 60, windowMs: 60_000, label: 'upload' });
 
@@ -34,6 +34,26 @@ const upload = multer({
     cb(new Error('Images, audio, or videos only'));
   },
 });
+
+/** An /uploads/<file> URL to its path on disk, or null (no directories, no escaping). */
+export function uploadFilePath(url) {
+  const m = String(url || '').match(/^\/uploads\/([A-Za-z0-9._-]+)$/);
+  if (!m || m[1].startsWith('.')) return null;
+  const file = path.join(uploadsPath, m[1]);
+  return fs.existsSync(file) ? file : null;
+}
+
+// Pieces of long recordings, kept a few hours for the app to transcribe.
+const splitDir = path.join(uploadsPath, 'split-tmp');
+function _cleanSplits() {
+  try {
+    const cutoff = Date.now() - 3 * 3600 * 1000;
+    for (const f of fs.readdirSync(splitDir)) {
+      const p = path.join(splitDir, f);
+      if (fs.statSync(p).mtimeMs < cutoff) fs.unlinkSync(p);
+    }
+  } catch { /* nothing to clean */ }
+}
 
 const router = Router();
 router.use(requireAuth);
@@ -90,6 +110,18 @@ router.post('/audio', uploadLimit, (req, res, next) => {
     if (!ok) return res.status(415).json({ error: 'That audio file couldn\'t be read.' });
     res.json({ url: `/uploads/${name}`, mime: 'audio/mp4', duration_ms: await probeDurationMs(dest) });
   });
+});
+
+// A long voice note in pieces, for transcribing with a provider's size limit.
+// Body: { url, seconds }. Replies { pieces: [{ url, offset }] } (offset in seconds).
+router.post('/split', uploadLimit, async (req, res) => {
+  const file = uploadFilePath(req.body?.url);
+  if (!file) return res.status(400).json({ error: 'An uploaded voice note is required' });
+  if (!(await audioToolsAvailable())) return res.status(501).json({ error: 'This server can\'t split audio (ffmpeg isn\'t installed).' });
+  _cleanSplits();
+  const pieces = await splitAudio(file, Number(req.body?.seconds) || 600, splitDir);
+  if (!pieces) return res.status(415).json({ error: 'That recording couldn\'t be split.' });
+  res.json({ pieces: pieces.map(p => ({ url: `/uploads/split-tmp/${path.basename(p.file)}`, offset: p.offset })) });
 });
 
 /** { audio_convert }: what the server can do with audio. */

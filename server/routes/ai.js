@@ -6,7 +6,9 @@ import { makeRateLimiter } from '../middleware/rate-limit.js';
 import { getOpenAIChatParams } from '../lib/openai-chat-params.js';
 import db from '../db.js';
 import multer from 'multer';
-import { transcribeAudio, readImageText } from '../lib/ai-extract.js';
+import { transcribeAudio, transcribeFile, readImageText } from '../lib/ai-extract.js';
+import { uploadFilePath } from './upload.js';
+import os from 'node:os';
 
 const router = Router();
 const aiChatLimit = makeRateLimiter({ max: 30, windowMs: 60_000, label: 'ai' });
@@ -115,13 +117,26 @@ function _serverCfg() {
 }
 const _audioUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
+// Body: a file (multipart), or { url, mime } for a voice note already uploaded,
+// which may be any length: long ones are split and transcribed in pieces.
+// Replies { text, segments }.
 router.post('/transcribe', requireAuth, aiChatLimit, (req, res, next) => {
+  if (req.is('application/json')) {
+    return (async () => {
+      try {
+        const file = uploadFilePath(req.body?.url);
+        if (!file) return res.status(400).json({ error: 'An uploaded voice note is required' });
+        res.json(await transcribeFile(_serverCfg(), file, { mime: String(req.body?.mime || 'audio/webm'), splitDir: os.tmpdir() }));
+      } catch (e) {
+        res.status(502).json({ error: e.message || 'Transcription failed' });
+      }
+    })();
+  }
   _audioUpload.single('file')(req, res, async (err) => {
     try {
       if (err) return res.status(413).json({ error: 'Voice notes up to 25 MB can be transcribed.' });
       if (!req.file || !/^audio\//.test(req.file.mimetype)) return res.status(400).json({ error: 'An audio file is required' });
-      const text = await transcribeAudio(_serverCfg(), { buffer: req.file.buffer, mime: req.file.mimetype, filename: req.file.originalname || 'voice-note.webm' });
-      res.json({ text });
+      res.json(await transcribeAudio(_serverCfg(), { buffer: req.file.buffer, mime: req.file.mimetype, filename: req.file.originalname || 'voice-note.webm' }));
     } catch (e) {
       res.status(502).json({ error: e.message || 'Transcription failed' });
     }
