@@ -263,8 +263,13 @@
   }
 
   $: emptyIcon = query || filtering ? 'search_off' : view === 'reminders' ? 'notifications' : view === 'archive' ? 'archive' : view === 'trash' ? 'delete' : view === 'shared' ? 'group' : activeLabel ? 'label' : 'sticky_note_2';
-  $: emptyKey = query || filtering ? 'notes.empty_search' : view === 'reminders' ? 'routes.reminders.empty' : view === 'archive' ? 'routes.archive.empty'
-    : view === 'trash' ? 'routes.trash.empty' : view === 'shared' ? 'routes.shared.empty' : activeLabel ? 'routes.label.empty' : 'routes.notes.empty';
+  $: [emptyTitle, emptyBody] = query || filtering ? ['notes.empty_search_title', 'notes.empty_search_body']
+    : view === 'reminders' ? ['routes.reminders.empty_title', 'routes.reminders.empty_body']
+    : view === 'archive' ? ['routes.archive.empty_title', 'routes.archive.empty_body']
+    : view === 'trash' ? ['routes.trash.empty_title', 'routes.trash.empty_body']
+    : view === 'shared' ? ['routes.shared.empty_title', 'routes.shared.empty_body']
+    : activeLabel ? ['routes.label.empty_title', 'routes.label.empty_body']
+    : ['routes.notes.empty_title', 'routes.notes.empty_body'];
 
   function openNote(e) {
     if (splitPane) openInPane({ note: e.detail });
@@ -789,8 +794,8 @@
             {#if !filtered.length}
               <div class="list-empty">
                 <span class="material-symbols-rounded">{emptyIcon}</span>
-                <strong>{$_(emptyKey + '_title')}</strong>
-                <p>{$_(emptyKey + '_body')}</p>
+                <strong>{$_(emptyTitle)}</strong>
+                <p>{$_(emptyBody)}</p>
               </div>
             {:else}
               {#each listGroups as g (g.key)}
@@ -845,8 +850,8 @@
     {:else if !filtered.length}
       <div class="empty">
         <span class="material-symbols-rounded empty-icon">{emptyIcon}</span>
-        <h2>{$_(emptyKey + '_title')}</h2>
-        <p>{$_(emptyKey + '_body')}</p>
+        <h2>{$_(emptyTitle)}</h2>
+        <p>{$_(emptyBody)}</p>
       </div>
     {:else if listMode}
       <div class="list-col list-card">
