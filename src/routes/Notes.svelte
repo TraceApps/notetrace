@@ -8,7 +8,7 @@
    *   /label/:id   notes carrying one label
    */
   import { onMount, onDestroy, tick } from 'svelte';
-  import { slide, fly } from 'svelte/transition';
+  import { slide, fly, fade } from 'svelte/transition';
   import { location, querystring, replace as replaceRoute } from 'svelte-spa-router';
   import { _ } from 'svelte-i18n';
   import { bannerStyle } from '../stores/settings.js';
@@ -77,8 +77,6 @@
 
   // ── Filter chips under search ─────────────────────────────────────
   let filters = emptyFilters();
-  let searchFocused = false;
-  let _blurTimer;
   $: filtering = hasFilters(filters);
   // Custom order applies to the grid in Notes, Shared with Me, and labels.
   $: orderable = (view === 'notes' || view === 'shared') && !timeline;
@@ -96,12 +94,28 @@
       noteOrder.set(mergeOrder($noteOrder, keys));
     }
   }
-  $: showFilters = searchFocused || filtering || !!query;
+  // Search lives in the page banner: the search button (or / or Ctrl+K)
+  // turns the banner into a search field, with filter chips underneath.
+  let searchOpen = false;
+  $: if (query || filtering) searchOpen = true;
+  $: showFilters = searchOpen;
+  async function openSearch() {
+    searchOpen = true;
+    await tick();
+    searchEl?.focus();
+    searchEl?.select();
+  }
+  function closeSearch() {
+    const had = !!query;
+    query = '';
+    filters = emptyFilters();
+    searchOpen = false;
+    if (had) load();
+  }
+  let viewOpen = false, viewAnchor = null;
   // A new view starts unfiltered.
   $: view, labelId, (filters = emptyFilters());
   $: filterLabels = $labels.filter(l => l.id !== labelId);
-  function onSearchFocus() { clearTimeout(_blurTimer); searchFocused = true; }
-  function onSearchBlur() { _blurTimer = setTimeout(() => { searchFocused = false; }, 160); }
   function flip(group, value) { filters = toggleFilter(filters, group, value); }
 
   $: pinned = view === 'notes' ? filtered.filter(n => n.pinned) : [];
@@ -148,7 +162,7 @@
 
   let searchEl;
   const shortcutLabel = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || '') ? '\u2318K' : 'Ctrl K';
-  const focusSearch = () => { searchEl?.focus(); searchEl?.select(); };
+  const focusSearch = () => { openSearch(); };
   onMount(() => {
     refreshLabels();
     window.addEventListener('note:focus-search', focusSearch);
@@ -218,6 +232,12 @@
   function openNote(e) {
     if (splitPane) openInPane({ note: e.detail });
     else editing = { note: e.detail, originId: e.detail.id };
+  }
+  let captureImageInput;
+  function newNoteWithImages(files) {
+    const entry = { kind: 'text', labels: labelId != null ? [labelId] : [], prefill: { images: files } };
+    if (splitPane) openInPane(entry);
+    else editing = entry;
   }
   function newNote(kind = 'text') {
     const entry = { kind, labels: labelId != null ? [labelId] : [] };
@@ -617,54 +637,33 @@
 </script>
 
 <div class="page-shell notes-page">
-  <header class="page-header" class:banner-gradient={$bannerStyle === 'gradient'} class:banner-animated={$bannerStyle === 'animated'}>
-    <h1>{heading}</h1>
-  </header>
-
-  <div class="notes-toolbar">
-    <div class="search">
-      <span class="material-symbols-rounded">search</span>
-      <input type="search" bind:this={searchEl} placeholder={$_('notes.search_placeholder')} bind:value={query} on:input={onSearch}
-        on:focus={onSearchFocus} on:blur={onSearchBlur}
-        aria-label={$_('notes.search_placeholder')} />
-      {#if !query}
-        <kbd class="search-kbd" aria-hidden="true">{shortcutLabel}</kbd>
-      {/if}
-      {#if query}
-        <button class="search-clear" on:click={clearSearch} aria-label={$_('notes.clear_search')}>
+  <header class="page-header notes-header" class:searching={searchOpen} class:banner-gradient={$bannerStyle === 'gradient'} class:banner-animated={$bannerStyle === 'animated'}>
+    {#if searchOpen}
+      <div class="header-search" role="search" in:fade={{ duration: 140 }}>
+        <span class="material-symbols-rounded">search</span>
+        <input type="search" bind:this={searchEl} placeholder={$_('notes.search_in', { values: { view: heading } })} bind:value={query} on:input={onSearch}
+          on:keydown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSearch(); } }}
+          aria-label={$_('notes.search_placeholder')} />
+        {#if !query}<kbd class="search-kbd" aria-hidden="true">{shortcutLabel}</kbd>{/if}
+        <button class="btn-icon header-btn" on:click={closeSearch} title={$_('notes.close_search')} aria-label={$_('notes.close_search')}>
           <span class="material-symbols-rounded">close</span>
         </button>
-      {/if}
-    </div>
-    <div class="toolbar-actions">
-    {#if view !== 'reminders'}
-      <div class="layout-switch" role="radiogroup" aria-label={$_('list.layout')}>
-        {#each [['grid', 'grid_view', 'timeline.show_grid'], ['list', 'view_list', 'timeline.show_list'], ['timeline', 'view_timeline', 'timeline.show_timeline']] as [value, icon, label]}
-          <button role="radio" aria-checked={($notesLayout || 'grid') === value} class:on={($notesLayout || 'grid') === value}
-            title={$_(label)} aria-label={$_(label)} on:click={() => notesLayout.set(value)}>
-            <span class="material-symbols-rounded">{icon}</span>
-          </button>
-        {/each}
       </div>
-      {#if listMode}
-        <div class="group-by">
-          <span class="material-symbols-rounded group-by-icon" aria-hidden="true">expand_more</span>
-          <select value={$listGroupBy} on:change={(e) => listGroupBy.set(e.target.value)} aria-label={$_('list.group_by')} title={$_('list.group_by')}>
-            <option value="none">{$_('list.group_none')}</option>
-            <option value="label">{$_('list.group_label')}</option>
-            <option value="color">{$_('list.group_color')}</option>
-            <option value="date">{$_('list.group_date')}</option>
-          </select>
-        </div>
-      {/if}
+    {:else}
+      <h1>{heading}</h1>
+      <div class="header-actions" in:fade={{ duration: 140 }}>
+        <button class="btn-icon header-btn" on:click={openSearch} title="{$_('notes.search_placeholder')} ({shortcutLabel})" aria-label={$_('notes.search_placeholder')}>
+          <span class="material-symbols-rounded">search</span>
+        </button>
+        {#if view !== 'reminders'}
+          <button class="btn-icon header-btn" on:click={(e) => { viewAnchor = e.currentTarget.getBoundingClientRect(); viewOpen = true; }}
+            title={$_('list.view_options')} aria-label={$_('list.view_options')} aria-haspopup="menu">
+            <span class="material-symbols-rounded">{listMode ? 'view_list' : timeline ? 'view_timeline' : 'grid_view'}</span>
+          </button>
+        {/if}
+      </div>
     {/if}
-    {#if view === 'trash' && notes.length}
-      <button class="btn btn-secondary empty-trash" on:click={emptyTrash}>
-        <span class="material-symbols-rounded">delete_sweep</span>{$_('notes.empty_trash')}
-      </button>
-    {/if}
-    </div>
-  </div>
+  </header>
 
   {#if showFilters}
     <div class="filter-bar" role="group" aria-label={$_('filters.title')} transition:slide={{ duration: 180 }}>
@@ -702,17 +701,29 @@
   {/if}
 
   <div class="notes-body">
-    {#if canCapture}
+    {#if canCapture && !searchOpen}
       <div class="capture" role="group" aria-label={$_('notes.take_a_note')}>
         <button class="capture-main" on:click={() => newNote('text')}>{$_('notes.take_a_note')}</button>
         <button class="capture-icon" on:click={() => newNote('checklist')} title={$_('notes.new_checklist')} aria-label={$_('notes.new_checklist')}>
           <span class="material-symbols-rounded">check_box</span>
         </button>
+        <button class="capture-icon" on:click={() => captureImageInput.click()} title={$_('notes.new_with_image')} aria-label={$_('notes.new_with_image')}>
+          <span class="material-symbols-rounded">add_photo_alternate</span>
+        </button>
+        <input bind:this={captureImageInput} type="file" accept="image/*" multiple hidden
+          on:change={(e) => { const files = [...(e.target.files || [])]; e.target.value = ''; if (files.length) newNoteWithImages(files); }} />
       </div>
     {/if}
 
     {#if view === 'trash'}
-      <p class="trash-note">{$_('notes.trash_retention')}</p>
+      <div class="trash-note">
+        <p>{$_('notes.trash_retention')}</p>
+        {#if notes.length}
+          <button class="btn btn-secondary empty-trash" on:click={emptyTrash}>
+            <span class="material-symbols-rounded">delete_sweep</span>{$_('notes.empty_trash')}
+          </button>
+        {/if}
+      </div>
     {/if}
 
     {#if loading}
@@ -768,7 +779,7 @@
             {#if pane}
               {#key paneKey}
                 <NoteEditor bind:this={paneRef} inline note={pane.note || null} initialKind={pane.kind || 'text'}
-                  initialLabels={pane.labels || []} on:close={closePane} />
+                  initialLabels={pane.labels || []} prefill={pane.prefill || null} on:close={closePane} />
               {/key}
             {:else}
               <div class="pane-empty">
@@ -914,9 +925,68 @@
   <ReminderPicker reminderAt={null} repeat={null} tz={null} on:set={(e) => bulkReminder(e.detail)} on:clear={bulkClearReminder} />
 </Popover>
 <ShortcutsHelp bind:open={helpOpen} />
+<Popover bind:open={viewOpen} anchor={viewAnchor}>
+  <div class="view-menu" role="menu">
+    <p class="vm-title">{$_('list.layout')}</p>
+    {#each [['grid', 'grid_view', 'timeline.show_grid', 'list.grid_desc'], ['list', 'view_list', 'timeline.show_list', 'list.list_desc'], ['timeline', 'view_timeline', 'timeline.show_timeline', 'list.timeline_desc']] as [value, icon, label, desc]}
+      <button class="vm-row" role="menuitemradio" aria-checked={($notesLayout || 'grid') === value} class:on={($notesLayout || 'grid') === value}
+        on:click={() => { notesLayout.set(value); if (value !== 'list') viewOpen = false; }}>
+        <span class="material-symbols-rounded">{icon}</span>
+        <span class="vm-text"><strong>{$_(label)}</strong><small>{$_(desc)}</small></span>
+        {#if ($notesLayout || 'grid') === value}<span class="material-symbols-rounded vm-check">check</span>{/if}
+      </button>
+    {/each}
+    {#if listMode}
+      <p class="vm-title">{$_('list.group_by')}</p>
+      <div class="vm-chips">
+        {#each [['none', 'list.group_none'], ['label', 'list.group_label'], ['color', 'list.group_color'], ['date', 'list.group_date']] as [value, label]}
+          <button class="fchip" class:on={$listGroupBy === value} aria-pressed={$listGroupBy === value} on:click={() => listGroupBy.set(value)}>{$_(label)}</button>
+        {/each}
+      </div>
+    {/if}
+  </div>
+</Popover>
 <ActionSheet bind:open={menuOpen} title={menuNote?.title || ''} actions={menuActions} on:select={onMenuSelect} />
 
 <style>
+  /* Search in the banner */
+  .notes-header .header-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .notes-header .header-btn { border-radius: 12px; color: var(--text-2); display: flex; align-items: center; justify-content: center; transition: background var(--dur-fast), color var(--dur-fast); }
+  .notes-header .header-btn:hover { background: color-mix(in srgb, var(--text-1) 10%, transparent); color: var(--text-1); }
+  .notes-header.banner-gradient .header-btn, .notes-header.banner-animated .header-btn { color: rgba(255, 255, 255, 0.92); }
+  .notes-header.banner-gradient .header-btn:hover, .notes-header.banner-animated .header-btn:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+  .header-search {
+    flex: 1; min-width: 0; height: 40px;
+    display: flex; align-items: center; gap: 8px; padding: 0 0 0 12px;
+    border-radius: 12px;
+    background: var(--surface-2); border: 1px solid var(--border-strong);
+    color: var(--text-3);
+    max-width: 720px; margin: 0 auto;
+  }
+  .header-search input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text-1); font-size: 15px; }
+  .header-search input::-webkit-search-cancel-button { display: none; }
+  .notes-header.banner-gradient .header-search, .notes-header.banner-animated .header-search {
+    background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.28); color: rgba(255, 255, 255, 0.85);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
+  .notes-header.banner-gradient .header-search input, .notes-header.banner-animated .header-search input { color: #fff; }
+  .notes-header.banner-gradient .header-search input::placeholder, .notes-header.banner-animated .header-search input::placeholder { color: rgba(255, 255, 255, 0.72); }
+  .notes-header.banner-gradient .search-kbd, .notes-header.banner-animated .search-kbd { border-color: rgba(255, 255, 255, 0.3); color: rgba(255, 255, 255, 0.8); }
+
+  .view-menu { display: flex; flex-direction: column; gap: 2px; width: 280px; max-width: 100%; }
+  :global(.pop-panel.sheet) .view-menu { width: 100%; }
+  .vm-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); padding: 6px 8px 4px; }
+  .vm-row { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 10px; border-radius: 12px; text-align: left; color: var(--text-1); }
+  .vm-row:hover { background: color-mix(in srgb, var(--text-1) 7%, transparent); }
+  .vm-row.on { background: var(--accent-dim); }
+  .vm-row > .material-symbols-rounded { font-size: 22px; color: var(--text-2); }
+  .vm-row.on > .material-symbols-rounded { color: var(--accent); }
+  .vm-text { flex: 1; display: flex; flex-direction: column; }
+  .vm-text strong { font-size: 14px; font-weight: 600; }
+  .vm-text small { font-size: 12px; color: var(--text-3); }
+  .vm-check { color: var(--accent) !important; font-size: 20px !important; }
+  .vm-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 2px 8px 8px; }
+
   .bulk-bar {
     position: fixed; z-index: 150;
     bottom: calc(var(--safe-bottom) + 24px);
@@ -950,18 +1020,6 @@
     .bulk-divider { margin: 0 2px; }
   }
 
-  .layout-switch { display: flex; gap: 2px; padding: 3px; border-radius: var(--radius-md); background: var(--surface-2); border: 1px solid var(--border); }
-  .layout-switch button { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; color: var(--text-3); transition: background var(--dur-fast), color var(--dur-fast); }
-  .layout-switch button .material-symbols-rounded { font-size: 20px; }
-  .layout-switch button:hover { color: var(--text-1); }
-  .layout-switch button.on { background: var(--surface-1); color: var(--accent); box-shadow: var(--shadow-sm); }
-  .group-by { position: relative; }
-  .group-by select {
-    height: 44px; padding: 0 30px 0 12px; border-radius: var(--radius-md);
-    background: var(--surface-2); border: 1px solid var(--border); color: var(--text-1); font-size: 13px;
-    appearance: none; -webkit-appearance: none; cursor: pointer;
-  }
-  .group-by-icon { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 18px; color: var(--text-3); pointer-events: none; }
 
   .list-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
   .list-layout.split { grid-template-columns: minmax(300px, 420px) minmax(0, 1fr); }
@@ -982,27 +1040,7 @@
   .notes-section.timeline .section-label { max-width: 720px; margin-left: auto; margin-right: auto; }
 
   .notes-page { --notes-max: 1680px; }
-  /* Search sits on the same center line and width as the capture bar, with
-     the view buttons to its right. Phones stack it as a plain row. */
-  .notes-toolbar {
-    display: grid; grid-template-columns: 1fr minmax(0, 600px) 1fr; align-items: center; gap: 12px;
-    padding: 12px var(--page-px) 0;
-    max-width: var(--notes-max); margin: 0 auto; width: 100%;
-  }
-  .toolbar-actions { grid-column: 3; justify-self: start; display: flex; align-items: center; gap: 8px; }
-  .search {
-    grid-column: 2; width: 100%;
-    transition: border-color var(--dur-fast), box-shadow var(--dur-fast), background var(--dur-fast);
-    height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 14px;
-    background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-md);
-    color: var(--text-3);
-  }
-  .search:focus-within { border-color: var(--accent); background: var(--surface-1); box-shadow: 0 0 0 4px var(--accent-dim); }
-  .search input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text-1); font-size: 15px; }
-  .search input::-webkit-search-cancel-button { display: none; }
-  .search-clear { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
-  .search-clear:hover { color: var(--text-1); background: color-mix(in srgb, var(--text-1) 8%, transparent); }
-  .empty-trash { height: 44px; }
+  .empty-trash { height: 38px; }
 
   .filter-bar {
     display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px;
@@ -1061,7 +1099,7 @@
   .capture-icon { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: var(--text-2); }
   .capture-icon:hover { background: color-mix(in srgb, var(--text-1) 8%, transparent); color: var(--text-1); }
 
-  .trash-note { text-align: center; font-size: 13px; color: var(--text-3); }
+  .trash-note { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 14px; text-align: center; font-size: 13px; color: var(--text-3); }
 
   .notes-section { display: flex; flex-direction: column; gap: 12px; }
   .section-label {
@@ -1099,8 +1137,6 @@
   .fab .material-symbols-rounded { font-size: 30px; }
   .fab.hidden-fab { visibility: hidden; }
   @media (max-width: 600px) {
-    .notes-toolbar { display: flex; }
-    .search { flex: 1; }
     .capture { display: none; }
     .fab { display: flex; }
     .notes-body { gap: 18px; padding-top: 16px; }

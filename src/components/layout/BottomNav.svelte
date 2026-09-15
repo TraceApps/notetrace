@@ -12,10 +12,7 @@
     { path: '/notes',    icon: 'sticky_note_2', label: $_('nav.notes')    },
     { path: '/reminders', icon: 'notifications', label: $_('nav.reminders') },
     { path: '/archive',  icon: 'archive',       label: $_('nav.archive')  },
-    // With the ☰ menu available (Both), Trash lives there and Search takes its tab.
-    $navStyle === 'both'
-      ? { path: '#search', icon: 'search',      label: $_('nav.search')   }
-      : { path: '/trash',  icon: 'delete',      label: $_('nav.trash')    },
+    { path: '/trash',    icon: 'delete',        label: $_('nav.trash')    },
     { path: '/settings', icon: 'settings',      label: $_('nav.settings') },
   ];
   $: activeIdx = (() => {
