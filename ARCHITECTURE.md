@@ -249,6 +249,38 @@ API reports it through `window.viewport.segments`. It sets `fold-book` or
 its divider to a book fold. Folding or unfolding with a note open flushes the
 editor and reopens the note in the pane or full screen.
 
+### Long lists draw a screenful at a time
+
+`Notes.svelte` keeps a `shown` count (60 at a time) and slices the notes it
+hands to the grid, the timeline, and the List layout; a marker element after
+the last one (`src/lib/grow-on-scroll.js`, an IntersectionObserver) raises it as
+you scroll, and the count resets when the view, the query, or the filters
+change. Selection, search, and the keyboard keys work on the full list, so only
+the drawing is windowed.
+
+### Uploads can't be mistaken for pages
+
+`safeUploadExtension()` in `server/lib/upload-paths.js` names every upload from
+an allowlist for its kind, never from the uploader's file name, and
+`UPLOAD_RESPONSE_HEADERS` serves `/uploads` with `nosniff` and a sandboxing
+content policy, which also covers files stored before this.
+
+### A voice note that can't be uploaded waits
+
+`src/lib/pending-voice.js` keeps the recording (and, for a note that doesn't
+exist yet, what to create it with) in IndexedDB, retries when the connection
+returns, the app comes forward, or once a minute, and hands the result to an
+open editor through a `note:voice-uploaded` event, or attaches and transcribes
+it itself. `close()` won't clean up a note that has one waiting.
+
+### The installed web app works offline
+
+The service worker precaches the built app and falls back to `index.html` for
+navigations, keeps `/uploads` files (`CacheFirst`, range requests so a cached
+recording can be scrubbed), and keeps the last notes, labels, and settings
+(`NetworkFirst`). `logout()` deletes those two caches so an account's notes
+don't outlive its session on a shared computer.
+
 ### Label icons
 
 A label's optional `icon` is a Material Symbols name from the fixed list in

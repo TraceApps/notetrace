@@ -82,6 +82,11 @@ Items marked ~~strikethrough~~ have been implemented.
 - ~~Two-pane List workspace with a resizable list column~~
 - ~~Foldables: Auto navigation, per-screen layouts, fold-aware book and tabletop layouts~~
 - ~~Label icons~~
+- ~~Big libraries: notes drawn a screenful at a time~~
+- ~~Offline in the installed web app, with voice uploads that retry~~
+- ~~Undo for deleted items, attachments, and text/checklist switches~~
+- ~~Search: marked matches, voice and image hits, recent searches~~
+- ~~Title band on cards~~
 - ~~Due date notifications for checklist items~~
 - ~~Trace and MCP tools for tasks and due dates~~
 
