@@ -8,6 +8,17 @@
     "settings": "Settings",
     "shared":   "Shared with Me"
   },
+  "filters": {
+    "title":     "Filter Notes",
+    "lists":     "Lists",
+    "text":      "Text",
+    "images":    "Images",
+    "voice":     "Voice",
+    "reminders": "Reminders",
+    "shared":    "Shared",
+    "links":     "Links",
+    "clear":     "Clear Filters"
+  },
   "sidebar": {
     "collapse":        "Collapse Sidebar",
     "expand":          "Expand Sidebar",

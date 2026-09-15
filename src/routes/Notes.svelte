@@ -8,6 +8,7 @@
    *   /label/:id   notes carrying one label
    */
   import { onMount, onDestroy, tick } from 'svelte';
+  import { slide } from 'svelte/transition';
   import { location, querystring, replace as replaceRoute } from 'svelte-spa-router';
   import { _ } from 'svelte-i18n';
   import { bannerStyle } from '../stores/settings.js';
@@ -29,6 +30,8 @@
   import { notesLayout } from '../stores/settings.js';
   import NoteCard from '../components/notes/NoteCard.svelte';
   import { pendingShare, shareToNote, takeSharedFiles } from '../lib/share-intent.js';
+  import { FILTER_TYPES, emptyFilters, hasFilters, matchesFilters, toggleFilter } from '../lib/note-filters.js';
+  import { NOTE_COLORS, colorDot } from '../lib/note-colors.js';
 
   export let params = {};
 
@@ -64,14 +67,28 @@
   let reminderTarget = null, reminderAnchor = null, reminderOpen = false;
   let menuNote = null, menuOpen = false;
 
-  $: pinned = view === 'notes' ? notes.filter(n => n.pinned) : [];
+  // ── Filter chips under search ─────────────────────────────────────
+  let filters = emptyFilters();
+  let searchFocused = false;
+  let _blurTimer;
+  $: filtering = hasFilters(filters);
+  $: filtered = filtering ? notes.filter(n => matchesFilters(n, filters)) : notes;
+  $: showFilters = searchFocused || filtering || !!query;
+  // A new view starts unfiltered.
+  $: view, labelId, (filters = emptyFilters());
+  $: filterLabels = $labels.filter(l => l.id !== labelId);
+  function onSearchFocus() { clearTimeout(_blurTimer); searchFocused = true; }
+  function onSearchBlur() { _blurTimer = setTimeout(() => { searchFocused = false; }, 160); }
+  function flip(group, value) { filters = toggleFilter(filters, group, value); }
+
+  $: pinned = view === 'notes' ? filtered.filter(n => n.pinned) : [];
   $: byNextReminder = view === 'reminders'
-    ? [...notes].sort((a, b) =>
+    ? [...filtered].sort((a, b) =>
         (nextOccurrence(a.reminder_at, a.reminder_rrule, a.reminder_tz) || 0) - (nextOccurrence(b.reminder_at, b.reminder_rrule, b.reminder_tz) || 0))
     : [];
   $: upcoming = byNextReminder.filter(n => !isPast(n.reminder_at, n.reminder_rrule));
   $: pastReminders = byNextReminder.filter(n => isPast(n.reminder_at, n.reminder_rrule)).reverse();
-  $: others = view === 'notes' ? notes.filter(n => !n.pinned) : view === 'reminders' ? upcoming : notes;
+  $: others = view === 'notes' ? filtered.filter(n => !n.pinned) : view === 'reminders' ? upcoming : filtered;
   $: heading = activeLabel ? activeLabel.name
     : view === 'reminders' ? $_('routes.reminders.title')
     : view === 'archive' ? $_('routes.archive.title')
@@ -330,6 +347,7 @@
     <div class="search">
       <span class="material-symbols-rounded">search</span>
       <input type="search" bind:this={searchEl} placeholder={$_('notes.search_placeholder')} bind:value={query} on:input={onSearch}
+        on:focus={onSearchFocus} on:blur={onSearchBlur}
         aria-label={$_('notes.search_placeholder')} />
       {#if !query}
         <kbd class="search-kbd" aria-hidden="true">{shortcutLabel}</kbd>
@@ -356,6 +374,41 @@
     </div>
   </div>
 
+  {#if showFilters}
+    <div class="filter-bar" role="group" aria-label={$_('filters.title')} transition:slide={{ duration: 180 }}>
+      {#each FILTER_TYPES as t (t.key)}
+        {#if !(view === 'reminders' && t.key === 'reminders') && !(view === 'shared' && t.key === 'shared')}
+          <button type="button" class="fchip" class:on={filters.types.includes(t.key)} aria-pressed={filters.types.includes(t.key)}
+            on:mousedown|preventDefault on:click={() => flip('types', t.key)}>
+            <span class="material-symbols-rounded">{t.icon}</span>{$_(t.label)}
+          </button>
+        {/if}
+      {/each}
+      <span class="fsep" aria-hidden="true"></span>
+      {#each NOTE_COLORS.filter(c => c.value) as c (c.value)}
+        <button type="button" class="fchip fcolor" class:on={filters.colors.includes(c.value)} aria-pressed={filters.colors.includes(c.value)}
+          title={$_(`notes.color_${c.value}`)} aria-label={$_(`notes.color_${c.value}`)}
+          on:mousedown|preventDefault on:click={() => flip('colors', c.value)}>
+          <span class="fdot" style="background:{c.dot}"></span>
+        </button>
+      {/each}
+      {#if filterLabels.length}
+        <span class="fsep" aria-hidden="true"></span>
+        {#each filterLabels as l (l.id)}
+          <button type="button" class="fchip" class:on={filters.labels.includes(l.id)} aria-pressed={filters.labels.includes(l.id)}
+            on:mousedown|preventDefault on:click={() => flip('labels', l.id)}>
+            <span class="fdot small" style="background:{colorDot(l.color)}"></span>{l.name}
+          </button>
+        {/each}
+      {/if}
+      {#if filtering}
+        <button type="button" class="fchip fclear" on:mousedown|preventDefault on:click={() => filters = emptyFilters()}>
+          <span class="material-symbols-rounded">filter_alt_off</span>{$_('filters.clear')}
+        </button>
+      {/if}
+    </div>
+  {/if}
+
   <div class="notes-body">
     {#if canCapture}
       <div class="capture" role="group" aria-label={$_('notes.take_a_note')}>
@@ -374,13 +427,13 @@
       <div class="skeleton-grid" aria-hidden="true">
         {#each Array(6) as _s, i}<div class="skeleton" style="height:{120 + (i % 3) * 50}px"></div>{/each}
       </div>
-    {:else if !notes.length}
+    {:else if !filtered.length}
       <div class="empty">
         <span class="material-symbols-rounded empty-icon">
-          {query ? 'search_off' : view === 'reminders' ? 'notifications' : view === 'archive' ? 'archive' : view === 'trash' ? 'delete' : view === 'shared' ? 'group' : activeLabel ? 'label' : 'sticky_note_2'}
+          {query || filtering ? 'search_off' : view === 'reminders' ? 'notifications' : view === 'archive' ? 'archive' : view === 'trash' ? 'delete' : view === 'shared' ? 'group' : activeLabel ? 'label' : 'sticky_note_2'}
         </span>
         <h2>
-          {query ? $_('notes.empty_search_title')
+          {query || filtering ? $_('notes.empty_search_title')
             : view === 'reminders' ? $_('routes.reminders.empty_title')
             : view === 'archive' ? $_('routes.archive.empty_title')
             : view === 'trash' ? $_('routes.trash.empty_title')
@@ -389,7 +442,7 @@
             : $_('routes.notes.empty_title')}
         </h2>
         <p>
-          {query ? $_('notes.empty_search_body')
+          {query || filtering ? $_('notes.empty_search_body')
             : view === 'reminders' ? $_('routes.reminders.empty_body')
             : view === 'archive' ? $_('routes.archive.empty_body')
             : view === 'trash' ? $_('routes.trash.empty_body')
@@ -495,6 +548,38 @@
   .search-clear { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
   .search-clear:hover { color: var(--text-1); background: color-mix(in srgb, var(--text-1) 8%, transparent); }
   .empty-trash { height: 44px; }
+
+  .filter-bar {
+    display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px;
+    max-width: min(var(--notes-max), 980px); margin: 10px auto 0; width: 100%;
+    padding: 0 var(--page-px);
+  }
+  .fchip {
+    height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px 0 10px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text-2); font-size: 13px; font-weight: 500;
+    transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast), transform 120ms ease;
+  }
+  .fchip .material-symbols-rounded { font-size: 17px; }
+  .fchip:hover { border-color: var(--border-strong); color: var(--text-1); }
+  .fchip:active { transform: scale(0.96); }
+  .fchip.on {
+    background: var(--accent-dim); color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  .fchip.fcolor { width: 32px; padding: 0; justify-content: center; }
+  .fchip.fcolor.on { box-shadow: 0 0 0 2px var(--accent); }
+  .fdot { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15); }
+  .fdot.small { width: 8px; height: 8px; box-shadow: none; }
+  .fclear { color: var(--text-3); border-style: dashed; }
+  .fsep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+  @media (max-width: 600px) {
+    .filter-bar { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+    .filter-bar::-webkit-scrollbar { display: none; }
+    .fchip { flex-shrink: 0; }
+  }
 
   .notes-body {
     display: flex; flex-direction: column; gap: 24px;
