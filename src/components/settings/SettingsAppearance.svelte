@@ -10,8 +10,9 @@
   import { applyAppearance, applyAccentColor } from '../../stores/settings.js';
   import {
     appearance, accentColor, navStyle, sidebarPersistent, disableAnimations,
-    bannerStyle, bannerAnimation, startPage, forceMobileLayout,
+    bannerStyle, bannerAnimation, startPage, forceMobileLayout, sidebarRail, linkPreviews,
   } from '../../stores/settings.js';
+  import { linkPreviewsAvailable } from '../../lib/link-preview.js';
   import { openColorPicker } from '../../stores/color-picker.js';
 
   // Theme / accent options — mirror NT exactly.
@@ -113,6 +114,16 @@
         </div>
         <input type="checkbox" class="toggle-cb" checked={$sidebarPersistent} on:change={e => sidebarPersistent.set(e.target.checked)} />
       </div>
+      {#if $sidebarPersistent}
+        <div class="setting-divider"></div>
+        <div class="setting-row">
+          <div>
+            <span class="setting-label">{$_('settings_page.appearance.sidebar_rail')}</span>
+            <div class="setting-desc">{$_('settings_page.appearance.sidebar_rail_desc')}</div>
+          </div>
+          <input type="checkbox" class="toggle-cb" checked={$sidebarRail} on:change={e => sidebarRail.set(e.target.checked)} />
+        </div>
+      {/if}
     {/if}
     <div class="setting-divider"></div>
     <div class="setting-row">
@@ -122,6 +133,16 @@
       </div>
       <input type="checkbox" class="toggle-cb" checked={$forceMobileLayout} on:change={e => forceMobileLayout.set(e.target.checked)} />
     </div>
+    {#if linkPreviewsAvailable}
+      <div class="setting-divider"></div>
+      <div class="setting-row">
+        <div>
+          <span class="setting-label">{$_('settings_page.appearance.link_previews')}</span>
+          <div class="setting-desc">{$_('settings_page.appearance.link_previews_desc')}</div>
+        </div>
+        <input type="checkbox" class="toggle-cb" checked={$linkPreviews} on:change={e => linkPreviews.set(e.target.checked)} />
+      </div>
+    {/if}
     {#if START_PAGE_OPTS.length > 1}
     <div class="setting-divider"></div>
     <div class="setting-row">

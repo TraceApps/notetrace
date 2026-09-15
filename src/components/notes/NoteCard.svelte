@@ -10,6 +10,9 @@
   import { isAudio, isImage } from '../../lib/ai-extract.js';
   import { formatDuration } from '../../lib/voice-recorder.js';
   import { isOwner, canEdit, isShared } from '../../lib/note-sharing.js';
+  import { linkPreviews } from '../../stores/settings.js';
+  import { isNative } from '../../lib/platform.js';
+  import { firstNoteUrl, getLinkPreview, previewImageUrl, previewIconUrl } from '../../lib/link-preview.js';
 
   export let note;
   /** 'notes' | 'archive' | 'trash' controls which quick actions show. */
@@ -37,6 +40,29 @@
   $: owner = isOwner(note);
   $: editable = canEdit(note);
   $: shared = isShared(note);
+
+  // Preview of the first link in the note.
+  let linkPreview = null;
+  let imageFailed = false, iconFailed = false;
+  $: linkUrl = $linkPreviews && view !== 'trash' ? firstNoteUrl(note) : null;
+  $: loadPreview(linkUrl);
+  async function loadPreview(url) {
+    linkPreview = null; imageFailed = false; iconFailed = false;
+    if (!url) return;
+    const p = await getLinkPreview(url);
+    if (url === linkUrl) linkPreview = p;
+  }
+
+  async function openLink(e) {
+    e.stopPropagation();
+    if (selecting) { e.preventDefault(); dispatch('select', { note, range: e.shiftKey }); return; }
+    // The Android app opens links in the system browser, not inside the app.
+    if (isNative) {
+      e.preventDefault();
+      const { Browser } = await import('@capacitor/browser');
+      Browser.open({ url: linkPreview.url }).catch(() => {});
+    }
+  }
 
   function open(e) {
     // While selecting, or with Ctrl/Cmd held, a click selects instead of opening.
@@ -138,6 +164,26 @@
     <p class="card-body card-placeholder">{$_('notes.empty_note')}</p>
   {/if}
 
+  {#if linkPreview}
+    <a class="card-link" href={linkPreview.url} target="_blank" rel="noopener noreferrer"
+      on:click={openLink}
+      on:keydown|stopPropagation title={linkPreview.url}>
+      {#if linkPreview.image && !imageFailed}
+        <img class="link-image" src={previewImageUrl(linkPreview.url)} alt="" loading="lazy" draggable="false" on:error={() => imageFailed = true} />
+      {/if}
+      <span class="link-text">
+        {#if linkPreview.title}<span class="link-title">{linkPreview.title}</span>{/if}
+        <span class="link-site">
+          {#if linkPreview.icon && !iconFailed}
+            <img class="link-icon" src={previewIconUrl(linkPreview.url)} alt="" loading="lazy" draggable="false" on:error={() => iconFailed = true} />
+          {:else}
+            <span class="material-symbols-rounded link-icon-fallback">link</span>
+          {/if}
+          <span class="link-host">{linkPreview.site || ''}</span>
+        </span>
+      </span>
+    </a>
+  {/if}
   {#if note.kind === 'checklist' && totalItems > 1 && checkedCount > 0}
     <div class="card-progress" role="progressbar" aria-valuemin="0" aria-valuemax={totalItems} aria-valuenow={checkedCount}
       aria-label={$_('notes.checked_items', { values: { count: checkedCount } })}>
@@ -293,6 +339,27 @@
     box-shadow: 0 0 0 2px var(--accent), var(--card-rest-shadow);
   }
   .note-card.selecting .card-pin, .note-card.selecting .card-actions { visibility: hidden; }
+
+  /* Link preview */
+  .card-link {
+    display: flex; flex-direction: column; overflow: hidden;
+    border-radius: var(--radius-md);
+    border: 1px solid color-mix(in srgb, var(--text-1) 9%, transparent);
+    background: color-mix(in srgb, var(--text-1) 4%, transparent);
+    color: var(--text-1); text-decoration: none;
+    transition: border-color 200ms ease, background 200ms ease;
+  }
+  .card-link:hover { border-color: color-mix(in srgb, var(--note-glow) 40%, transparent); background: color-mix(in srgb, var(--text-1) 7%, transparent); }
+  .link-image { display: block; width: 100%; aspect-ratio: 1.91 / 1; object-fit: cover; background: color-mix(in srgb, var(--text-1) 6%, transparent); }
+  .link-text { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px 9px; min-width: 0; }
+  .link-title {
+    font-size: 13px; font-weight: 600; line-height: 1.35;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .link-site { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .link-icon { width: 14px; height: 14px; border-radius: 3px; flex-shrink: 0; object-fit: contain; }
+  .link-icon-fallback { font-size: 14px; color: var(--text-3); }
+  .link-host { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .card-progress {
     height: 3px; border-radius: 3px; overflow: hidden;

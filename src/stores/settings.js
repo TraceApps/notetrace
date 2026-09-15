@@ -21,6 +21,8 @@ export const USER_PREFS = new Set([
   'smartLogEnabled',
   // Voice notes and images: automatic transcription / reading text with Trace
   'autoTranscribe','autoReadImages','aiTranscribeModel',
+  // Note cards
+  'linkPreviews',
   // Notifications
   'notifPushService',
   'appriseUrl','appriseTag','gotifyUrl','gotifyToken','ntfyUrl','ntfyTopic','ntfyToken',
@@ -257,6 +259,7 @@ export const disableAnimations = createSettingStore('disableAnimations', false);
 export const biometricLoginEnabled = createSettingStore('biometricLoginEnabled', false);
 export const appLockEnabled    = createSettingStore('appLockEnabled',    false);
 export const notesLayout       = createSettingStore('notesLayout',       'grid');
+export const linkPreviews      = createSettingStore('linkPreviews',      true);
 export const appLockTimeoutMin = createSettingStore('appLockTimeoutMin', 1);
 // Force-mobile layout: keep the mobile single-column pattern even on
 // wide viewports. Gates every desktop @media rule via the

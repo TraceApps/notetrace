@@ -90,6 +90,8 @@ async function runTick() {
     try {
       const n = purgeOrphanUploads();
       if (n > 0) logger.info?.(`[scheduler] removed ${n} unused upload(s)`);
+      // Link previews nobody has looked at in a month.
+      db.prepare(`DELETE FROM link_previews WHERE fetched_at < datetime('now', '-30 days')`).run();
     } catch (e) {
       logger.debug?.(`[scheduler] upload cleanup error: ${e.message}`);
     }

@@ -424,6 +424,21 @@ db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_notif_log_dedup ON notification_log(user_id, kind, ref_id, fired_date);
 `);
 
+// Link previews for note cards (server/lib/link-preview.js). A cache: safe
+// to delete, refilled on the next view.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS link_previews (
+    url         TEXT PRIMARY KEY,
+    ok          INTEGER NOT NULL DEFAULT 0,
+    title       TEXT,
+    description TEXT,
+    site        TEXT,
+    image_url   TEXT,
+    icon_url    TEXT,
+    fetched_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
+
 // ── Seed default app_config rows ───────────────────────────────────────────
 {
   const seeds = [

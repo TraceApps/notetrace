@@ -52,6 +52,7 @@ const _NoteApiHttp = {
       const e = await res.json().catch(() => ({}));
       throw new Error(e.error || `API error ${res.status}`);
     }
+    if (res.status === 204) return null;
     return res.json();
   },
 
