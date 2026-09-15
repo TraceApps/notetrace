@@ -90,6 +90,8 @@
     "expand":          "Expand Sidebar",
     "show_labels":     "Show Labels",
     "hide_labels":     "Hide Labels",
+    "expand_label":    "Show nested labels",
+    "collapse_label":  "Hide nested labels",
     "due_today":       "{count, plural, one {# reminder due today} other {# reminders due today}}",
     "synced":          "Synced {when}",
     "syncing":         "Syncing…",

@@ -4,6 +4,7 @@
   import { NoteApi } from '../../lib/api.js';
   import { labels, refreshLabels } from '../../stores/notes.js';
   import { colorDot } from '../../lib/note-colors.js';
+  import { buildLabelTree, flattenTree } from '../../lib/label-tree.js';
   import { showError } from '../../stores/toast.js';
 
   /** Label ids currently on the note. */
@@ -14,7 +15,9 @@
   let busy = false;
 
   $: q = query.trim().toLowerCase();
-  $: filtered = $labels.filter(l => !q || l.name.toLowerCase().includes(q));
+  // Nested labels ("Home/Garage") list under their parent, indented.
+  $: ordered = flattenTree(buildLabelTree($labels)).filter(n => n.label).map(n => ({ ...n.label, _depth: n.depth, _short: n.name }));
+  $: filtered = q ? $labels.filter(l => l.name.toLowerCase().includes(q)).map(l => ({ ...l, _depth: 0, _short: l.name })) : ordered;
   $: exact = $labels.some(l => l.name.toLowerCase() === q);
 
   function toggle(id) {
@@ -60,7 +63,7 @@
         <label class="lp-row">
           <input type="checkbox" checked={selected.includes(l.id)} on:change={() => toggle(l.id)} />
           <span class="lp-dot" style="background:{colorDot(l.color)}"></span>
-          <span class="lp-name">{l.name}</span>
+          <span class="lp-name" style="padding-left:{l._depth * 14}px" title={l.name}>{l._short}</span>
         </label>
       </li>
     {/each}

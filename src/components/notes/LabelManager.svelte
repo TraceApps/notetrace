@@ -1,4 +1,5 @@
 <script>
+  import { renameNested } from '../../lib/label-tree.js';
   import { _ } from 'svelte-i18n';
   import Sheet from '../ui/Sheet.svelte';
   import ColorPalette from './ColorPalette.svelte';
@@ -34,6 +35,10 @@
     if (!name || name === l.name) { drafts[l.id] = l.name; return; }
     try {
       await NoteApi.updateLabel(l.id, { name });
+      // Labels nested under this one ("Old/Child") follow the new name.
+      for (const child of renameNested($labels, l.name, name)) {
+        await NoteApi.updateLabel(child.id, { name: child.name }).catch(() => {});
+      }
       await refreshLabels();
     } catch (e) {
       drafts[l.id] = l.name;

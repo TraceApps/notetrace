@@ -18,6 +18,9 @@
   import { syncState } from '../../lib/sync.js';
   import { relativeTime } from '../../lib/relative-time.js';
   import LabelManager from '../notes/LabelManager.svelte';
+  import LabelTreeItem from './LabelTreeItem.svelte';
+  import { buildLabelTree } from '../../lib/label-tree.js';
+  import { labelTreeCollapsed } from '../../stores/settings.js';
 
   export let open = false;
   export let persistent = false;
@@ -53,6 +56,11 @@
   $: settingsItem = { path: '/settings', icon: 'settings', label: $_('nav.settings') };
 
   let labelManagerOpen = false;
+  $: labelTree = buildLabelTree($labels);
+  function toggleBranch(path) {
+    const cur = $labelTreeCollapsed || [];
+    labelTreeCollapsed.set(cur.includes(path) ? cur.filter(p => p !== path) : [...cur, path]);
+  }
 
   // ── Reminders due today (the badge on Reminders) ──────────────────
   let dueToday = 0;
@@ -112,7 +120,7 @@
     // Skip the glide on first paint so it doesn't slide in from the top.
     if (!pillReady) requestAnimationFrame(() => { pillReady = true; });
   }
-  $: activePath, rail, $labels, $sidebarLabelsCollapsed, navItems, open, placePill();
+  $: activePath, rail, $labels, $sidebarLabelsCollapsed, $labelTreeCollapsed, navItems, open, placePill();
   let _ro, _observed = null;
   $: observeNav(navEl);
   function observeNav(el) {
@@ -232,13 +240,9 @@
           </button>
         </div>
         {#if !$sidebarLabelsCollapsed}
-          {#each $labels as l (l.id)}
-            <button class="sidebar-item sidebar-label-item" class:active={activePath === `/label/${l.id}`} on:click={() => go(`/label/${l.id}`)}>
-              <span class="label-dot-wrap"><span class="label-dot" style="background:{colorDot(l.color)}"></span></span>
-              <span class="sidebar-label">{l.name}</span>
-              {#if l.note_count}<span class="label-count">{l.note_count}</span>{/if}
-              {#if activePath === `/label/${l.id}`}<div class="active-indicator"></div>{/if}
-            </button>
+          {#each labelTree as node (node.path)}
+            <LabelTreeItem {node} {activePath} collapsed={$labelTreeCollapsed || []}
+              on:go={(e) => go(e.detail)} on:toggle={(e) => toggleBranch(e.detail)} />
           {/each}
           {#if !$labels.length}
             <button class="sidebar-item sidebar-label-item muted" on:click={() => labelManagerOpen = true}>
@@ -398,7 +402,7 @@
     transition: transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1), height 280ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 160ms ease;
   }
   :global(html.no-animations) .nav-pill.ready { transition: none; }
-  @media (prefers-reduced-motion: reduce) { .nav-pill.ready { transition: opacity 120ms ease; } }
+ @media (prefers-reduced-motion: reduce) { .nav-pill.ready { transition: opacity 120ms ease; } }
 
   .sidebar-group {
     display: flex; align-items: center; justify-content: space-between;
@@ -416,14 +420,21 @@
   .sidebar-group-action { width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
   .sidebar-group-action:hover { background: var(--surface-2); color: var(--text-1); }
   .sidebar-group-action .material-symbols-rounded { font-size: 16px; }
-  .sidebar-label-item { padding-top: 9px !important; padding-bottom: 9px !important; font-size: 14px !important; }
-  .sidebar-label-item.muted { color: var(--text-3); }
-  .label-dot-wrap { width: 22px; display: flex; justify-content: center; align-items: center; flex-shrink: 0; }
-  .label-dot { width: 8px; height: 8px; border-radius: 50%; }
-  .rail-label .label-dot { width: 10px; height: 10px; }
-  .label-count { font-size: 12px; color: var(--text-3); }
+  .sidebar-panel :global(.sidebar-label-item) { padding-top: 9px !important; padding-bottom: 9px !important; font-size: 14px !important; }
+  .sidebar-panel :global(.sidebar-label-item.muted) { color: var(--text-3); }
+  .sidebar-panel :global(.label-dot-wrap) { width: 22px; display: flex; justify-content: center; align-items: center; flex-shrink: 0; }
+  .sidebar-panel :global(.label-dot) { width: 8px; height: 8px; border-radius: 50%; }
+  .rail-label :global(.label-dot) { width: 10px; height: 10px; }
+  .sidebar-panel :global(.label-count) { font-size: 12px; color: var(--text-3); }
+  /* Nested labels (LabelTreeItem) */
+  .sidebar-nav :global(.tree-item) { padding-left: calc(14px + var(--depth, 0) * 18px) !important; }
+  .sidebar-nav :global(.tree-item.group) { color: var(--text-3); }
+  .sidebar-nav :global(.tree-chevron) { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; border-radius: 6px; margin: -2px 0; }
+  .sidebar-nav :global(.tree-chevron:hover) { background: color-mix(in srgb, var(--text-1) 10%, transparent); }
+  .sidebar-nav :global(.tree-chevron .material-symbols-rounded) { font-size: 18px; transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .sidebar-nav :global(.tree-chevron .folded) { transform: rotate(-90deg); }
   .nav-divider { margin: 10px 6px; }
-  .sidebar-item {
+  .sidebar-panel :global(.sidebar-item) {
     display: flex;
     align-items: center;
     gap: 14px;
@@ -442,13 +453,13 @@
     transition: background var(--dur-fast), color var(--dur-fast), transform 120ms ease;
     -webkit-tap-highlight-color: transparent;
   }
-  .rail .sidebar-item { justify-content: center; padding: 12px 0; gap: 0; }
-  .rail .sidebar-label-item, .rail .rail-label { padding: 10px 0 !important; }
-  .sidebar-item:hover { background: color-mix(in srgb, var(--text-1) 6%, transparent); color: var(--text-1); }
-  .sidebar-item.active { color: var(--accent); }
-  .sidebar-item.active:hover { background: none; }
-  .sidebar-item:active { transform: scale(0.98); }
-  .sidebar-item:focus-visible,
+  .rail :global(.sidebar-item) { justify-content: center; padding: 12px 0; gap: 0; }
+  .rail :global(.sidebar-label-item), .rail .rail-label { padding: 10px 0 !important; }
+  .sidebar-panel :global(.sidebar-item:hover) { background: color-mix(in srgb, var(--text-1) 6%, transparent); color: var(--text-1); }
+  .sidebar-panel :global(.sidebar-item.active) { color: var(--accent); }
+  .sidebar-panel :global(.sidebar-item.active:hover) { background: none; }
+  .sidebar-panel :global(.sidebar-item:active) { transform: scale(0.98); }
+  .sidebar-panel :global(.sidebar-item:focus-visible),
   .rail-toggle:focus-visible,
   .sidebar-group-toggle:focus-visible,
   .sidebar-group-action:focus-visible,
@@ -458,7 +469,7 @@
     outline-offset: -2px;
   }
 
-  .sidebar-icon { font-size: 22px; flex-shrink: 0; position: relative; }
+  .sidebar-panel :global(.sidebar-icon) { font-size: 22px; flex-shrink: 0; position: relative; }
   /* Update-available dot on the Settings nav icon. Same accent tint the
      banner uses so the two surfaces read as one signal. */
   .nav-update-dot, .nav-count-dot {
@@ -471,7 +482,7 @@
     background: var(--accent);
     box-shadow: 0 0 0 2px var(--surface-1);
   }
-  .sidebar-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sidebar-panel :global(.sidebar-label) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .nav-badge {
     min-width: 20px; height: 20px; padding: 0 6px;
     display: inline-flex; align-items: center; justify-content: center;
@@ -481,7 +492,7 @@
     font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
   }
 
-  .active-indicator {
+  .sidebar-panel :global(.active-indicator) {
     width: 4px;
     height: 20px;
     border-radius: var(--radius-full);
@@ -491,7 +502,7 @@
     top: 50%;
     transform: translateY(-50%);
   }
-  .rail .active-indicator { right: -12px; }
+  .rail :global(.active-indicator) { right: -12px; }
 
   .sidebar-footer {
     padding: 12px 14px;

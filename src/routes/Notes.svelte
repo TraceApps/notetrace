@@ -31,6 +31,7 @@
   import ShortcutsHelp from '../components/notes/ShortcutsHelp.svelte';
   import { push as pushRoute } from 'svelte-spa-router';
   import { noteKey, applyOrder, mergeOrder } from '../lib/note-order.js';
+  import { labelAndDescendantIds } from '../lib/label-tree.js';
   import { isNative } from '../lib/platform.js';
   import NoteCard from '../components/notes/NoteCard.svelte';
   import { pendingShare, shareToNote, takeSharedFiles } from '../lib/share-intent.js';
@@ -118,7 +119,11 @@
   async function load() {
     const seq = ++loadSeq;
     try {
-      const rows = await NoteApi.getNotes({ view, label: labelId, q: query.trim() });
+      // A parent label ("Home") also shows notes from its nested labels ("Home/Garage").
+      const ids = nestedIds;
+      const nested = ids && ids.length > 1;
+      let rows = await NoteApi.getNotes({ view, label: nested ? null : labelId, q: query.trim() });
+      if (nested && Array.isArray(rows)) rows = rows.filter(n => (n.labels || []).some(id => ids.includes(id)));
       if (seq === loadSeq) notes = Array.isArray(rows) ? rows : [];
     } catch (e) {
       if (seq === loadSeq) showError(e.message || $_('notes.load_failed'));
@@ -127,8 +132,10 @@
     }
   }
 
+  $: nestedIds = labelId != null ? labelAndDescendantIds($labels, labelId) : null;
+  $: nestedKey = nestedIds ? nestedIds.join() : '';
   // Reload whenever the view, label, or a background change says so.
-  $: view, labelId, $notesChanged, load();
+  $: view, labelId, nestedKey, $notesChanged, load();
 
   function onSearch() {
     clearTimeout(searchTimer);
