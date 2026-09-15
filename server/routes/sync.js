@@ -75,7 +75,7 @@ const TABLES = {
     softDelete: true,
   },
   labels: {
-    cols: ['name', 'color', 'position'],
+    cols: ['name', 'color', 'icon', 'position'],
     parents: {},
     softDelete: true,
   },

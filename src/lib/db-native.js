@@ -108,6 +108,7 @@ const SCHEMA = `
     user_id     INTEGER DEFAULT 1,
     name        TEXT NOT NULL,
     color       TEXT,
+    icon        TEXT,
     position    INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT DEFAULT (datetime('now')),
     updated_at  TEXT DEFAULT (datetime('now')),
@@ -254,6 +255,9 @@ async function _migrateShareColumns() {
     const itemInfo = await db.query(`PRAGMA table_info(checklist_items)`);
     const itemCols = new Set((itemInfo?.values || []).map(c => c.name));
     if (itemCols.size && !itemCols.has('due_date')) await db.run(`ALTER TABLE checklist_items ADD COLUMN due_date TEXT`);
+    const labelInfo = await db.query(`PRAGMA table_info(labels)`);
+    const labelCols = new Set((labelInfo?.values || []).map(c => c.name));
+    if (labelCols.size && !labelCols.has('icon')) await db.run(`ALTER TABLE labels ADD COLUMN icon TEXT`);
   } catch { /* best-effort */ }
 }
 

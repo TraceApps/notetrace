@@ -3,7 +3,7 @@
   import { _ } from 'svelte-i18n';
   import { NoteApi } from '../../lib/api.js';
   import { labels, refreshLabels } from '../../stores/notes.js';
-  import { colorDot } from '../../lib/note-colors.js';
+  import LabelGlyph from './LabelGlyph.svelte';
   import { buildLabelTree, flattenTree } from '../../lib/label-tree.js';
   import { showError } from '../../stores/toast.js';
 
@@ -62,7 +62,7 @@
       <li>
         <label class="lp-row">
           <input type="checkbox" checked={selected.includes(l.id)} on:change={() => toggle(l.id)} />
-          <span class="lp-dot" style="background:{colorDot(l.color)}"></span>
+          <span class="lp-dot"><LabelGlyph label={l} iconSize={17} /></span>
           <span class="lp-name" style="padding-left:{l._depth * 14}px" title={l.name}>{l._short}</span>
         </label>
       </li>
@@ -98,7 +98,7 @@
   }
   .lp-row:hover { background: color-mix(in srgb, var(--text-1) 6%, transparent); }
   .lp-row input { accent-color: var(--accent); width: 16px; height: 16px; }
-  .lp-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .lp-dot { width: 18px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .lp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lp-create {
     display: flex; align-items: center; gap: 8px;

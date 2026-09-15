@@ -6,6 +6,7 @@
  *
  * Merged into NoteApiNative (api-native.js).
  */
+import { cleanLabelIcon } from '../../server/lib/label-icons.js';
 import { getDb, LOCAL_USER_ID } from './db-native.js';
 
 export const NOTE_COLORS = ['plum', 'moss', 'clay', 'tide', 'sand', 'rose'];
@@ -608,13 +609,13 @@ export const NotesNative = {
 
   async getLabels() {
     return _q(
-      `SELECT l.id, l.name, l.color, l.position, l.created_at, l.updated_at,
+      `SELECT l.id, l.name, l.color, l.icon, l.position, l.created_at, l.updated_at,
               (SELECT COUNT(*) FROM note_labels nl JOIN notes n ON n.id = nl.note_id
                 WHERE nl.label_id = l.id AND nl.deleted_at IS NULL AND n.deleted_at IS NULL AND n.trashed_at IS NULL) AS note_count
          FROM labels l WHERE l.deleted_at IS NULL ORDER BY l.position ASC, l.name COLLATE NOCASE ASC`);
   },
 
-  async createLabel({ name, color } = {}) {
+  async createLabel({ name, color, icon } = {}) {
     const clean = String(name || '').trim().slice(0, 60);
     if (!clean) throw new Error('Label name required');
     const dup = (await _q(`SELECT 1 FROM labels WHERE deleted_at IS NULL AND name = ? COLLATE NOCASE`, [clean]))[0];
@@ -622,12 +623,12 @@ export const NotesNative = {
     const max = (await _q(`SELECT MAX(position) AS p FROM labels WHERE deleted_at IS NULL`))[0];
     const ts = _now();
     const id = await _insert(
-      `INSERT INTO labels (user_id, name, color, position, created_at, updated_at, sync_status) VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
-      [LOCAL_USER_ID, clean, color || null, (max?.p || 0) + 1, ts, ts]);
+      `INSERT INTO labels (user_id, name, color, icon, position, created_at, updated_at, sync_status) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
+      [LOCAL_USER_ID, clean, color || null, cleanLabelIcon(icon), (max?.p || 0) + 1, ts, ts]);
     return (await NotesNative.getLabels()).find(l => l.id === id);
   },
 
-  async updateLabel(id, { name, color } = {}) {
+  async updateLabel(id, { name, color, icon } = {}) {
     id = Number(id);
     const row = (await _q(`SELECT * FROM labels WHERE id = ? AND deleted_at IS NULL`, [id]))[0];
     if (!row) throw new Error('Label not found');
@@ -635,8 +636,8 @@ export const NotesNative = {
     if (!next) throw new Error('Label name required');
     const dup = (await _q(`SELECT 1 FROM labels WHERE deleted_at IS NULL AND name = ? COLLATE NOCASE AND id != ?`, [next, id]))[0];
     if (dup) throw new Error('A label with that name already exists');
-    await _run(`UPDATE labels SET name = ?, color = ?, updated_at = ?, sync_status = 'pending' WHERE id = ?`,
-      [next, color !== undefined ? (color || null) : row.color, _now(), id]);
+    await _run(`UPDATE labels SET name = ?, color = ?, icon = ?, updated_at = ?, sync_status = 'pending' WHERE id = ?`,
+      [next, color !== undefined ? (color || null) : row.color, icon !== undefined ? cleanLabelIcon(icon) : row.icon, _now(), id]);
     return (await NotesNative.getLabels()).find(l => l.id === id);
   },
 

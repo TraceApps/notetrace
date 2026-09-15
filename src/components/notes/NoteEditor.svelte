@@ -10,6 +10,7 @@
    * Every save goes through one queue so operations on a brand-new note
    * wait for its create call instead of racing it.
    */
+  import LabelGlyph from './LabelGlyph.svelte';
   import { onMount, onDestroy, createEventDispatcher, tick } from 'svelte';
   import { fade, fly } from 'svelte/transition';
   import { disableAnimations } from '../../stores/settings.js';
@@ -664,7 +665,11 @@
       {#if inline && !readOnly}
         <div class="reader-bar" role="toolbar" aria-label={$_('notes.more_options')}>
           <span class="crumb" title={crumb}>
-            <span class="material-symbols-rounded">{chips.length ? 'label' : archived ? 'archive' : 'sticky_note_2'}</span>
+            {#if chips.length && chips[0].icon}
+              <LabelGlyph label={chips[0]} iconSize={17} />
+            {:else}
+              <span class="material-symbols-rounded">{chips.length ? 'label' : archived ? 'archive' : 'sticky_note_2'}</span>
+            {/if}
             <span class="crumb-text">{crumb}</span>
           </span>
           <span class="edited" aria-live="polite">

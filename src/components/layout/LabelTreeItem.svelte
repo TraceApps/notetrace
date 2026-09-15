@@ -2,7 +2,7 @@
   /** One row of the nested label tree in the sidebar, with its children. */
   import { createEventDispatcher } from 'svelte';
   import { _ } from 'svelte-i18n';
-  import { colorDot } from '../../lib/note-colors.js';
+  import LabelGlyph from '../notes/LabelGlyph.svelte';
 
   export let node;
   export let activePath = '';
@@ -27,7 +27,7 @@
       <span class="material-symbols-rounded" class:folded>expand_more</span>
     </span>
   {:else}
-    <span class="label-dot-wrap"><span class="label-dot" style="background:{node.label ? colorDot(node.label.color) : 'var(--text-3)'}"></span></span>
+    <span class="label-dot-wrap"><LabelGlyph label={node.label} /></span>
   {/if}
   <span class="sidebar-label">{node.name}</span>
   {#if node.label?.note_count}<span class="label-count">{node.label.note_count}</span>{/if}

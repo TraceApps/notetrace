@@ -19,6 +19,7 @@
 import { randomUUID } from 'crypto';
 import db from '../db.js';
 import { dispatchWebhookEvent } from './webhooks.js';
+import { cleanLabelIcon } from './label-icons.js';
 
 export const NOTE_KINDS = new Set(['text', 'checklist']);
 export const NOTE_COLORS = new Set(['plum', 'moss', 'clay', 'tide', 'sand', 'rose']);
@@ -726,7 +727,7 @@ function _setLabels(u, noteId, labelIds, ts) {
 
 export function listLabels(u) {
   return db.prepare(
-    `SELECT l.id, l.name, l.color, l.position, l.created_at, l.updated_at,
+    `SELECT l.id, l.name, l.color, l.icon, l.position, l.created_at, l.updated_at,
             (SELECT COUNT(*) FROM note_labels nl JOIN notes n ON n.id = nl.note_id
               WHERE nl.label_id = l.id AND nl.deleted_at IS NULL
                 AND n.deleted_at IS NULL AND n.trashed_at IS NULL
@@ -743,26 +744,26 @@ function _labelNameTaken(u, name, exceptId = null) {
   ).get(...userArgs(u), name, exceptId);
 }
 
-export function createLabel(u, { name, color } = {}) {
+export function createLabel(u, { name, color, icon } = {}) {
   const clean = String(name || '').trim().slice(0, 60);
   if (!clean) return { error: 'Label name required' };
   if (_labelNameTaken(u, clean)) return { error: 'A label with that name already exists' };
   const max = db.prepare(`SELECT MAX(position) AS p FROM labels WHERE ${userClause(u)} AND deleted_at IS NULL`).get(...userArgs(u));
   const ts = now();
   const info = db.prepare(
-    `INSERT INTO labels (user_id, name, color, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(u, clean, color || null, (max.p || 0) + 1, ts, ts);
+    `INSERT INTO labels (user_id, name, color, icon, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`
+  ).run(u, clean, color || null, cleanLabelIcon(icon), (max.p || 0) + 1, ts, ts);
   return listLabels(u).find(l => l.id === Number(info.lastInsertRowid));
 }
 
-export function updateLabel(u, id, { name, color } = {}) {
+export function updateLabel(u, id, { name, color, icon } = {}) {
   const row = db.prepare(`SELECT * FROM labels WHERE id = ? AND ${userClause(u)} AND deleted_at IS NULL`).get(id, ...userArgs(u));
   if (!row) return null;
   const nextName = name !== undefined ? String(name).trim().slice(0, 60) : row.name;
   if (!nextName) return { error: 'Label name required' };
   if (_labelNameTaken(u, nextName, id)) return { error: 'A label with that name already exists' };
-  db.prepare(`UPDATE labels SET name = ?, color = ?, updated_at = ? WHERE id = ?`)
-    .run(nextName, color !== undefined ? (color || null) : row.color, now(), id);
+  db.prepare(`UPDATE labels SET name = ?, color = ?, icon = ?, updated_at = ? WHERE id = ?`)
+    .run(nextName, color !== undefined ? (color || null) : row.color, icon !== undefined ? cleanLabelIcon(icon) : row.icon, now(), id);
   return listLabels(u).find(l => l.id === id);
 }
 

@@ -33,7 +33,8 @@ for (const dev of ['devA', 'devB', 'devC']) {
     .replaceAll("from './db-native.js'", "from './db-native.mjs'")
     .replaceAll("import('./db-native.js')", "import('./db-native.mjs')")
     + '\nexport { pushChanges, pullChanges };\n');
-  put('notes-native.mjs', src('src/lib/notes-native.js').replace("from './db-native.js'", "from './db-native.mjs'"));
+  put('notes-native.mjs', src('src/lib/notes-native.js').replace("from './db-native.js'", "from './db-native.mjs'")
+    .replaceAll("from '../../server/lib/", `from '${new URL('server/lib/', root).href}`));
   put('sqlite-stub.mjs', `import { createRequire } from 'node:module';
 const Database = createRequire(${JSON.stringify(sqliteFrom)})('better-sqlite3');
 export const CapacitorSQLite = {};

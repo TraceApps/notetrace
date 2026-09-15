@@ -11,7 +11,6 @@
   import { pwaUpdateReady } from '../../lib/pwa-update.js';
   import { labels, refreshLabels, notesChanged } from '../../stores/notes.js';
   import { sidebarRail, sidebarLabelsCollapsed } from '../../stores/settings.js';
-  import { colorDot } from '../../lib/note-colors.js';
   import { sharingAvailable } from '../../lib/note-sharing.js';
   import { NoteApi } from '../../lib/api.js';
   import { nextOccurrence } from '../../lib/reminders.js';
@@ -20,6 +19,7 @@
   import { todayStr } from '../../lib/due-dates.js';
   import LabelManager from '../notes/LabelManager.svelte';
   import LabelTreeItem from './LabelTreeItem.svelte';
+  import LabelGlyph from '../notes/LabelGlyph.svelte';
   import { buildLabelTree } from '../../lib/label-tree.js';
   import { labelTreeCollapsed } from '../../stores/settings.js';
 
@@ -179,6 +179,8 @@
   {/if}
 
   <!-- Panel -->
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
   <aside
     class="sidebar-panel"
     class:sidebar-persistent={persistent}
@@ -247,7 +249,7 @@
         {#each $labels as l (l.id)}
           <button class="sidebar-item rail-label" class:active={activePath === `/label/${l.id}`} on:click={() => go(`/label/${l.id}`)}
             data-tip={l.name} aria-label={l.name}>
-            <span class="sidebar-icon label-dot-wrap"><span class="label-dot" style="background:{colorDot(l.color)}"></span></span>
+            <span class="sidebar-icon label-dot-wrap"><LabelGlyph label={l} size={10} iconSize={22} /></span>
           </button>
         {/each}
       {:else}

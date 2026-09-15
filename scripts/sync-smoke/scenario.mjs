@@ -13,7 +13,7 @@ await A.dbInit(); await B.dbInit();
 const sync = async d => { await d.pullChanges(); await d.pushChanges(); await d.pullChanges(); };
 
 // 1. Device A creates a labeled checklist offline, then syncs.
-const label = await A.N.createLabel({ name: 'Home' });
+const label = await A.N.createLabel({ name: 'Home', icon: 'home' });
 let na = await A.N.createNote({ title: 'Groceries', kind: 'checklist', items: [{ text: 'Limes' }, { text: 'Rice' }], labels: [label.id] });
 await sync(A);
 let server = await get('/api/notes', tok);
@@ -24,6 +24,7 @@ await sync(B);
 let nb = (await B.N.getNotes())[0];
 const bLabels = await B.N.getLabels();
 ok(nb && nb.items.length === 2 && nb.labels.length === 1 && nb.labels[0] === bLabels[0].id, 'B: pulled note has items and the label mapped to its local id');
+ok(bLabels[0].icon === 'home', 'B: the label icon syncs');
 
 // 3. Concurrent offline item edits on both devices.
 const limes = na.items.find(i => i.text === 'Limes').uuid;

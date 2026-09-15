@@ -2,11 +2,11 @@
   import { renameNested } from '../../lib/label-tree.js';
   import { _ } from 'svelte-i18n';
   import Sheet from '../ui/Sheet.svelte';
-  import ColorPalette from './ColorPalette.svelte';
+  import LabelStylePicker from './LabelStylePicker.svelte';
+  import LabelGlyph from './LabelGlyph.svelte';
   import Popover from './Popover.svelte';
   import { NoteApi } from '../../lib/api.js';
   import { labels, refreshLabels, signalNotesChanged } from '../../stores/notes.js';
-  import { colorDot } from '../../lib/note-colors.js';
   import { confirmDialog } from '../../stores/confirmDialog.js';
   import { showError } from '../../stores/toast.js';
 
@@ -52,12 +52,13 @@
     colorOpen = true;
   }
 
-  async function setColor(c) {
+  // The picker stays open, so color and icon can both be set.
+  async function setStyle(patch) {
     const l = colorFor;
-    colorOpen = false;
     if (!l) return;
+    colorFor = { ...l, ...patch };
     try {
-      await NoteApi.updateLabel(l.id, { color: c });
+      await NoteApi.updateLabel(l.id, patch);
       await refreshLabels();
     } catch (e) { showError(e.message); }
   }
@@ -90,8 +91,8 @@
     </div>
     {#each $labels as l (l.id)}
       <div class="lm-row">
-        <button class="lm-dot-btn" on:click={(e) => pickColor(e, l)} aria-label={$_('labels.color')}>
-          <span class="lm-dot" style="background:{colorDot(l.color)}"></span>
+        <button class="lm-dot-btn" on:click={(e) => pickColor(e, l)} title={$_('labels.style')} aria-label={$_('labels.style')}>
+          <LabelGlyph label={l} size={12} iconSize={20} />
         </button>
         <input class="lm-input" bind:value={drafts[l.id]} maxlength="60"
           on:blur={() => rename(l)} on:keydown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
@@ -108,7 +109,10 @@
 </Sheet>
 
 <Popover bind:open={colorOpen} anchor={colorAnchor}>
-  <ColorPalette value={colorFor?.color} on:select={(e) => setColor(e.detail)} />
+  {#if colorFor}
+    <LabelStylePicker color={colorFor.color} icon={colorFor.icon}
+      on:color={(e) => setStyle({ color: e.detail })} on:icon={(e) => setStyle({ icon: e.detail })} />
+  {/if}
 </Popover>
 
 <style>
@@ -124,7 +128,6 @@
   .lm-input:focus { border-color: var(--accent); background: var(--surface-2); }
   .lm-dot-btn { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 10px; }
   .lm-dot-btn:hover { background: color-mix(in srgb, var(--text-1) 8%, transparent); }
-  .lm-dot { width: 12px; height: 12px; border-radius: 50%; }
   .lm-count { font-size: 12px; color: var(--text-3); min-width: 20px; text-align: right; }
   .lm-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: var(--text-2); }
   .lm-icon:hover:not(:disabled) { background: color-mix(in srgb, var(--text-1) 8%, transparent); color: var(--text-1); }

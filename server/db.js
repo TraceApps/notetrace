@@ -321,6 +321,7 @@ if (!columnExists('note_attachments', 'duration_ms')) db.exec(`ALTER TABLE note_
 if (!columnExists('note_attachments', 'extracted_text')) db.exec(`ALTER TABLE note_attachments ADD COLUMN extracted_text TEXT`);
 // Optional due date on a checklist item (YYYY-MM-DD, the user's calendar day).
 if (!columnExists('checklist_items', 'due_date')) db.exec(`ALTER TABLE checklist_items ADD COLUMN due_date TEXT`);
+if (!columnExists('labels', 'icon')) db.exec(`ALTER TABLE labels ADD COLUMN icon TEXT`);
 
 // Search covers transcripts and image text too.
 {
