@@ -22,7 +22,7 @@ import { dispatchWebhookEvent } from './webhooks.js';
 import { cleanLabelIcon } from './label-icons.js';
 
 export const NOTE_KINDS = new Set(['text', 'checklist']);
-export const NOTE_COLORS = new Set(['plum', 'moss', 'clay', 'tide', 'sand', 'rose']);
+export const NOTE_COLORS = new Set(['ember', 'clay', 'amber', 'sand', 'lime', 'moss', 'sage', 'mint', 'sky', 'tide', 'indigo', 'plum', 'orchid', 'rose', 'bark', 'slate']);
 export const TRASH_RETENTION_DAYS = 30;
 export const REMINDER_REPEATS = new Set(['daily', 'weekly', 'monthly', 'yearly']);
 export const MEMBER_ROLES = new Set(['view', 'edit']);

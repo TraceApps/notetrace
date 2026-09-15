@@ -59,6 +59,16 @@
   --note-tide-bg:    #121A24;           --note-tide-border:    rgba(120,170,255,0.15);
   --note-sand-bg:    #1D1B14;           --note-sand-border:    rgba(240,210,120,0.14);
   --note-rose-bg:    #221419;           --note-rose-border:    rgba(255,130,170,0.15);
+  --note-ember-bg:   #231416;           --note-ember-border:   rgba(255,120,120,0.16);
+  --note-lime-bg:    #181D12;           --note-lime-border:    rgba(190,230,110,0.14);
+  --note-mint-bg:    #111D1C;           --note-mint-border:    rgba(110,225,210,0.14);
+  --note-sky-bg:     #111B22;           --note-sky-border:     rgba(120,210,255,0.15);
+  --note-bark-bg:    #1D1813;           --note-bark-border:    rgba(210,165,120,0.15);
+  --note-slate-bg:   #171A1F;           --note-slate-border:   rgba(170,180,200,0.16);
+  --note-amber-bg:   #211A10;           --note-amber-border:   rgba(255,190,90,0.15);
+  --note-sage-bg:    #161B16;           --note-sage-border:    rgba(170,200,160,0.14);
+  --note-indigo-bg:  #15162A;           --note-indigo-border:  rgba(150,155,255,0.16);
+  --note-orchid-bg:  #1F1424;           --note-orchid-border:  rgba(230,150,255,0.15);
 }
 
 /* --- Light theme --- */
@@ -106,6 +116,16 @@
   --note-tide-bg:    #E5EEFA;           --note-tide-border:    rgba(60,110,200,0.22);
   --note-sand-bg:    #FAF3DD;           --note-sand-border:    rgba(180,140,40,0.24);
   --note-rose-bg:    #FBE6EE;           --note-rose-border:    rgba(200,70,120,0.22);
+  --note-ember-bg:   #FBE5E5;           --note-ember-border:   rgba(200,60,60,0.22);
+  --note-lime-bg:    #EEF6DC;           --note-lime-border:    rgba(110,150,30,0.24);
+  --note-mint-bg:    #E0F5F2;           --note-mint-border:    rgba(30,140,125,0.22);
+  --note-sky-bg:     #E1F3FB;           --note-sky-border:     rgba(30,140,190,0.22);
+  --note-bark-bg:    #F2EAE1;           --note-bark-border:    rgba(140,95,50,0.22);
+  --note-slate-bg:   #ECEFF3;           --note-slate-border:   rgba(80,95,120,0.22);
+  --note-amber-bg:   #FCEFD9;           --note-amber-border:   rgba(190,120,20,0.24);
+  --note-sage-bg:    #E9F0E6;           --note-sage-border:    rgba(80,120,70,0.22);
+  --note-indigo-bg:  #E9EAFB;           --note-indigo-border:  rgba(80,85,200,0.22);
+  --note-orchid-bg:  #F6E6FA;           --note-orchid-border:  rgba(160,60,190,0.22);
 }
 
 /* --- Spacing & Shape --- */

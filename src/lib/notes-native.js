@@ -9,7 +9,7 @@
 import { cleanLabelIcon } from '../../server/lib/label-icons.js';
 import { getDb, LOCAL_USER_ID } from './db-native.js';
 
-export const NOTE_COLORS = ['plum', 'moss', 'clay', 'tide', 'sand', 'rose'];
+export const NOTE_COLORS = ['ember', 'clay', 'amber', 'sand', 'lime', 'moss', 'sage', 'mint', 'sky', 'tide', 'indigo', 'plum', 'orchid', 'rose', 'bark', 'slate'];
 const REPEATS = ['daily', 'weekly', 'monthly', 'yearly'];
 const VERSION_SESSION_MS = 10 * 60 * 1000;
 const VERSION_KEEP_PER_NOTE = 50;

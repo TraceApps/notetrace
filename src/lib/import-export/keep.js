@@ -9,11 +9,11 @@
  */
 import { plainTextToMarkdown, toSqlTs } from './markdown.js';
 
-// Keep's 12 colors mapped onto NoteTrace's 6.
+// Keep's colors, each onto its closest NoteTrace color.
 export const KEEP_COLORS = {
-  RED: 'clay', ORANGE: 'clay', BROWN: 'sand', YELLOW: 'sand',
-  GREEN: 'moss', TEAL: 'tide', BLUE: 'tide', CERULEAN: 'tide',
-  PURPLE: 'plum', PINK: 'rose',
+  RED: 'ember', ORANGE: 'amber', YELLOW: 'sand', GREEN: 'moss',
+  TEAL: 'sage', BLUE: 'sky', CERULEAN: 'tide', PURPLE: 'plum',
+  PINK: 'rose', BROWN: 'bark', GRAY: 'slate',
 };
 
 const usecToTs = (v) => {

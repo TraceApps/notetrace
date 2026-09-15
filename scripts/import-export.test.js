@@ -44,7 +44,7 @@ test('keep: text note keeps line breaks, links, labels, color, pin, and dates', 
   assert.equal(note.title, 'Home stuff');
   assert.equal(note.body_md, 'Buy a new filter  \nfor the furnace\n\nModel 16x25\n\n[Filters](https://example.com/filters)');
   assert.deepEqual(note.labels, ['Home', 'Errands']);
-  assert.equal(note.color, 'tide');
+  assert.equal(note.color, 'sage');
   assert.equal(note.pinned, true);
   assert.equal(note.created_at, '2024-09-10 20:26:40');
   assert.equal(note.updated_at, '2024-09-12 14:06:40');

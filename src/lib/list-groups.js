@@ -8,7 +8,7 @@
  */
 import { groupByDay } from './timeline.js';
 
-const COLOR_ORDER = ['plum', 'tide', 'moss', 'sand', 'clay', 'rose', null];
+const COLOR_ORDER = ['ember', 'clay', 'amber', 'sand', 'lime', 'moss', 'sage', 'mint', 'sky', 'tide', 'indigo', 'plum', 'orchid', 'rose', 'bark', 'slate', null];
 
 export function groupNotes(notes, by, { labels = [], pinnedFirst = true, now = new Date() } = {}) {
   const list = notes || [];

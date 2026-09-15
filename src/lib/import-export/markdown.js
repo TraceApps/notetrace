@@ -18,7 +18,7 @@
  * shows and which imports back as an attachment.
  */
 
-export const NOTE_COLORS = ['plum', 'moss', 'clay', 'tide', 'sand', 'rose'];
+export const NOTE_COLORS = ['ember', 'clay', 'amber', 'sand', 'lime', 'moss', 'sage', 'mint', 'sky', 'tide', 'indigo', 'plum', 'orchid', 'rose', 'bark', 'slate'];
 const REPEATS = ['daily', 'weekly', 'monthly', 'yearly'];
 
 /** Date (or anything Date.parse understands) to 'YYYY-MM-DD HH:MM:SS' UTC, or null. */

@@ -30,18 +30,19 @@
 </div>
 
 <style>
-  .palette { display: flex; flex-wrap: wrap; gap: 8px; }
+  .palette { display: grid; grid-template-columns: repeat(6, 32px); gap: 8px; }
   .swatch {
     width: 32px; height: 32px;
     border-radius: 50%;
-    background: var(--sw-bg);
-    border: 1.5px solid color-mix(in srgb, var(--sw-ring) 45%, transparent);
+    /* The note's tint, with its color as a bold ring so sixteen stay easy to tell apart. */
+    background: radial-gradient(circle, var(--sw-bg) 0 45%, color-mix(in srgb, var(--sw-ring) 35%, var(--sw-bg)) 100%);
+    border: 2.5px solid color-mix(in srgb, var(--sw-ring) 85%, transparent);
     display: flex; align-items: center; justify-content: center;
     color: var(--text-3);
     transition: transform var(--dur-fast) var(--ease-out);
   }
   .swatch:hover { transform: scale(1.08); }
-  .swatch.selected { border: 2px solid var(--sw-ring); color: var(--sw-ring); }
+  .swatch.selected { border-color: var(--sw-ring); color: var(--sw-ring); box-shadow: 0 0 0 2px var(--surface-1), 0 0 0 4px var(--sw-ring); }
   .swatch .material-symbols-rounded { font-size: 17px; }
   .swatch.selected .material-symbols-rounded { font-variation-settings: 'FILL' 0, 'wght' 700, 'GRAD' 0, 'opsz' 20; }
 </style>
