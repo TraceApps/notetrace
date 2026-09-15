@@ -15,6 +15,7 @@
   export let draggable = false;
   /** Touch swipe sideways (dispatches `swipe` with { id, dir }). */
   export let swipeable = false;
+  export let terms = [];
   const dispatch = createEventDispatcher();
   function onDrop(dragId, targetId, after) {
     const ids = moveId(notes.map(n => n.id), dragId, targetId, after);
@@ -56,7 +57,7 @@
   {#each cols as col, ci (ci)}
     <div class="note-col">
       {#each col as { note, i } (note.id)}
-        <NoteCard {note} {view} index={i} selected={selectedIds.has(note.id)} {selecting} on:open on:action on:toggleItem on:menu on:select />
+        <NoteCard {note} {view} {terms} index={i} selected={selectedIds.has(note.id)} {selecting} on:open on:action on:toggleItem on:menu on:select />
       {/each}
     </div>
   {/each}

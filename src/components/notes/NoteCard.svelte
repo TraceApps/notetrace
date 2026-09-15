@@ -3,6 +3,8 @@
   import { _ } from 'svelte-i18n';
   import { labelsById } from '../../stores/notes.js';
   import { markdownToPreview } from '../../lib/note-preview.js';
+  import Highlight from './Highlight.svelte';
+  import { matchSnippet, textHasTerms } from '../../lib/highlight.js';
   import { noteColorStyle, colorDot } from '../../lib/note-colors.js';
   import { longpress } from '../../lib/long-press.js';
   import ReminderChip from './ReminderChip.svelte';
@@ -23,6 +25,8 @@
   /** Multi-select: this card is selected / some card is selected. */
   export let selected = false;
   export let selecting = false;
+  /** Words from the search box, marked in the card. */
+  export let terms = [];
 
   const dispatch = createEventDispatcher();
   const PREVIEW_ITEMS = 8;
@@ -38,6 +42,11 @@
   $: images = (note.attachments || []).filter(isImage);
   $: voice = (note.attachments || []).filter(isAudio);
   $: empty = !note.title && !preview && !(note.items || []).length && !images.length && !voice.length;
+  // Found by something you can't see on the card: a voice note's transcript or
+  // text read from an image.
+  $: hiddenMatch = terms.length && !textHasTerms(note, terms)
+    ? (note.attachments || []).map(a => ({ a, snip: matchSnippet(a.extracted_text, terms) })).find(x => x.snip)
+    : null;
   $: owner = isOwner(note);
   $: editable = canEdit(note);
   $: shared = isShared(note);
@@ -137,17 +146,23 @@
   {/if}
 
   {#if note.title}
-    <h3 class="card-title">{note.title}</h3>
+    <h3 class="card-title"><Highlight text={note.title} {terms} /></h3>
   {/if}
 
+  {#if hiddenMatch}
+    <p class="card-match">
+      <span class="material-symbols-rounded">{isAudio(hiddenMatch.a) ? 'mic' : 'image'}</span>
+      <Highlight text={hiddenMatch.snip} {terms} />
+    </p>
+  {/if}
   {#if note.kind === 'text'}
-    {#if preview}<p class="card-body">{preview}</p>{/if}
+    {#if preview}<p class="card-body"><Highlight text={preview} {terms} /></p>{/if}
   {:else}
     <ul class="card-items">
       {#each shownItems as item (item.uuid)}
         <li>
           <button class="card-check" aria-label={$_('notes.check_item')} disabled={!editable} on:click={(e) => toggleItem(e, item)}></button>
-          <span class="card-item-text">{item.text}{#if item.due_date}<span class="card-due due-{dueStatus(item.due_date)}">{dueLabel(item.due_date, $_)}</span>{/if}</span>
+          <span class="card-item-text"><Highlight text={item.text} {terms} />{#if item.due_date}<span class="card-due due-{dueStatus(item.due_date)}">{dueLabel(item.due_date, $_)}</span>{/if}</span>
         </li>
       {/each}
       {#if hiddenOpen > 0}
@@ -428,6 +443,11 @@
   .note-card:not(:has(.card-title)) .card-body { padding-right: 26px; }
   .card-placeholder { color: var(--text-3); font-style: italic; }
 
+  .card-match {
+    display: flex; gap: 6px; align-items: baseline; margin-top: 2px;
+    font-size: 12.5px; line-height: 1.45; color: var(--text-2);
+  }
+  .card-match .material-symbols-rounded { font-size: 15px; color: var(--text-3); flex-shrink: 0; }
   .card-items { list-style: none; display: flex; flex-direction: column; gap: 7px; }
   .card-items li { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.4; color: color-mix(in srgb, var(--text-1) 82%, transparent); }
   .card-item-text { overflow-wrap: anywhere; }

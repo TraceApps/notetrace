@@ -5,6 +5,7 @@
   import { _ } from 'svelte-i18n';
   import { labelsById } from '../../stores/notes.js';
   import { markdownToPreview } from '../../lib/note-preview.js';
+  import Highlight from './Highlight.svelte';
   import { noteColorStyle, colorDot } from '../../lib/note-colors.js';
   import { relativeTime } from '../../lib/relative-time.js';
   import { longpress } from '../../lib/long-press.js';
@@ -15,6 +16,7 @@
   export let current = false;    // open in the reading pane
   export let selected = false;   // multi-select
   export let selecting = false;
+  export let terms = [];
 
   const dispatch = createEventDispatcher();
   $: items = note.items || [];
@@ -43,12 +45,12 @@
   <div class="row-main">
     <div class="row-top">
       {#if note.pinned}<span class="material-symbols-rounded fill pin" aria-label={$_('notes.pinned')}>keep</span>{/if}
-      <span class="row-title" class:untitled={!note.title}>{note.title || firstLine || $_('notes.untitled')}</span>
+      <span class="row-title" class:untitled={!note.title}><Highlight text={note.title || firstLine || $_('notes.untitled')} {terms} /></span>
       {#if selecting}
         <span class="material-symbols-rounded row-check" class:fill={selected} aria-hidden="true">{selected ? 'check_circle' : 'radio_button_unchecked'}</span>
       {/if}
     </div>
-    {#if preview && !firstLine}<p class="row-preview">{preview}</p>{/if}
+    {#if preview && !firstLine}<p class="row-preview"><Highlight text={preview} {terms} /></p>{/if}
     <div class="row-meta">
       <span class="row-date">{relativeTime(note.updated_at)}</span>
       {#if note.kind === 'checklist' && items.length}

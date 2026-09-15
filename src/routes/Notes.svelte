@@ -44,6 +44,7 @@
   import { recordingSupported } from '../lib/voice-recorder.js';
   import { longpress } from '../lib/long-press.js';
   import { growOnScroll } from '../lib/grow-on-scroll.js';
+  import { searchTerms } from '../lib/highlight.js';
   import { portal } from '../lib/portal.js';
   import { NOTE_COLORS, colorDot } from '../lib/note-colors.js';
 
@@ -120,8 +121,31 @@
     searchEl?.focus();
     searchEl?.select();
   }
+  // ── Recent searches ────────────────────────────────────────────────
+  const RECENTS_KEY = 'note:recentSearches';
+  let recents = [];
+  try { recents = JSON.parse(localStorage.getItem(RECENTS_KEY) || '[]').filter(s => typeof s === 'string'); } catch { recents = []; }
+  function rememberSearch(q) {
+    const clean = String(q || '').trim();
+    if (clean.length < 2) return;
+    recents = [clean, ...recents.filter(r => r.toLowerCase() !== clean.toLowerCase())].slice(0, 8);
+    try { localStorage.setItem(RECENTS_KEY, JSON.stringify(recents)); } catch { /* private mode */ }
+  }
+  function clearRecents() {
+    recents = [];
+    try { localStorage.removeItem(RECENTS_KEY); } catch { /* private mode */ }
+  }
+  function useRecent(q) {
+    query = q;
+    onSearch();
+    searchEl?.focus();
+  }
+  // What the search box matched, marked on the cards.
+  $: terms = searchOpen ? searchTerms(query) : [];
+
   function closeSearch() {
     const had = !!query;
+    rememberSearch(query);
     query = '';
     filters = emptyFilters();
     searchOpen = false;
@@ -784,7 +808,10 @@
       <div class="header-search" role="search" in:fade={{ duration: 140 }}>
         <span class="material-symbols-rounded">search</span>
         <input type="search" bind:this={searchEl} placeholder={$_('notes.search_in', { values: { view: heading } })} bind:value={query} on:input={onSearch}
-          on:keydown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSearch(); } }}
+          on:keydown={(e) => {
+            if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSearch(); }
+            else if (e.key === 'Enter') { rememberSearch(query); searchEl?.blur(); }
+          }}
           aria-label={$_('notes.search_placeholder')} />
         {#if !query}<kbd class="search-kbd" aria-hidden="true">{shortcutLabel}</kbd>{/if}
         <button class="btn-icon header-btn" on:click={closeSearch} title={$_('notes.close_search')} aria-label={$_('notes.close_search')}>
@@ -807,6 +834,17 @@
     {/if}
   </header>
 
+  {#if searchOpen && !query && recents.length}
+    <div class="recent-bar" transition:slide={{ duration: 160 }}>
+      <span class="recent-label">{$_('notes.recent_searches')}</span>
+      {#each recents as r (r)}
+        <button type="button" class="fchip" on:mousedown|preventDefault on:click={() => useRecent(r)}>
+          <span class="material-symbols-rounded">history</span>{r}
+        </button>
+      {/each}
+      <button type="button" class="fchip fclear" on:mousedown|preventDefault on:click={clearRecents}>{$_('notes.clear_recent')}</button>
+    </div>
+  {/if}
   {#if showFilters}
     <div class="filter-bar" role="group" aria-label={$_('filters.title')} transition:slide={{ duration: 180 }}>
       {#each FILTER_TYPES as t (t.key)}
@@ -914,7 +952,7 @@
                     </h2>
                   {/if}
                   {#each g.notes as n (g.key + ':' + n.id)}
-                    <NoteRow note={n} current={pane?.note?.id === n.id} selected={selectedIds.has(n.id)} {selecting}
+                    <NoteRow note={n} {terms} current={pane?.note?.id === n.id} selected={selectedIds.has(n.id)} {selecting}
                       on:open={openNote} on:select={onSelect} />
                   {/each}
                 </section>
@@ -972,7 +1010,7 @@
               </h2>
             {/if}
             {#each g.notes as n (g.key + ':' + n.id)}
-              <NoteRow note={n} selected={selectedIds.has(n.id)} {selecting} on:open={openNote} on:select={onSelect} />
+              <NoteRow note={n} {terms} selected={selectedIds.has(n.id)} {selecting} on:open={openNote} on:select={onSelect} />
             {/each}
           </section>
         {/each}
@@ -983,7 +1021,7 @@
         <section class="notes-section timeline">
           <h2 class="section-label"><span class="material-symbols-rounded fill">keep</span>{$_('notes.pinned')}</h2>
           <div class="timeline-list">
-            {#each pinned as n (n.id)}<NoteCard note={n} {view} selected={selectedIds.has(n.id)} {selecting} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} />{/each}
+            {#each pinned as n (n.id)}<NoteCard note={n} {view} {terms} selected={selectedIds.has(n.id)} {selecting} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} />{/each}
           </div>
         </section>
       {/if}
@@ -991,7 +1029,7 @@
         <section class="notes-section timeline">
           <h2 class="section-label"><span class="material-symbols-rounded">calendar_today</span>{dayLabel(day)}</h2>
           <div class="timeline-list">
-            {#each day.notes as n (n.id)}<NoteCard note={n} {view} selected={selectedIds.has(n.id)} {selecting} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} />{/each}
+            {#each day.notes as n (n.id)}<NoteCard note={n} {view} {terms} selected={selectedIds.has(n.id)} {selecting} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} />{/each}
           </div>
         </section>
       {/each}
@@ -1000,21 +1038,21 @@
       {#if pinned.length}
         <section class="notes-section">
           <h2 class="section-label"><span class="material-symbols-rounded fill">keep</span>{$_('notes.pinned')}</h2>
-          <NoteGrid notes={pinned} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} {swipeable} on:swipe={onSwipe} />
+          <NoteGrid notes={pinned} {view} {terms} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} {swipeable} on:swipe={onSwipe} />
         </section>
       {/if}
       {#if others.length}
         <section class="notes-section">
           {#if pinned.length}<h2 class="section-label">{$_('notes.others')}</h2>{/if}
           {#if view === 'reminders' && pastReminders.length}<h2 class="section-label">{$_('reminders.upcoming')}</h2>{/if}
-          <NoteGrid notes={othersShown} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} {swipeable} on:swipe={onSwipe} />
+          <NoteGrid notes={othersShown} {view} {terms} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} {swipeable} on:swipe={onSwipe} />
         </section>
       {/if}
       {#if moreToShow}<div class="more-marker" use:growOnScroll={{ onGrow: showMore }} aria-hidden="true"></div>{/if}
       {#if view === 'reminders' && pastReminders.length}
         <section class="notes-section">
           <h2 class="section-label">{$_('reminders.past')}</h2>
-          <NoteGrid notes={pastReminders} {view} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} {swipeable} on:swipe={onSwipe} />
+          <NoteGrid notes={pastReminders} {view} {terms} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} {swipeable} on:swipe={onSwipe} />
         </section>
       {/if}
     {/if}
@@ -1335,6 +1373,18 @@
   .notes-page { --notes-max: 1680px; }
   .empty-trash { height: 38px; }
 
+  .recent-bar {
+    display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px;
+    max-width: min(var(--notes-max), 980px); margin: 10px auto 0; width: 100%;
+    padding: 0 var(--page-px);
+  }
+  .recent-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); margin-right: 2px; }
+  .recent-bar .fchip .material-symbols-rounded { font-size: 15px; color: var(--text-3); }
+  @media (max-width: 600px) {
+    .recent-bar { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
+    .recent-bar::-webkit-scrollbar { display: none; }
+    .recent-bar .fchip { flex-shrink: 0; }
+  }
   .filter-bar {
     display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px;
     max-width: min(var(--notes-max), 980px); margin: 10px auto 0; width: 100%;

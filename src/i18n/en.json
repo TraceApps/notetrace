@@ -337,6 +337,8 @@
     "search_in":               "Search {view}",
     "new_with_image":          "New Note with Image",
     "new_voice_note":          "New Voice Note",
+    "recent_searches":         "Recent",
+    "clear_recent":            "Clear",
     "undo_item":               "Item deleted",
     "undo_image":              "Image removed",
     "undo_voice":              "Voice note removed",
