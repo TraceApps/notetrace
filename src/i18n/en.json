@@ -22,7 +22,10 @@
     "group_color":   "By Color",
     "group_date":    "By Date Edited",
     "no_label":      "No Label",
-    "select_note":   "Pick a note to read and edit it here."
+    "select_note":   "Select a note to read and edit it here.",
+    "note_count":    "{count, plural, one {# note} other {# notes}}",
+    "more_new":      "More Ways to Start a Note",
+    "resize":        "Resize List"
   },
   "tasks": {
     "add_placeholder": "Add a task",

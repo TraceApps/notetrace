@@ -47,6 +47,7 @@ export const DEVICE_PREFS = new Set([
   'notifLocalEnabled',     // reminder notifications on this device (phone, or this browser while open)
   'notesLayout',           // 'grid', 'list', or 'timeline' on the notes screens
   'listGroupBy',           // List layout sections: 'none', 'label', 'color', 'date'
+  'listColumnWidth',       // List layout: width of the list column beside the reading pane, px
 ]);
 
 const SERVER_SETTINGS = USER_PREFS;
@@ -267,6 +268,7 @@ export const biometricLoginEnabled = createSettingStore('biometricLoginEnabled',
 export const appLockEnabled    = createSettingStore('appLockEnabled',    false);
 export const notesLayout       = createSettingStore('notesLayout',       'grid');
 export const listGroupBy       = createSettingStore('listGroupBy',       'none');
+export const listColumnWidth   = createSettingStore('listColumnWidth',   360);
 export const linkPreviews      = createSettingStore('linkPreviews',      true);
 // 'edited' (newest edit first) or 'custom' (the order you dragged notes into).
 export const noteSort          = createSettingStore('noteSort',          'edited');

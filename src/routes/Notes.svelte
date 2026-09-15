@@ -7,7 +7,7 @@
    *   /trash       trashed notes (auto-deleted after 30 days)
    *   /label/:id   notes carrying one label
    */
-  import { onMount, onDestroy, tick } from 'svelte';
+  import { onMount, onDestroy, tick, afterUpdate } from 'svelte';
   import { slide, fly, fade } from 'svelte/transition';
   import { location, querystring, replace as replaceRoute } from 'svelte-spa-router';
   import { _ } from 'svelte-i18n';
@@ -27,7 +27,7 @@
   import { ensureReminderPermission, rescheduleReminders } from '../lib/note-reminders.js';
   import { isOwner, canEdit } from '../lib/note-sharing.js';
   import { groupByDay } from '../lib/timeline.js';
-  import { notesLayout, noteSort, noteOrder, keyboardShortcuts, swipeToArchive, listGroupBy } from '../stores/settings.js';
+  import { notesLayout, noteSort, noteOrder, keyboardShortcuts, swipeToArchive, listGroupBy, listColumnWidth } from '../stores/settings.js';
   import NoteRow from '../components/notes/NoteRow.svelte';
   import { groupNotes } from '../lib/list-groups.js';
   import { showUndo } from '../stores/toast.js';
@@ -182,24 +182,56 @@
   onMount(() => window.addEventListener('resize', _onListResize));
   onDestroy(() => window.removeEventListener('resize', _onListResize));
   $: splitPane = listMode && wideList;
-  let pane = null;      // { note } or { kind, labels } in the side pane
-  // The pane is sticky; its height fills from wherever it sits to the bottom of the screen.
-  let paneEl, paneH = 600;
-  function sizePane() {
-    if (!paneEl) return;
-    const top = Math.max(12, paneEl.getBoundingClientRect().top);
+  let pane = null;      // { note } or { kind, labels } in the reading pane
+  // The workspace (list column + reading pane) fills the screen below the banner;
+  // each side scrolls on its own.
+  let workEl, workH = 600;
+  function sizeWork() {
+    if (!workEl) return;
+    const top = Math.max(0, workEl.getBoundingClientRect().top);
     const tabbar = document.querySelector('.bottom-nav')?.offsetHeight || 0;
-    paneH = Math.max(420, Math.round(window.innerHeight - top - tabbar - 12));
+    const h = Math.max(420, Math.round(window.innerHeight - top - tabbar));
+    if (h !== workH) workH = h;
   }
-  onMount(() => {
-    window.addEventListener('scroll', sizePane, true);
-    window.addEventListener('resize', sizePane);
-  });
-  onDestroy(() => {
-    window.removeEventListener('scroll', sizePane, true);
-    window.removeEventListener('resize', sizePane);
-  });
-  $: if (paneEl) tick().then(sizePane);
+  afterUpdate(sizeWork);
+  onMount(() => window.addEventListener('resize', sizeWork));
+  onDestroy(() => window.removeEventListener('resize', sizeWork));
+
+  // The list column's width: drag the divider, arrow keys on it, double-click to reset.
+  const LIST_W = { min: 280, max: 560, default: 360 };
+  $: listW = Math.min(LIST_W.max, Math.max(LIST_W.min, Number($listColumnWidth) || LIST_W.default));
+  let resizing = null;
+  function startResize(e) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    resizing = { x: e.clientX, w: listW };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  }
+  function onResizeMove(e) {
+    if (!resizing) return;
+    const room = (workEl?.clientWidth || 1200) - 420;
+    listColumnWidth.set(Math.round(Math.min(room, LIST_W.max, Math.max(LIST_W.min, resizing.w + e.clientX - resizing.x))));
+  }
+  function endResize() { resizing = null; }
+  function resizeKey(e) {
+    const step = e.shiftKey ? 48 : 16;
+    if (e.key === 'ArrowLeft') { e.preventDefault(); listColumnWidth.set(Math.max(LIST_W.min, listW - step)); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); listColumnWidth.set(Math.min(LIST_W.max, listW + step)); }
+    if (e.key === 'Home' || e.key === 'Enter') { e.preventDefault(); listColumnWidth.set(LIST_W.default); }
+  }
+  // Up and Down move through the rows and open each one.
+  function listKeys(e) {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    const row = e.target.closest?.('.note-row');
+    if (!row) return;
+    const rows = [...workEl.querySelectorAll('.list-scroll .note-row')];
+    const next = rows[rows.indexOf(row) + (e.key === 'ArrowDown' ? 1 : -1)];
+    if (!next) return;
+    e.preventDefault();
+    next.focus();
+    next.click();
+  }
+  let newOpen = false, newAnchor = null;
   let paneKey = 0;
   let paneRef;
   async function openInPane(entry) {
@@ -229,6 +261,10 @@
     if (g.kind === 'day') return dayLabel(g.day);
     return '';
   }
+
+  $: emptyIcon = query || filtering ? 'search_off' : view === 'reminders' ? 'notifications' : view === 'archive' ? 'archive' : view === 'trash' ? 'delete' : view === 'shared' ? 'group' : activeLabel ? 'label' : 'sticky_note_2';
+  $: emptyKey = query || filtering ? 'notes.empty_search' : view === 'reminders' ? 'routes.reminders.empty' : view === 'archive' ? 'routes.archive.empty'
+    : view === 'trash' ? 'routes.trash.empty' : view === 'shared' ? 'routes.shared.empty' : activeLabel ? 'routes.label.empty' : 'routes.notes.empty';
 
   function openNote(e) {
     if (splitPane) openInPane({ note: e.detail });
@@ -637,7 +673,7 @@
   }
 </script>
 
-<div class="page-shell notes-page">
+<div class="page-shell notes-page" class:workspace-page={splitPane && !loading}>
   <header class="page-header notes-header" class:searching={searchOpen} class:banner-gradient={$bannerStyle === 'gradient'} class:banner-animated={$bannerStyle === 'animated'}>
     {#if searchOpen}
       <div class="header-search" role="search" in:fade={{ duration: 140 }}>
@@ -701,8 +737,8 @@
     </div>
   {/if}
 
-  <div class="notes-body">
-    {#if canCapture && !searchOpen}
+  <div class="notes-body" class:workspace-body={splitPane && !loading}>
+    {#if canCapture && !searchOpen && !splitPane}
       <div class="capture" role="group" aria-label={$_('notes.take_a_note')}>
         <button class="capture-main" on:click={() => newNote('text')}>{$_('notes.take_a_note')}</button>
         <button class="capture-icon" on:click={() => newNote('checklist')} title={$_('notes.new_checklist')} aria-label={$_('notes.new_checklist')}>
@@ -711,10 +747,10 @@
         <button class="capture-icon" on:click={() => captureImageInput.click()} title={$_('notes.new_with_image')} aria-label={$_('notes.new_with_image')}>
           <span class="material-symbols-rounded">add_photo_alternate</span>
         </button>
-        <input bind:this={captureImageInput} type="file" accept="image/*" multiple hidden
-          on:change={(e) => { const files = [...(e.target.files || [])]; e.target.value = ''; if (files.length) newNoteWithImages(files); }} />
       </div>
     {/if}
+    <input bind:this={captureImageInput} type="file" accept="image/*" multiple hidden
+      on:change={(e) => { const files = [...(e.target.files || [])]; e.target.value = ''; if (files.length) newNoteWithImages(files); }} />
 
     {#if view === 'trash'}
       <div class="trash-note">
@@ -731,70 +767,104 @@
       <div class="skeleton-grid" aria-hidden="true">
         {#each Array(6) as _s, i}<div class="skeleton" style="height:{120 + (i % 3) * 50}px"></div>{/each}
       </div>
-    {:else if !filtered.length}
-      <div class="empty">
-        <span class="material-symbols-rounded empty-icon">
-          {query || filtering ? 'search_off' : view === 'reminders' ? 'notifications' : view === 'archive' ? 'archive' : view === 'trash' ? 'delete' : view === 'shared' ? 'group' : activeLabel ? 'label' : 'sticky_note_2'}
-        </span>
-        <h2>
-          {query || filtering ? $_('notes.empty_search_title')
-            : view === 'reminders' ? $_('routes.reminders.empty_title')
-            : view === 'archive' ? $_('routes.archive.empty_title')
-            : view === 'trash' ? $_('routes.trash.empty_title')
-            : view === 'shared' ? $_('routes.shared.empty_title')
-            : activeLabel ? $_('routes.label.empty_title')
-            : $_('routes.notes.empty_title')}
-        </h2>
-        <p>
-          {query || filtering ? $_('notes.empty_search_body')
-            : view === 'reminders' ? $_('routes.reminders.empty_body')
-            : view === 'archive' ? $_('routes.archive.empty_body')
-            : view === 'trash' ? $_('routes.trash.empty_body')
-            : view === 'shared' ? $_('routes.shared.empty_body')
-            : activeLabel ? $_('routes.label.empty_body')
-            : $_('routes.notes.empty_body')}
-        </p>
-      </div>
-    {:else if listMode}
-      <div class="list-layout" class:split={splitPane}>
+    {:else if splitPane}
+      <!-- svelte-ignore a11y-no-static-element-interactions -->
+      <div class="workspace" bind:this={workEl} class:resizing={!!resizing} style="height:{workH}px; --list-w:{listW}px">
         <div class="list-col">
-          {#each listGroups as g (g.key)}
-            <section class="list-section">
-              {#if g.kind !== 'all'}
-                <h2 class="section-label">
-                  {#if g.kind === 'pinned'}<span class="material-symbols-rounded fill">keep</span>{/if}
-                  {#if g.kind === 'label' || g.kind === 'color'}<span class="group-dot" style="background:{g.kind === 'label' ? colorDot(g.label.color) : colorDot(g.color)}"></span>{/if}
-                  {groupTitle(g)}
-                  <span class="group-count">{g.notes.length}</span>
-                </h2>
-              {/if}
-              {#each g.notes as n (g.key + ':' + n.id)}
-                <NoteRow note={n} current={splitPane && pane?.note?.id === n.id} selected={selectedIds.has(n.id)} {selecting}
-                  on:open={openNote} on:select={onSelect} />
-              {/each}
-            </section>
-          {/each}
-        </div>
-        {#if splitPane}
-          <div class="pane" bind:this={paneEl} style="height:{paneH}px">
-            {#if pane}
-              {#key paneKey}
-                <NoteEditor bind:this={paneRef} inline note={pane.note || null} initialKind={pane.kind || 'text'}
-                  initialLabels={pane.labels || []} prefill={pane.prefill || null} on:close={closePane} />
-              {/key}
-            {:else}
-              <div class="pane-empty">
-                <span class="material-symbols-rounded">description</span>
-                <p>{$_('list.select_note')}</p>
-                {#if canCapture}
-                  <button class="btn btn-secondary" on:click={() => newNote('text')}>
-                    <span class="material-symbols-rounded">add</span>{$_('notes.new_note')}
-                  </button>
-                {/if}
+          <div class="list-head">
+            <span class="list-count">{$_('list.note_count', { values: { count: filtered.length } })}</span>
+            {#if canCapture}
+              <div class="new-split">
+                <button class="new-main" on:click={() => newNote('text')}>
+                  <span class="material-symbols-rounded">add</span>{$_('notes.new_note')}
+                </button>
+                <button class="new-more" on:click={(e) => { newAnchor = e.currentTarget.getBoundingClientRect(); newOpen = true; }}
+                  title={$_('list.more_new')} aria-label={$_('list.more_new')} aria-haspopup="menu">
+                  <span class="material-symbols-rounded">expand_more</span>
+                </button>
               </div>
             {/if}
           </div>
-        {/if}
+          <div class="list-scroll" on:keydown={listKeys}>
+            {#if !filtered.length}
+              <div class="list-empty">
+                <span class="material-symbols-rounded">{emptyIcon}</span>
+                <strong>{$_(emptyKey + '_title')}</strong>
+                <p>{$_(emptyKey + '_body')}</p>
+              </div>
+            {:else}
+              {#each listGroups as g (g.key)}
+                <section class="list-section">
+                  {#if g.kind !== 'all'}
+                    <h2 class="section-label">
+                      {#if g.kind === 'pinned'}<span class="material-symbols-rounded fill">keep</span>{/if}
+                      {#if g.kind === 'label' || g.kind === 'color'}<span class="group-dot" style="background:{g.kind === 'label' ? colorDot(g.label.color) : colorDot(g.color)}"></span>{/if}
+                      {groupTitle(g)}
+                      <span class="group-count">{g.notes.length}</span>
+                    </h2>
+                  {/if}
+                  {#each g.notes as n (g.key + ':' + n.id)}
+                    <NoteRow note={n} current={pane?.note?.id === n.id} selected={selectedIds.has(n.id)} {selecting}
+                      on:open={openNote} on:select={onSelect} />
+                  {/each}
+                </section>
+              {/each}
+            {/if}
+          </div>
+        </div>
+        <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
+        <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+        <div class="list-resizer" role="separator" aria-orientation="vertical" aria-valuemin={LIST_W.min} aria-valuemax={LIST_W.max} aria-valuenow={listW}
+          aria-label={$_('list.resize')} title={$_('list.resize')} tabindex="0"
+          on:pointerdown={startResize} on:pointermove={onResizeMove} on:pointerup={endResize} on:pointercancel={endResize}
+          on:dblclick={() => listColumnWidth.set(LIST_W.default)} on:keydown={resizeKey}></div>
+        <div class="pane">
+          {#if pane}
+            {#key paneKey}
+              <NoteEditor bind:this={paneRef} inline note={pane.note || null} initialKind={pane.kind || 'text'}
+                initialLabels={pane.labels || []} prefill={pane.prefill || null} on:close={closePane} />
+            {/key}
+          {:else}
+            <div class="pane-empty">
+              <span class="material-symbols-rounded">description</span>
+              <p>{$_('list.select_note')}</p>
+              {#if canCapture}
+                <div class="pane-empty-actions">
+                  <button class="btn btn-secondary" on:click={() => newNote('text')}>
+                    <span class="material-symbols-rounded">add</span>{$_('notes.new_note')}
+                  </button>
+                  <button class="btn btn-secondary" on:click={() => newNote('checklist')}>
+                    <span class="material-symbols-rounded">checklist</span>{$_('notes.new_checklist')}
+                  </button>
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
+      </div>
+    {:else if !filtered.length}
+      <div class="empty">
+        <span class="material-symbols-rounded empty-icon">{emptyIcon}</span>
+        <h2>{$_(emptyKey + '_title')}</h2>
+        <p>{$_(emptyKey + '_body')}</p>
+      </div>
+    {:else if listMode}
+      <div class="list-col list-card">
+        {#each listGroups as g (g.key)}
+          <section class="list-section">
+            {#if g.kind !== 'all'}
+              <h2 class="section-label">
+                {#if g.kind === 'pinned'}<span class="material-symbols-rounded fill">keep</span>{/if}
+                {#if g.kind === 'label' || g.kind === 'color'}<span class="group-dot" style="background:{g.kind === 'label' ? colorDot(g.label.color) : colorDot(g.color)}"></span>{/if}
+                {groupTitle(g)}
+                <span class="group-count">{g.notes.length}</span>
+              </h2>
+            {/if}
+            {#each g.notes as n (g.key + ':' + n.id)}
+              <NoteRow note={n} selected={selectedIds.has(n.id)} {selecting} on:open={openNote} on:select={onSelect} />
+            {/each}
+          </section>
+        {/each}
       </div>
     {:else if timeline}
       {#if pinned.length}
@@ -947,6 +1017,19 @@
     {/if}
   </div>
 </Popover>
+<Popover bind:open={newOpen} anchor={newAnchor}>
+  <div class="view-menu new-menu" role="menu">
+    <button class="vm-row" role="menuitem" on:click={() => { newOpen = false; newNote('text'); }}>
+      <span class="material-symbols-rounded">edit_note</span><span class="vm-text"><strong>{$_('notes.new_note')}</strong></span>
+    </button>
+    <button class="vm-row" role="menuitem" on:click={() => { newOpen = false; newNote('checklist'); }}>
+      <span class="material-symbols-rounded">checklist</span><span class="vm-text"><strong>{$_('notes.new_checklist')}</strong></span>
+    </button>
+    <button class="vm-row" role="menuitem" on:click={() => { newOpen = false; captureImageInput.click(); }}>
+      <span class="material-symbols-rounded">add_photo_alternate</span><span class="vm-text"><strong>{$_('notes.new_with_image')}</strong></span>
+    </button>
+  </div>
+</Popover>
 <ActionSheet bind:open={menuOpen} title={menuNote?.title || ''} actions={menuActions} on:select={onMenuSelect} />
 
 <style>
@@ -1022,20 +1105,79 @@
   }
 
 
-  .list-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; align-items: start; }
-  .list-layout.split { grid-template-columns: minmax(300px, 420px) minmax(0, 1fr); }
-  .list-col { display: flex; flex-direction: column; gap: 16px; width: 100%; max-width: 760px; margin: 0 auto; }
-  .list-layout.split .list-col { max-width: none; margin: 0; }
-  .list-section { display: flex; flex-direction: column; gap: 4px; }
+  /* List layout on a phone or a medium screen: one rounded column of rows. */
+  .list-card {
+    width: 100%; max-width: 760px; margin: 0 auto;
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .list-section { display: flex; flex-direction: column; }
+  .list-col .section-label {
+    position: sticky; top: 0; z-index: 2;
+    padding: 12px 18px 6px; margin: 0;
+    background: var(--list-bg, var(--surface-1));
+  }
+  .list-card .section-label { position: static; background: none; }
+  .list-card .list-section + .list-section { border-top: 1px solid var(--border); }
   .group-dot { width: 8px; height: 8px; border-radius: 50%; }
   .group-count { font-weight: 500; opacity: 0.7; }
-  .pane { position: sticky; top: 12px; min-height: 420px; }
-  .pane-empty {
-    height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
-    border: 1px dashed var(--border-strong); border-radius: var(--radius-lg); color: var(--text-3); text-align: center; padding: 24px;
+
+  /* Wide screens: list column and reading pane fill the screen under the banner. */
+  .notes-page.workspace-page { padding-bottom: 0; min-height: 0; }
+  .notes-body.workspace-body { padding: 0; gap: 0; max-width: none; }
+  .workspace-body .trash-note { padding: 10px 16px; border-bottom: 1px solid var(--border); }
+  .workspace {
+    display: grid; grid-template-columns: var(--list-w) 0 minmax(0, 1fr);
+    min-height: 0; overflow: hidden;
   }
-  .pane-empty .material-symbols-rounded { font-size: 40px; color: var(--accent); opacity: 0.8; }
-  .pane-empty .btn .material-symbols-rounded { font-size: 18px; color: inherit; opacity: 1; }
+  .workspace.resizing { user-select: none; cursor: col-resize; }
+  .list-col {
+    display: flex; flex-direction: column; min-height: 0;
+    --list-bg: color-mix(in srgb, var(--surface-1) 60%, var(--bg));
+    background: var(--list-bg);
+    border-right: 1px solid var(--border);
+  }
+  .list-head {
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+    height: 58px; padding: 0 12px 0 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .list-count { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .new-split {
+    display: flex; align-items: stretch; height: 36px; flex-shrink: 0;
+    border-radius: 11px; overflow: hidden;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    box-shadow: 0 4px 14px -6px color-mix(in srgb, var(--accent) 70%, transparent);
+  }
+  .new-split button { color: var(--accent-text); display: flex; align-items: center; transition: background var(--dur-fast); }
+  .new-split button:hover { background: rgba(255, 255, 255, 0.14); }
+  .new-main { gap: 4px; padding: 0 12px 0 8px; font-size: 13.5px; font-weight: 600; }
+  .new-main .material-symbols-rounded { font-size: 20px; }
+  .new-more { width: 30px; justify-content: center; border-left: 1px solid rgba(0, 0, 0, 0.14); }
+  .new-more .material-symbols-rounded { font-size: 20px; }
+  .list-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 24px; }
+  .list-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; padding: 48px 24px; color: var(--text-3); }
+  .list-empty .material-symbols-rounded { font-size: 36px; color: var(--accent); opacity: 0.8; margin-bottom: 4px; }
+  .list-empty strong { color: var(--text-1); font-family: var(--font-note-title); font-weight: 500; font-size: 18px; }
+  .list-empty p { font-size: 13px; line-height: 1.5; }
+  .list-resizer {
+    position: relative; z-index: 3; width: 0; cursor: col-resize; outline: none;
+  }
+  .list-resizer::before { content: ''; position: absolute; top: 0; bottom: 0; left: -5px; width: 10px; }
+  .list-resizer::after {
+    content: ''; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px;
+    background: var(--accent); opacity: 0; transition: opacity var(--dur-fast);
+  }
+  .list-resizer:hover::after, .list-resizer:focus-visible::after, .workspace.resizing .list-resizer::after { opacity: 0.7; }
+  .pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  .pane-empty {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    color: var(--text-3); text-align: center; padding: 24px;
+  }
+  .pane-empty > .material-symbols-rounded { font-size: 44px; color: var(--accent); opacity: 0.7; }
+  .pane-empty p { font-size: 14px; }
+  .pane-empty-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 4px; }
+  .pane-empty .btn .material-symbols-rounded { font-size: 18px; }
   .timeline-list { display: flex; flex-direction: column; gap: 12px; width: 100%; max-width: 720px; margin: 0 auto; }
   .notes-section.timeline { width: 100%; }
   .notes-section.timeline .section-label { max-width: 720px; margin-left: auto; margin-right: auto; }

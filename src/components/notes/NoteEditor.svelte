@@ -105,6 +105,9 @@
   $: contentLocked = readOnly || shareRole === 'view';
   $: shared = shareRole !== 'owner' || shareCount > 0;
   $: chips = noteLabels.map(id => $labelsById.get(id)).filter(Boolean);
+  // The reading pane's breadcrumb: the note's first label as a path (Home › Garage).
+  $: crumb = chips.length ? chips[0].name.split('/').map(s => s.trim()).filter(Boolean).join(' › ')
+    : archived ? $_('nav.archive') : $_('nav.notes');
   $: reminderNote = { reminder_at: reminderAt, reminder_rrule: reminderRepeat, reminder_tz: reminderTz };
 
   function enqueue(fn) {
@@ -658,6 +661,55 @@
         <VersionHistory {noteId} canRestore={!contentLocked} on:close={() => showHistory = false} on:restored={onRestoredVersion} />
       </div>
     {:else}
+      {#if inline && !readOnly}
+        <div class="reader-bar" role="toolbar" aria-label={$_('notes.more_options')}>
+          <span class="crumb" title={crumb}>
+            <span class="material-symbols-rounded">{chips.length ? 'label' : archived ? 'archive' : 'sticky_note_2'}</span>
+            <span class="crumb-text">{crumb}</span>
+          </span>
+          <span class="edited" aria-live="polite">
+            {#if saving}{$_('notes.saving')}{:else if updatedAt}{$_('notes.edited', { values: { when: relativeTime(updatedAt).toLowerCase() } })}{/if}
+          </span>
+          <span class="spacer"></span>
+          <button class="icon-btn" class:on={pinned} on:click={togglePin}
+            title={pinned ? $_('notes.unpin') : $_('notes.pin')} aria-label={pinned ? $_('notes.unpin') : $_('notes.pin')} aria-pressed={pinned}>
+            <span class="material-symbols-rounded" class:fill={pinned}>keep</span>
+          </button>
+          {#if isOwner}
+            <button class="icon-btn" on:click={openReminder} title={$_('reminders.remind_me')} aria-label={$_('reminders.remind_me')}>
+              <span class="material-symbols-rounded">notification_add</span>
+            </button>
+          {/if}
+          {#if $sharingAvailable}
+            <button class="icon-btn" on:click={openShare} title={$_('sharing.share')} aria-label={$_('sharing.share')}>
+              <span class="material-symbols-rounded">person_add</span>
+            </button>
+          {/if}
+          {#if !contentLocked}
+            <button class="icon-btn" on:click={() => imageInput.click()} title={$_('attachments.add_image')} aria-label={$_('attachments.add_image')}>
+              <span class="material-symbols-rounded">add_photo_alternate</span>
+            </button>
+            {#if canRecord}
+              <button class="icon-btn" on:click={openRecorder} title={$_('voice.record')} aria-label={$_('voice.record')}>
+                <span class="material-symbols-rounded">mic</span>
+              </button>
+            {/if}
+            <button class="icon-btn" on:click={openColor} title={$_('notes.color')} aria-label={$_('notes.color')}>
+              <span class="material-symbols-rounded">palette</span>
+            </button>
+          {/if}
+          <button class="icon-btn" on:click={openLabels} title={$_('notes.labels')} aria-label={$_('notes.labels')}>
+            <span class="material-symbols-rounded">label</span>
+          </button>
+          <button class="icon-btn" on:click={openMore} title={$_('notes.more_options')} aria-label={$_('notes.more_options')} aria-haspopup="menu">
+            <span class="material-symbols-rounded">more_horiz</span>
+          </button>
+          <span class="bar-sep" aria-hidden="true"></span>
+          <button class="icon-btn" on:click={() => close()} title={$_('common.close')} aria-label={$_('common.close')}>
+            <span class="material-symbols-rounded">close</span>
+          </button>
+        </div>
+      {/if}
       <header class="editor-top">
         {#if narrow}
           <button class="icon-btn" on:click={() => close()} aria-label={$_('common.back')}>
@@ -675,7 +727,7 @@
           on:input={scheduleText}
           on:keydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); kind === 'text' ? bodyRef?.focus() : null; } }}
         />
-        {#if !readOnly}
+        {#if !readOnly && !inline}
           <button class="icon-btn" class:on={pinned} on:click={togglePin}
             title={pinned ? $_('notes.unpin') : $_('notes.pin')} aria-label={pinned ? $_('notes.unpin') : $_('notes.pin')} aria-pressed={pinned}>
             <span class="material-symbols-rounded" class:fill={pinned}>keep</span>
@@ -750,6 +802,7 @@
         {/if}
       </div>
 
+      {#if !inline || readOnly}
       <footer class="editor-bar">
         {#if readOnly}
           <span class="edited">{$_('notes.in_trash')}</span>
@@ -870,6 +923,7 @@
           {/if}
         {/if}
       </footer>
+      {/if}
     {/if}
   </div>
 </div>
@@ -899,10 +953,18 @@
 </Popover>
 <Popover bind:open={moreOpen} anchor={moreAnchor}>
   <div class="sheet-menu">
+    {#if inline}
+      {#if !contentLocked}
+        <button class="sheet-item" on:click={() => fromSheet(convert, moreAnchor)}>
+          <span class="material-symbols-rounded">{kind === 'text' ? 'checklist' : 'notes'}</span>{kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}
+        </button>
+      {/if}
+    {:else}
     <button class="sheet-item" on:click={() => fromSheet(openLabels, moreAnchor)}>
       <span class="material-symbols-rounded">label</span>{$_('notes.labels')}
     </button>
-    {#if $sharingAvailable}
+    {/if}
+    {#if $sharingAvailable && !inline}
       <button class="sheet-item" on:click={() => fromSheet(openShare, moreAnchor)}>
         <span class="material-symbols-rounded">person_add</span>{$_('sharing.share')}
       </button>
@@ -980,11 +1042,25 @@
   .editor-panel.drag-over { outline: 2px dashed var(--accent); outline-offset: -6px; }
 
   .editor-backdrop.inline { display: contents; }
+  /* In the List layout's reading pane: flush, with its toolbar on top. */
   .editor-panel.inline {
-    max-width: none; max-height: none; height: 100%;
-    border-radius: var(--radius-lg);
-    box-shadow: var(--card-rest-shadow);
+    max-width: none; max-height: none; height: 100%; flex: 1;
+    border: none; border-radius: 0; box-shadow: none;
   }
+  .reader-bar {
+    display: flex; align-items: center; gap: 2px; flex-shrink: 0;
+    height: 58px; padding: 0 12px 0 32px;
+    border-bottom: 1px solid var(--note-border);
+  }
+  .crumb { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text-2); }
+  .crumb .material-symbols-rounded { font-size: 17px; color: var(--note-glow, var(--accent)); }
+  .crumb-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .reader-bar .edited { margin-left: 12px; overflow: hidden; text-overflow: ellipsis; }
+  .reader-bar .icon-btn { width: 36px; height: 36px; border-radius: 10px; }
+  .reader-bar .icon-btn .material-symbols-rounded { font-size: 21px; }
+  .bar-sep { width: 1px; height: 22px; background: var(--note-border); margin: 0 6px; }
+  .inline .editor-top { padding-top: 26px; }
+  @media (max-width: 1320px) { .reader-bar .edited { display: none; } }
   .editor-backdrop {
     position: fixed; inset: 0; z-index: 200;
     background: rgba(0, 0, 0, 0.55);
