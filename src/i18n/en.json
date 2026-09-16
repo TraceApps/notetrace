@@ -1145,6 +1145,10 @@
     "send":                      "Send"
   },
   "settings_trace_ct": {
+    "env_lock_banner":           "Configured via environment variables, changes are disabled.",
+    "enable_desc":               "Floating chat button on every page. Uses your own AI provider key, never shared.",
+    "enable_desc_locked":        "Floating chat button on every page. The server provides the AI.",
+    "server_default":            "Server default",
     "toast": {
       "fill_fields":             "Fill in provider, API key, and model first",
       "connected":               "Trace AI connected, assistant is ready"

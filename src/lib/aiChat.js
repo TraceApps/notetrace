@@ -48,6 +48,26 @@ export const AI_MODELS = {
   custom:  [],
 };
 
+/** What a model is called in the picker. Same wording as the other Trace apps. */
+export const AI_MODEL_LABELS = {
+  'claude-haiku-4-5-20251001': 'Claude Haiku (fast, cheap)',
+  'claude-sonnet-5':           'Claude Sonnet 5 (balanced)',
+  'claude-opus-5':             'Claude Opus 5',
+  'claude-fable-5':            'Claude Fable 5 (most capable)',
+  'claude-opus-4-8':           'Claude Opus 4.8 (previous)',
+  'gpt-5.6-luna':              'GPT-5.6 Luna (fast, cheap)',
+  'gpt-5.6-terra':             'GPT-5.6 Terra (balanced)',
+  'gpt-5.6':                   'GPT-5.6 (smarter)',
+  'gpt-4o-mini':               'GPT-4o mini (previous)',
+  'gpt-4o':                    'GPT-4o (previous)',
+  'gemini-3.5-flash-lite':     'Gemini 3.5 Flash Lite (cheapest)',
+  'gemini-3.6-flash':          'Gemini 3.6 Flash (fast, cheap)',
+  'gemini-3.1-pro':            'Gemini 3.1 Pro (smarter)',
+  'gemini-2.5-flash-lite':     'Gemini 2.5 Flash Lite (previous)',
+  'gemini-2.5-flash':          'Gemini 2.5 Flash (previous)',
+  'gemini-2.5-pro':            'Gemini 2.5 Pro (previous)',
+};
+
 // ── Tool definitions ─────────────────────────────────────────────────────────
 // The note tools live in trace-note-tools.js with their executor.
 export const TOOLS = NOTE_TOOLS;

@@ -1,7 +1,7 @@
 <script>
   import { _ } from 'svelte-i18n';
   import { aiEnabled, aiProvider, aiApiKey, aiModel, aiBaseUrl, aiAssistantName, aiKeyVerified, smartLogEnabled, autoTranscribe, autoSummarizeLong, autoReadImages, aiTranscribeModel, envLocks as envLocksStore } from '../../stores/settings.js';
-  import { AI_PROVIDERS, AI_DEFAULT_MODELS, AI_MODELS, AI_MODEL_CUSTOM, callAI, callAIProxy } from '../../lib/aiChat.js';
+  import { AI_PROVIDERS, AI_DEFAULT_MODELS, AI_MODELS, AI_MODEL_LABELS, AI_MODEL_CUSTOM, callAI, callAIProxy } from '../../lib/aiChat.js';
   import { showError, showSuccess } from '../../stores/toast.js';
   import ConnectionStatus from './ConnectionStatus.svelte';
 
@@ -15,9 +15,11 @@
   $: _displayedAiEnabled = envLocks.ai ? !!envLocks.ai_enabled : $aiEnabled;
   // The server names its OpenAI-compatible provider oai-compat, which isn't
   // one of the picker's ids, so a locked install showed an empty box.
-  const SERVER_PROVIDER_LABELS = { 'oai-compat': 'OpenAI Compatible' };
+  const SERVER_PROVIDER_IDS = { 'oai-compat': 'custom' };
+  const providerId = (id) => SERVER_PROVIDER_IDS[id] || id || '';
   const providerLabel = (id) =>
-    SERVER_PROVIDER_LABELS[id] || AI_PROVIDERS.find(p => p.id === id)?.label || id || '';
+    AI_PROVIDERS.find(p => p.id === providerId(id))?.label || id || '';
+  $: lockedProvider = envLocks.ai ? providerId(envLocks.ai_provider) : '';
 
   let showKey = false;
   let testing = false;
@@ -96,7 +98,7 @@
     _invalidate();
   }
   function _modelLabel(m) {
-    return m === AI_MODEL_CUSTOM ? 'Custom…' : m;
+    return m === AI_MODEL_CUSTOM ? 'Custom…' : (AI_MODEL_LABELS[m] || m);
   }
   // Required fields the user must fill in for a meaningful test.
   $: canTest = !envLocks.ai
@@ -181,6 +183,12 @@
   }
 </script>
 
+{#if envLocks.ai}
+  <div class="env-lock-banner">
+    <span class="material-symbols-rounded">lock</span>
+    {$_('settings_trace_ct.env_lock_banner')}
+  </div>
+{/if}
 <div class="card settings-card">
   {#if _displayedAiEnabled}
     {@const _provider = AI_PROVIDERS.find(p => p.id === $aiProvider)}
@@ -197,8 +205,8 @@
     <div>
       <span class="setting-label">{$_('settings_trace_ct.enable_assistant')}</span>
       <span class="setting-desc">{envLocks.ai
-        ? 'Set on the server by environment variables. The provider, model, and key come from there.'
-        : 'Floating chat button on every page. Uses your own AI provider key, never shared.'}</span>
+        ? $_('settings_trace_ct.enable_desc_locked')
+        : $_('settings_trace_ct.enable_desc')}</span>
     </div>
     <input type="checkbox" class="toggle-cb" checked={_displayedAiEnabled} on:change={e => { if (!envLocks.ai) aiEnabled.set(e.target.checked); }} disabled={envLocks.ai} />
   </div>
@@ -208,7 +216,11 @@
     <div class="setting-row">
       <span class="setting-label">{$_('settings_trace_ct.provider')}</span>
       {#if envLocks.ai}
-        <input class="input" type="text" style="width:220px" value={providerLabel(envLocks.ai_provider)} disabled />
+        <div class="select-wrap expand-left" style="width:220px">
+          <select class="select sel-sm" value={lockedProvider} disabled>
+            <option value={lockedProvider}>{providerLabel(envLocks.ai_provider)}</option>
+          </select>
+        </div>
       {:else}
       <div class="select-wrap expand-left" style="width:220px">
         <select class="select sel-sm" value={$aiProvider} on:change={onProviderChange}>
@@ -239,7 +251,11 @@
     <div class="setting-row">
       <span class="setting-label">{$_('settings_trace_ct.model')}</span>
       {#if envLocks.ai}
-        <input class="input" type="text" style="width:220px" value={envLocks.ai_model || ''} placeholder="(server default)" disabled />
+        <div class="select-wrap" style="width:220px">
+          <select class="select sel-sm" value="locked" disabled>
+            <option value="locked">{envLocks.ai_model ? _modelLabel(envLocks.ai_model) : $_('settings_trace_ct.server_default')}</option>
+          </select>
+        </div>
       {:else if providerModels.length > 0 && $aiProvider !== 'custom'}
         <div class="select-wrap" style="width:220px">
           <select class="select sel-sm" bind:value={aiModelSelectVal} on:change={_syncModelFromSelect}>
@@ -271,34 +287,32 @@
       </div>
     {/if}
 
+    {#if !envLocks.ai}
     <div class="setting-divider"></div>
     <div class="setting-row stack">
-      <span class="setting-label">API Key {envLocks.ai ? '(locked by env var)' : ''}</span>
+      <span class="setting-label">API Key</span>
       <div class="key-row">
         {#if showKey}
           <input class="input" type="text"
             bind:value={aiApiKeyDraft}
-            placeholder={envLocks.ai ? '(set on server)' : 'sk-…'}
-            disabled={envLocks.ai}
+            placeholder="sk-…"
             on:input={_invalidate} />
         {:else}
           <input class="input" type="password"
             bind:value={aiApiKeyDraft}
-            placeholder={envLocks.ai ? '(set on server)' : 'sk-…'}
-            disabled={envLocks.ai}
+            placeholder="sk-…"
             on:input={_invalidate} />
         {/if}
         <button class="key-toggle" on:click={() => showKey = !showKey}
-          aria-label={showKey ? 'Hide' : 'Show'} disabled={envLocks.ai}>
+          aria-label={showKey ? 'Hide' : 'Show'}>
           <span class="material-symbols-rounded">{showKey ? 'visibility_off' : 'visibility'}</span>
         </button>
-        {#if !envLocks.ai}
-          <button class="btn btn-primary save-btn" on:click={saveAiKey}>
-            {#if aiKeySaved}<span class="material-symbols-rounded">check</span>{:else}Save{/if}
-          </button>
-        {/if}
+        <button class="btn btn-primary save-btn" on:click={saveAiKey}>
+          {#if aiKeySaved}<span class="material-symbols-rounded">check</span>{:else}Save{/if}
+        </button>
       </div>
     </div>
+    {/if}
 
     <div class="setting-divider"></div>
     <div class="setting-row stack">
@@ -429,6 +443,16 @@
   .key-toggle:hover:not(:disabled) { color: var(--text-1); }
   .key-toggle:disabled { opacity: 0.5; cursor: not-allowed; }
 
+  /* Same banner the other Trace apps show above an environment-locked section. */
+  .env-lock-banner {
+    display: flex; align-items: center; gap: 8px;
+    margin-bottom: 10px; padding: 10px 14px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    font-size: 13px; color: var(--text-3);
+  }
+  .env-lock-banner .material-symbols-rounded { font-size: 17px; }
   .select-wrap { position: relative; display: inline-block; }
   .select-wrap::after {
     content: ''; position: absolute; right: 10px; top: 50%;
