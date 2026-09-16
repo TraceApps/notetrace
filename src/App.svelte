@@ -14,6 +14,7 @@
   import Toast     from './components/ui/Toast.svelte';
   import ConfirmDialogMount from './components/ui/ConfirmDialogMount.svelte';
   import { DB }    from './lib/db.js';
+  import { NoteApi } from './lib/api.js';
   import { navStyle, applyAccentColor, accentColor, applyAppearance, appearance, disableAnimations, sidebarPersistent, sidebarRail, sidebarRailMedium, cardDensity, pageBanners, bannerStyle, bannerAnimation, forceMobileLayout, startPage } from './stores/settings.js';
   import { _ } from 'svelte-i18n';
   import { currentUser, userMgmtActive, setupRequired, loadAuthState, handleOidcCallback } from './stores/auth.js';
@@ -518,16 +519,7 @@
     // Env-lock state for AI / SMTP / OIDC. Fetched globally so the Trace
     // FAB knows about env-set AI_ENABLED without waiting for Settings to
     // load. Mirrors NutriTrace #36.
-    if (!isNative || getServerUrl()) {
-      fetch(apiUrl('/api/app-config/env-locks'), { credentials: 'include' })
-        .then(r => r.ok ? r.json() : null)
-        .then(async d => {
-          if (!d) return;
-          const { envLocks } = await import('./stores/settings.js');
-          envLocks.set(d);
-        })
-        .catch(() => {});
-    }
+    loadEnvLocks();
 
     // Wizard gate. The web "no user + no user management" case is fully
     // covered by $setupRequired (the server distinguishes a fresh install
@@ -573,6 +565,22 @@
     }
   });
 
+  /**
+   * Which sections the server holds by environment variable, Trace included.
+   * Goes through NoteApi so the Android app sends its token: a bare fetch()
+   * was answered with 401 there, which left Trace looking unconfigured even
+   * with AI_* set on the server.
+   */
+  async function loadEnvLocks() {
+    if (isNative && !getServerUrl()) return;
+    try {
+      const d = await NoteApi.get('/api/app-config/env-locks');
+      if (!d) return;
+      const { envLocks } = await import('./stores/settings.js');
+      envLocks.set(d);
+    } catch { /* defaults stay: Trace waits for a key in Settings */ }
+  }
+
   const AUTH_BYPASS = ['/forgot-password', '/reset-password', '/accept-invite'];
   $: needsLogin = $userMgmtActive && !$currentUser && !AUTH_BYPASS.includes($location);
 
@@ -581,6 +589,7 @@
     if (_wasNeedsLogin && !needsLogin && $currentUser) {
       _wasNeedsLogin = false;
       import('./stores/settings.js').then(({ loadServerSettings }) => loadServerSettings()).catch(() => {});
+      loadEnvLocks();
     } else if (needsLogin) {
       _wasNeedsLogin = true;
     }

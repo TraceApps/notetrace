@@ -21,7 +21,7 @@
   import {
     bannerStyle, disableAnimations, accentColor, appearance,
   } from '../stores/settings.js';
-  import { applyAccentColor } from '../stores/settings.js';
+  import { applyAccentColor, envLocks as envLocksStore } from '../stores/settings.js';
   import { colorPickerOpen } from '../stores/color-picker.js';
 
   // Per-section pages — one component per slug, dispatched by
@@ -283,22 +283,12 @@
     setTimeout(() => row.classList.remove('deep-link-highlight'), 2200);
   }
 
-  // ── Env-lock one-shot fetch ────────────────────────────────────────────
-  // Kept as a local so we can pass it to the AI + Email children (the
-  // only ones that read it). Not lifted to a shared store to avoid an
-  // otherwise-unnecessary settings-store expansion — the store refactor
-  // isn't required for the two-pane port.
-  let envLocks = { ai: false, smtp: false };
-
-  onMount(async () => {
-    try {
-      const res = await fetch('/api/app-config', { credentials: 'include' });
-      if (res.ok) {
-        const appConfig = await res.json();
-        envLocks = appConfig?.envLocks || envLocks;
-      }
-    } catch {}
-  });
+  // Env locks come from the shared store the app fills at startup
+  // (App.svelte). This used to be a local fetch of /api/app-config, which
+  // has no envLocks field, so the value stayed all-false and the Trace and
+  // Email sections offered editable fields for settings the server had
+  // already fixed by environment variable.
+  $: envLocks = $envLocksStore;
 
   // ── Custom color picker (HSL + RGB + Hex) — Sheet lives at shell
   // level so any child can trigger it (SettingsAppearance's Custom

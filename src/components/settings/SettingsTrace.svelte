@@ -13,6 +13,11 @@
   // var, not the per-user store (which stays empty under env-lock because
   // user_settings doesn't pick up server-wide env values).
   $: _displayedAiEnabled = envLocks.ai ? !!envLocks.ai_enabled : $aiEnabled;
+  // The server names its OpenAI-compatible provider oai-compat, which isn't
+  // one of the picker's ids, so a locked install showed an empty box.
+  const SERVER_PROVIDER_LABELS = { 'oai-compat': 'OpenAI Compatible' };
+  const providerLabel = (id) =>
+    SERVER_PROVIDER_LABELS[id] || AI_PROVIDERS.find(p => p.id === id)?.label || id || '';
 
   let showKey = false;
   let testing = false;
@@ -191,7 +196,9 @@
   <div class="setting-row">
     <div>
       <span class="setting-label">{$_('settings_trace_ct.enable_assistant')}</span>
-      <span class="setting-desc">Floating chat button on every page. Uses your own AI provider key — never shared.</span>
+      <span class="setting-desc">{envLocks.ai
+        ? 'Set on the server by environment variables. The provider, model, and key come from there.'
+        : 'Floating chat button on every page. Uses your own AI provider key, never shared.'}</span>
     </div>
     <input type="checkbox" class="toggle-cb" checked={_displayedAiEnabled} on:change={e => { if (!envLocks.ai) aiEnabled.set(e.target.checked); }} disabled={envLocks.ai} />
   </div>
@@ -200,13 +207,17 @@
     <div class="setting-divider"></div>
     <div class="setting-row">
       <span class="setting-label">{$_('settings_trace_ct.provider')}</span>
+      {#if envLocks.ai}
+        <input class="input" type="text" style="width:220px" value={providerLabel(envLocks.ai_provider)} disabled />
+      {:else}
       <div class="select-wrap expand-left" style="width:220px">
-        <select class="select sel-sm" value={$aiProvider} on:change={onProviderChange} disabled={envLocks.ai}>
+        <select class="select sel-sm" value={$aiProvider} on:change={onProviderChange}>
           {#each AI_PROVIDERS as p}
             <option value={p.id}>{p.label}</option>
           {/each}
         </select>
       </div>
+      {/if}
     </div>
 
     {#if $aiProvider === 'custom'}
@@ -227,7 +238,9 @@
     <div class="setting-divider"></div>
     <div class="setting-row">
       <span class="setting-label">{$_('settings_trace_ct.model')}</span>
-      {#if providerModels.length > 0 && $aiProvider !== 'custom'}
+      {#if envLocks.ai}
+        <input class="input" type="text" style="width:220px" value={envLocks.ai_model || ''} placeholder="(server default)" disabled />
+      {:else if providerModels.length > 0 && $aiProvider !== 'custom'}
         <div class="select-wrap" style="width:220px">
           <select class="select sel-sm" bind:value={aiModelSelectVal} on:change={_syncModelFromSelect}>
             {#each providerModels as m}<option value={m}>{_modelLabel(m)}</option>{/each}
@@ -439,18 +452,4 @@
     text-align: left;
   }
 
-  .toggle-cb {
-    width: 40px; height: 24px;
-    appearance: none; background: var(--surface-2);
-    border: 1px solid var(--border); border-radius: 99px;
-    position: relative; cursor: pointer;
-    transition: background var(--dur-fast);
-  }
-  .toggle-cb::after {
-    content: ''; position: absolute; top: 1px; left: 1px;
-    width: 20px; height: 20px; background: var(--text-3); border-radius: 50%;
-    transition: transform var(--dur-base) var(--ease-spring), background var(--dur-fast);
-  }
-  .toggle-cb:checked { background: var(--accent-dim); border-color: var(--accent); }
-  .toggle-cb:checked::after { background: var(--accent); transform: translateX(16px); }
 </style>
