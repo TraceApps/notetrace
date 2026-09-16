@@ -58,6 +58,35 @@
 
         </activity>
 
+        <!-- Home screen widgets: Quick Note (start a note, list, voice note, or drawing)
+             and Notes (pinned and latest notes, from a snapshot the app sends). -->
+        <receiver android:name=".QuickNoteWidgetProvider" android:exported="true" android:label="@string/widget_quick_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_quick_info" />
+        </receiver>
+        <receiver android:name=".NotesWidgetProvider" android:exported="true" android:label="@string/widget_notes_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_notes_info" />
+        </receiver>
+        <service android:name=".NotesWidgetService" android:exported="false" android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <!-- Quick Settings tile: New Note. -->
+        <service
+            android:name=".NewNoteTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_widget_note"
+            android:label="@string/tile_new_note"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data android:name="android.service.quicksettings.ACTIVE_TILE" android:value="false" />
+        </service>
+
         <!-- Voice notes record here, so recording keeps going with the screen off. -->
         <service android:name=".VoiceRecorderService" android:exported="false" android:foregroundServiceType="microphone" />
 

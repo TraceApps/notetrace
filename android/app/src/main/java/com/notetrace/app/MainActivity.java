@@ -13,6 +13,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(FoldPlugin.class);
         registerPlugin(VoiceRecorderPlugin.class);
         registerPlugin(NotePrintPlugin.class);
+        registerPlugin(NoteWidgetPlugin.class);
         super.onCreate(savedInstanceState);
         ShareIntentPlugin.handleIntent(getIntent());
         NoteRemindersPlugin.handleIntent(getIntent());

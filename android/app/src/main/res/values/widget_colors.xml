@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Home screen widgets: light, with values-night for a dark home screen. -->
+<resources>
+    <color name="widget_bg">#F7F5FC</color>
+    <color name="widget_row">#FFFFFF</color>
+    <color name="widget_text">#1D1B24</color>
+    <color name="widget_text_2">#5F5B6B</color>
+    <color name="widget_accent">#7C5CE0</color>
+    <color name="widget_on_accent">#FFFFFF</color>
+    <color name="widget_pill">#ECE8F7</color>
+</resources>

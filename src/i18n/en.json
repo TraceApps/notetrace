@@ -163,6 +163,13 @@
     "items":             "{n, plural, one {# item} other {# items}}",
     "text":              "Text note"
   },
+  "widget": {
+    "all_done":    "All done",
+    "drawing":     "Drawing",
+    "voice_note":  "Voice note",
+    "image":       "Image",
+    "file":        "File"
+  },
   "slash": {
     "title":     "Insert",
     "checklist": "Checklist",
@@ -1573,7 +1580,7 @@
       "cant_open_signin":        "Could not open sign-in browser"
     },
     "app_name":                  "NoteTrace",
-    "tagline":                   "Trace Every Bite",
+    "tagline":                   "Trace Every Thought",
     "use_locally":               "Use Locally",
     "connect_to_server":         "Connect to Server",
     "server_url":                "Server URL",

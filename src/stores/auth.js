@@ -296,6 +296,7 @@ export async function logout() {
       await clearSavedToken();
     } catch {}
   }
+  if (isNative) import('../lib/home-widget.js').then(({ clearHomeWidget }) => clearHomeWidget()).catch(() => {});
   localStorage.removeItem('wl:userId');
   localStorage.removeItem('note:cachedUser');
   localStorage.removeItem('note:csrf');

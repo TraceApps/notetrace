@@ -22,7 +22,8 @@
   import { needsNativeSetup, isNative, getNativeMode, getServerUrl, apiUrl } from './lib/platform.js';
   import { writable } from 'svelte/store';
   import { notesChanged, signalNotesChanged } from './stores/notes.js';
-  import { notifLocalEnabled } from './stores/settings.js';
+  import { notifLocalEnabled, appLockEnabled } from './stores/settings.js';
+  import { refreshHomeWidget } from './lib/home-widget.js';
   import { appLocked } from './lib/app-lock.js';
   import LockScreen from './components/LockScreen.svelte';
   import { describeConnectionIssue } from './lib/connection-message.js';
@@ -178,6 +179,9 @@
       rescheduleReminders();
     }).catch(() => {});
   }
+  // The home screen Notes widget follows the notes, and hides them behind App Lock.
+  // (changes and user are only there so a change or a sign-in sends a fresh snapshot.)
+  $: if (isNative) refreshHomeWidget({ locked: !!$appLockEnabled, changes: $notesChanged, user: $currentUser?.id });
 
   $: if (!isNative && $_) {
     let label = '';
@@ -450,6 +454,10 @@
               });
             }
           }
+        });
+        // Leaving the app: the widget gets edits made since the last change signal.
+        App.addListener('appStateChange', ({ isActive }) => {
+          if (!isActive) refreshHomeWidget({ locked: !!$appLockEnabled, now: true });
         });
         // Deep link callbacks: notetrace://oidc-callback?token=…
         // A home screen shortcut that cold-starts the app arrives as the launch URL.
