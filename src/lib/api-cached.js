@@ -36,7 +36,7 @@ const WRITE_METHODS = new Set([
   'restoreVersion', 'importNotes', 'addAttachments', 'deleteAttachment', 'updateAttachment',
   'createLabel', 'updateLabel', 'deleteLabel', 'reorderLabels',
   'appendAiChat', 'clearAiChat',
-  'uploadImage',
+  'uploadImage', 'uploadFile',
 ]);
 
 const wrapped = {};

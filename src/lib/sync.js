@@ -243,6 +243,8 @@ function _notify(payload) {
 // attachments register here when they land.
 const PHOTO_COLUMNS = [
   { table: 'note_attachments', field: 'url' },
+  // A file's picture (a PDF's first page), made on the device.
+  { table: 'note_attachments', field: 'preview_url' },
 ];
 
 function _isLocalCapacitorUrl(url) {
@@ -295,11 +297,12 @@ async function _uploadFromFileUri(fileUri) {
   if (!blob) return null;
   const nameMatch = fileUri.match(/[^/]+$/);
   const name = nameMatch ? nameMatch[0] : 'photo.jpg';
-  // The file reader often reports no type; the server only accepts images,
-  // audio (voice notes), and video, so infer it from the extension.
+  // The file reader often reports no type, so infer it from the extension:
+  // an image must say it's one to be accepted as a picture.
   const ext = (name.split('.').pop() || '').toLowerCase();
   const byExt = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', heic: 'image/heic',
-    webm: 'audio/webm', ogg: 'audio/ogg', m4a: 'audio/mp4', mp4: 'audio/mp4', mp3: 'audio/mpeg', wav: 'audio/wav', aac: 'audio/aac' };
+    webm: 'audio/webm', ogg: 'audio/ogg', m4a: 'audio/mp4', mp4: 'audio/mp4', mp3: 'audio/mpeg', wav: 'audio/wav', aac: 'audio/aac',
+    pdf: 'application/pdf', txt: 'text/plain', md: 'text/markdown', csv: 'text/csv', json: 'application/json', zip: 'application/zip' };
   const file = new File([blob], name, { type: blob.type || byExt[ext] || 'application/octet-stream' });
   // Hit /api/upload directly (bypassing NoteApi.uploadImage's local
   // fallback — we don't want the fallback here because the whole

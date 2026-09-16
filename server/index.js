@@ -41,7 +41,7 @@ import { seedOidcFromEnv } from './lib/oidc-env.js';
 
 // Initialise DB (runs schema)
 import db from './db.js';
-import { isPrivateUploadPath, UPLOAD_RESPONSE_HEADERS } from './lib/upload-paths.js';
+import { isPrivateUploadPath, UPLOAD_RESPONSE_HEADERS, uploadDisposition } from './lib/upload-paths.js';
 
 // Seed config from env vars if provided (env vars take priority over UI)
 seedSmtpFromEnv();
@@ -126,7 +126,12 @@ router.use('/uploads', (req, res, next) => {
 });
 
 router.use('/uploads', express.static(uploadsPath, {
-  setHeaders(res) { res.set('Cache-Control', 'public, max-age=3600'); res.set(UPLOAD_RESPONSE_HEADERS); }
+  setHeaders(res, filePath) {
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.set(UPLOAD_RESPONSE_HEADERS);
+    // Documents and unknown files download; only media displays in place.
+    if (uploadDisposition(path.basename(filePath)) === 'attachment') res.set('Content-Disposition', 'attachment');
+  }
 }));
 
 // Proxy also before auth — used by Android WebView to load external images

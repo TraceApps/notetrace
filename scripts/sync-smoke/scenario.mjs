@@ -157,4 +157,21 @@ await sync(A); await sync(B);
 choresB = await B.N.getNote(choresB.id);
 ok(!!choresB.items.find(i => i.text === 'Mop')?.checked_at, 'B: when an item was ticked syncs too, for Completed');
 
+// 12. Files: a PDF travels with its name, size, and picture; a picture still on the device waits.
+const lease = await A.N.createNote({ title: 'Lease', attachments: [
+  { uuid: 'file-uuid-1', url: '/uploads/lease.pdf', mime: 'application/pdf', name: 'Lease 2026.pdf', size_bytes: 48213, preview_url: '/uploads/lease-page1.jpg' },
+  { uuid: 'file-uuid-2', url: '/uploads/plan.docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', name: 'plan.docx', size_bytes: 1200,
+    preview_url: 'https://localhost/_capacitor_file_/data/user/0/com.notetrace.app/files/uploads/img_1_plan.jpg' },
+] });
+await sync(A); await sync(B);
+const leaseB = (await B.N.getNotes()).find(n => n.title === 'Lease');
+const pdfB = leaseB?.attachments.find(a => a.uuid === 'file-uuid-1');
+const docB = leaseB?.attachments.find(a => a.uuid === 'file-uuid-2');
+ok(pdfB?.name === 'Lease 2026.pdf' && pdfB.size_bytes === 48213 && pdfB.preview_url === '/uploads/lease-page1.jpg', `B: a file arrives with its name, size, and picture (${pdfB?.name})`);
+ok(docB?.name === 'plan.docx' && docB.preview_url === null, 'B: the file arrives even while its picture is still on the other device');
+await sleep(1100);
+await A.N.updateAttachment(lease.id, 'file-uuid-1', { extracted_text: 'Rent is due on the first' });
+await sync(A); await sync(B);
+ok((await B.N.getNote(leaseB.id)).attachments.find(a => a.uuid === 'file-uuid-1')?.extracted_text === 'Rent is due on the first', 'B: text read from a file on A syncs');
+
 console.log(f ? `${f} FAILED` : 'all passed'); process.exit(f ? 1 : 0);

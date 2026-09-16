@@ -84,14 +84,14 @@ function _attachmentsFor(noteIds) {
   if (!noteIds.length) return new Map();
   const ph = noteIds.map(() => '?').join(',');
   const rows = db.prepare(
-    `SELECT note_id, uuid, url, mime, width, height, position, duration_ms, extracted_text, summary, waveform, segments FROM note_attachments
+    `SELECT note_id, uuid, url, mime, name, size_bytes, preview_url, width, height, position, duration_ms, extracted_text, summary, waveform, segments FROM note_attachments
       WHERE note_id IN (${ph}) AND deleted_at IS NULL AND url != ''
       ORDER BY position ASC, id ASC`
   ).all(...noteIds);
   const map = new Map();
   for (const r of rows) {
     if (!map.has(r.note_id)) map.set(r.note_id, []);
-    map.get(r.note_id).push({ uuid: r.uuid, url: r.url, mime: r.mime, width: r.width, height: r.height, position: r.position, duration_ms: r.duration_ms, extracted_text: r.extracted_text, summary: r.summary, waveform: parseWaveform(r.waveform), segments: parseSegments(r.segments) });
+    map.get(r.note_id).push({ uuid: r.uuid, url: r.url, mime: r.mime, name: r.name || null, size_bytes: r.size_bytes ?? null, preview_url: r.preview_url || null, width: r.width, height: r.height, position: r.position, duration_ms: r.duration_ms, extracted_text: r.extracted_text, summary: r.summary, waveform: parseWaveform(r.waveform), segments: parseSegments(r.segments) });
   }
   return map;
 }
@@ -678,6 +678,13 @@ export const reorderItems = db.transaction((u, noteId, uuids = []) => {
 
 export const ATTACHMENTS_MAX_PER_NOTE = 50;
 
+/** A file's name for showing: no folders, no control characters, at most 255 characters. */
+export function cleanFileName(v) {
+  if (typeof v !== 'string') return null;
+  const base = v.split(/[\\/]/).pop().replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  return base ? base.slice(0, 255) : null;
+}
+
 /** Only files this server stored (or a data-free relative uploads path) may be attached. */
 export function cleanAttachmentUrl(v) {
   const s = String(v ?? '').trim();
@@ -696,11 +703,12 @@ function _addAttachments(ownerOrU, noteId, list, ts) {
     const uuid = typeof a.uuid === 'string' && a.uuid ? a.uuid.slice(0, 64) : randomUUID();
     const num = v => (Number.isFinite(+v) && +v > 0 ? Math.round(+v) : null);
     db.prepare(
-      `INSERT INTO note_attachments (uuid, user_id, note_id, url, mime, width, height, position, duration_ms, extracted_text, summary, waveform, segments, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO note_attachments (uuid, user_id, note_id, url, mime, name, size_bytes, preview_url, width, height, position, duration_ms, extracted_text, summary, waveform, segments, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(uuid) DO UPDATE SET deleted_at = NULL, updated_at = excluded.updated_at
        WHERE note_attachments.note_id = excluded.note_id`
     ).run(uuid, owner, noteId, url, typeof a.mime === 'string' ? a.mime.slice(0, 100) : null,
+          cleanFileName(a.name), num(a.size_bytes), cleanAttachmentUrl(a.preview_url),
           num(a.width), num(a.height), max + added + 1, num(a.duration_ms),
           typeof a.extracted_text === 'string' && a.extracted_text.trim() ? a.extracted_text.slice(0, 50000) : null,
           typeof a.summary === 'string' && a.summary.trim() ? a.summary.slice(0, 8000) : null,
@@ -726,6 +734,7 @@ export const updateAttachment = db.transaction((u, noteId, uuid, patch = {}) => 
   const sets = [];
   const args = [];
   if ('extracted_text' in patch) { sets.push('extracted_text = ?'); args.push(typeof patch.extracted_text === 'string' ? patch.extracted_text.slice(0, 50000) : null); }
+  if ('preview_url' in patch) { sets.push('preview_url = ?'); args.push(cleanAttachmentUrl(patch.preview_url)); }
   if ('summary' in patch) { sets.push('summary = ?'); args.push(typeof patch.summary === 'string' && patch.summary.trim() ? patch.summary.slice(0, 8000) : null); }
   if ('waveform' in patch) { sets.push('waveform = ?'); args.push(waveformText(patch.waveform)); }
   if ('segments' in patch) { sets.push('segments = ?'); args.push(segmentsText(patch.segments)); }

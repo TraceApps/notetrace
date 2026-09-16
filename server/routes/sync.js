@@ -86,7 +86,7 @@ const TABLES = {
     softDelete: true,
   },
   note_attachments: {
-    cols: ['uuid', 'note_id', 'url', 'mime', 'width', 'height', 'position', 'duration_ms', 'extracted_text', 'summary', 'waveform', 'segments'],
+    cols: ['uuid', 'note_id', 'url', 'mime', 'name', 'size_bytes', 'preview_url', 'width', 'height', 'position', 'duration_ms', 'extracted_text', 'summary', 'waveform', 'segments'],
     parents: { note_id: 'notes' },
     uniqueKey: ['uuid'],
     softDelete: true,
@@ -134,6 +134,8 @@ router.post('/push', wrap((req, res) => {
           const clean = cleanAttachmentUrl(translated.url);
           if (!clean) continue;
           translated.url = clean;
+          // A preview still on the device waits for the next upload pass; the file itself needn't.
+          if ('preview_url' in translated) translated.preview_url = cleanAttachmentUrl(translated.preview_url);
         }
 
         let existing = null;

@@ -87,6 +87,29 @@ test('uploads are stored under a safe extension, never the uploader\'s choice', 
   assert.equal(safeUploadExtension('image/svg+xml', 'logo.svg'), '.bin');
 });
 
+test('documents keep their own extension, but nothing that renders as a page does', { skip: !mod }, () => {
+  const { safeUploadExtension } = mod;
+  assert.equal(safeUploadExtension('application/pdf', 'Quote.PDF'), '.pdf');
+  assert.equal(safeUploadExtension('application/octet-stream', 'plan.docx'), '.docx');
+  assert.equal(safeUploadExtension('', 'backup.zip'), '.zip');
+  assert.equal(safeUploadExtension('text/html', 'page.html'), '.bin');
+  assert.equal(safeUploadExtension('application/xhtml+xml', 'x.xhtml'), '.bin');
+  assert.equal(safeUploadExtension('application/javascript', 'x.js'), '.bin');
+  assert.equal(safeUploadExtension('image/svg+xml', 'x.svg'), '.bin');
+  assert.equal(safeUploadExtension('application/pdf', 'evil.html'), '.bin');
+});
+
+test('only media displays in place; every other file downloads', { skip: !mod }, () => {
+  const { uploadDisposition, uploadMaxBytes } = mod;
+  for (const f of ['a.jpg', 'b.webm', 'c.mov', 'd.m4a']) assert.equal(uploadDisposition(f), 'inline', f);
+  for (const f of ['a.pdf', 'b.bin', 'c.docx', 'd.txt', 'e']) assert.equal(uploadDisposition(f), 'attachment', f);
+  assert.equal(uploadMaxBytes({}), 100 * 1048576);
+  assert.equal(uploadMaxBytes({ UPLOAD_MAX_MB: '512' }), 512 * 1048576);
+  assert.equal(uploadMaxBytes({ UPLOAD_MAX_MB: 'lots' }), 100 * 1048576);
+  const src = fs.readFileSync(new URL('../server/index.js', import.meta.url), 'utf8');
+  assert.match(src, /uploadDisposition\(path\.basename\(filePath\)\) === 'attachment'/);
+});
+
 test('uploads are served with no sniffing and a sandboxing policy', { skip: !mod }, () => {
   const { UPLOAD_RESPONSE_HEADERS } = mod;
   assert.equal(UPLOAD_RESPONSE_HEADERS['X-Content-Type-Options'], 'nosniff');

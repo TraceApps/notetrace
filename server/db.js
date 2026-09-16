@@ -325,6 +325,11 @@ if (!columnExists('note_attachments', 'extracted_text')) db.exec(`ALTER TABLE no
 // Trace's summary of a voice note, kept beside the transcript it was made from
 // so it syncs, survives a re-read, and never has to live in the note's text.
 if (!columnExists('note_attachments', 'summary')) db.exec(`ALTER TABLE note_attachments ADD COLUMN summary TEXT`);
+// Files on a note: the name it was added under, its size, and a picture of it
+// (a PDF's first page) when there is one.
+if (!columnExists('note_attachments', 'name')) db.exec(`ALTER TABLE note_attachments ADD COLUMN name TEXT`);
+if (!columnExists('note_attachments', 'size_bytes')) db.exec(`ALTER TABLE note_attachments ADD COLUMN size_bytes INTEGER`);
+if (!columnExists('note_attachments', 'preview_url')) db.exec(`ALTER TABLE note_attachments ADD COLUMN preview_url TEXT`);
 // Optional due date on a checklist item (YYYY-MM-DD, the user's calendar day).
 if (!columnExists('checklist_items', 'due_date')) db.exec(`ALTER TABLE checklist_items ADD COLUMN due_date TEXT`);
 // A repeating task (daily, weekdays, weekly, monthly, yearly): ticking it moves

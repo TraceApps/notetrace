@@ -26,6 +26,7 @@ function _referencedNames() {
   const cutoff = new Date(Date.now() - GRACE_DAYS * 86400000).toISOString().replace('T', ' ').slice(0, 19);
   const urls = [
     ...db.prepare(`SELECT url FROM note_attachments WHERE deleted_at IS NULL OR deleted_at > ?`).all(cutoff).map(r => r.url),
+    ...db.prepare(`SELECT preview_url AS url FROM note_attachments WHERE preview_url IS NOT NULL AND (deleted_at IS NULL OR deleted_at > ?)`).all(cutoff).map(r => r.url),
     ...db.prepare(`SELECT avatar_url AS url FROM users WHERE avatar_url IS NOT NULL`).all().map(r => r.url),
   ];
   return new Set(urls.map(u => String(u || '').split('?')[0].split('/').pop()).filter(Boolean));

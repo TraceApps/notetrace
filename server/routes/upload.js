@@ -5,7 +5,7 @@ import fs from 'fs';
 import { requireAuth } from '../middleware/auth.js';
 import { makeRateLimiter } from '../middleware/rate-limit.js';
 import { detectImageType } from '../lib/image-magic.js';
-import { safeUploadExtension } from '../lib/upload-paths.js';
+import { safeUploadExtension, uploadMaxBytes } from '../lib/upload-paths.js';
 import { audioToolsAvailable, convertToM4a, probeDurationMs, splitAudio } from '../lib/audio-tools.js';
 
 const uploadLimit = makeRateLimiter({ max: 60, windowMs: 60_000, label: 'upload' });
@@ -22,19 +22,22 @@ const storage = multer.diskStorage({
   },
 });
 
-// 100MB cap — recipe images stay tiny but video instructions can be
-// chunky (5-min smartphone clip ≈ 50MB). Authenticated users only,
-// per-user disk cost stays bounded.
+// Any kind of file can go on a note, up to UPLOAD_MAX_MB (100 by default).
+// Authenticated users only. Images are checked by their bytes below; other
+// files are stored under a safe extension and served as downloads.
 const upload = multer({
   storage,
-  limits: { fileSize: 100 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) return cb(null, true);
-    if (file.mimetype.startsWith('video/')) return cb(null, true);
-    if (file.mimetype.startsWith('audio/')) return cb(null, true);
-    cb(new Error('Images, audio, or videos only'));
-  },
+  limits: { fileSize: uploadMaxBytes() },
 });
+
+/** A file over the limit gets a clear 413 rather than a server error. */
+function uploadFailed(err, res, next) {
+  if (err?.code === 'LIMIT_FILE_SIZE') {
+    const mb = Math.round(uploadMaxBytes() / 1048576);
+    return res.status(413).json({ error: `That file is larger than this server accepts (${mb} MB). An admin can raise UPLOAD_MAX_MB.`, max_bytes: uploadMaxBytes() });
+  }
+  return next(err);
+}
 
 /** An /uploads/<file> URL to its path on disk, or null (no directories, no escaping). */
 export function uploadFilePath(url) {
@@ -61,16 +64,15 @@ router.use(requireAuth);
 
 router.post('/', uploadLimit, (req, res, next) => {
   upload.single('file')(req, res, async (err) => {
-    if (err) return next(err);
+    if (err) return uploadFailed(err, res, next);
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    // Video uploads skip the image magic-byte check. The route is auth-
-    // gated and the MIME prefix already filtered for video/*; magic-byte
-    // identification across mp4/webm/mov/m4v variants is messy enough
-    // that we trust the (authenticated) client here.
-    if (/^(video|audio)\//.test(req.file.mimetype || '')) {
-      return res.json({ url: `/uploads/${req.file.filename}` });
-    }
+    const reply = () => res.json({ url: `/uploads/${req.file.filename}`, mime: req.file.mimetype || 'application/octet-stream', size: req.file.size });
+    // Only files that claim to be images get the byte check (a picture is
+    // shown in place, so it must really be one). Audio, video, documents, and
+    // everything else are stored under a safe extension and trusted as the
+    // (authenticated) uploader's.
+    if (!/^image\//.test(req.file.mimetype || '')) return reply();
 
     // Image path: byte-inspect to reject anything spoofed.
     let detected = null;
@@ -85,7 +87,7 @@ router.post('/', uploadLimit, (req, res, next) => {
         error: 'File is not a supported image (JPEG, PNG, WebP, GIF, HEIC, AVIF, BMP).',
       });
     }
-    res.json({ url: `/uploads/${req.file.filename}` });
+    reply();
   });
 });
 
@@ -93,7 +95,7 @@ router.post('/', uploadLimit, (req, res, next) => {
 // (Keep's 3GP/AMR and the like) into M4A. Replies { url, mime, duration_ms }.
 router.post('/audio', uploadLimit, (req, res, next) => {
   upload.single('file')(req, res, async (err) => {
-    if (err) return next(err);
+    if (err) return uploadFailed(err, res, next);
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     const src = req.file.path;
     const convert = req.query.convert === '1';

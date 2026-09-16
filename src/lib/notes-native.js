@@ -63,7 +63,7 @@ async function _hydrate(rows) {
     `SELECT note_id, uuid, text, checked, position, due_date, due_repeat, checked_at FROM checklist_items
       WHERE note_id IN (${ph}) AND deleted_at IS NULL ORDER BY position ASC, id ASC`, ids);
   const files = await _q(
-    `SELECT note_id, uuid, url, mime, width, height, position, duration_ms, extracted_text, summary, waveform, segments FROM note_attachments
+    `SELECT note_id, uuid, url, mime, name, size_bytes, preview_url, width, height, position, duration_ms, extracted_text, summary, waveform, segments FROM note_attachments
       WHERE note_id IN (${ph}) AND deleted_at IS NULL AND url != '' ORDER BY position ASC, id ASC`, ids);
   const links = await _q(
     `SELECT nl.note_id, nl.label_id FROM note_labels nl
@@ -78,7 +78,7 @@ async function _hydrate(rows) {
   const fileMap = new Map();
   for (const a of files) {
     if (!fileMap.has(a.note_id)) fileMap.set(a.note_id, []);
-    fileMap.get(a.note_id).push({ uuid: a.uuid, url: a.url, mime: a.mime, width: a.width, height: a.height, position: a.position, duration_ms: a.duration_ms, extracted_text: a.extracted_text, summary: a.summary, waveform: parseWaveform(a.waveform), segments: parseSegments(a.segments) });
+    fileMap.get(a.note_id).push({ uuid: a.uuid, url: a.url, mime: a.mime, name: a.name || null, size_bytes: a.size_bytes ?? null, preview_url: a.preview_url || null, width: a.width, height: a.height, position: a.position, duration_ms: a.duration_ms, extracted_text: a.extracted_text, summary: a.summary, waveform: parseWaveform(a.waveform), segments: parseSegments(a.segments) });
   }
   const labelMap = new Map();
   for (const l of links) {
@@ -238,9 +238,12 @@ async function _addAttachments(noteId, list, ts) {
       await _run(`UPDATE note_attachments SET deleted_at = NULL, updated_at = ?, sync_status = 'pending' WHERE id = ?`, [ts, existing.id]);
     } else {
       await _run(
-        `INSERT INTO note_attachments (uuid, user_id, note_id, url, mime, width, height, position, duration_ms, extracted_text, summary, waveform, segments, created_at, updated_at, sync_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
-        [uuid, LOCAL_USER_ID, noteId, String(a.url), a.mime || null, num(a.width), num(a.height), max + added + 1, num(a.duration_ms),
+        `INSERT INTO note_attachments (uuid, user_id, note_id, url, mime, name, size_bytes, preview_url, width, height, position, duration_ms, extracted_text, summary, waveform, segments, created_at, updated_at, sync_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+        [uuid, LOCAL_USER_ID, noteId, String(a.url), a.mime || null,
+         typeof a.name === 'string' && a.name.trim() ? a.name.split(/[\\/]/).pop().slice(0, 255) : null,
+         num(a.size_bytes), typeof a.preview_url === 'string' && a.preview_url ? a.preview_url : null,
+         num(a.width), num(a.height), max + added + 1, num(a.duration_ms),
          typeof a.extracted_text === 'string' && a.extracted_text.trim() ? a.extracted_text : null,
          typeof a.summary === 'string' && a.summary.trim() ? a.summary : null,
          waveformText(a.waveform), segmentsText(a.segments), ts, ts]);
@@ -560,6 +563,7 @@ export const NotesNative = {
     const sets = [];
     const args = [];
     if ('extracted_text' in patch) { sets.push('extracted_text = ?'); args.push(typeof patch.extracted_text === 'string' ? patch.extracted_text : null); }
+    if ('preview_url' in patch) { sets.push('preview_url = ?'); args.push(typeof patch.preview_url === 'string' && patch.preview_url ? patch.preview_url : null); }
     if ('summary' in patch) { sets.push('summary = ?'); args.push(typeof patch.summary === 'string' && patch.summary.trim() ? patch.summary : null); }
     if ('waveform' in patch) { sets.push('waveform = ?'); args.push(waveformText(patch.waveform)); }
     if ('segments' in patch) { sets.push('segments = ?'); args.push(segmentsText(patch.segments)); }

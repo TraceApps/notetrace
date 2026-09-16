@@ -206,6 +206,8 @@ const _NoteApiHttp = {
   // and returns server ids, so the images for those notes must go to the
   // server too: straight upload (no local fallback), attach by server id.
   importUploadImage(file)        { return this.uploadImage(file); },
+  importUploadFile(file)         { return this.uploadFile(file); },
+  importUpdateAttachment(noteId, uuid, patch) { return this.updateAttachment(noteId, uuid, patch); },
   importAddAttachments(noteId, list) { return this.addAttachments(noteId, list); },
   deleteAttachment(noteId, uuid) { return this.del(`/api/notes/${noteId}/attachments/${encodeURIComponent(uuid)}`); },
   updateAttachment(noteId, uuid, patch) { return this.patch(`/api/notes/${noteId}/attachments/${encodeURIComponent(uuid)}`, patch); },
@@ -229,6 +231,13 @@ const _NoteApiHttp = {
     const res = await this._fetch('POST', '/api/upload', form, true);
     return res.url;
   },
+  /** Any file for a note: { url, mime, size }. */
+  async uploadFile(file) {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await this._fetch('POST', '/api/upload', form, true);
+    return { url: res.url, mime: res.mime || file.type || 'application/octet-stream', size: res.size ?? file.size ?? null };
+  },
   /** Audio through the server, which can convert it to M4A: { url, mime, duration_ms }. */
   async uploadAudio(file, { convert = false } = {}) {
     const form = new FormData();
@@ -251,7 +260,7 @@ const SERVER_ONLY_METHODS = new Set([
   'getMembers', 'addMember', 'updateMember', 'removeMember',
   // Imports run on the server (keeping original dates) and reach this
   // device through sync.
-  'importNotes', 'importUploadImage', 'importAddAttachments', 'uploadAudio',
+  'importNotes', 'importUploadImage', 'importUploadFile', 'importUpdateAttachment', 'importAddAttachments', 'uploadAudio',
   // Low-level HTTP primitives, used by components that don't have a
   // dedicated NoteApi wrapper (invite list, session config, admin OIDC
   // CRUD, etc.). NoteApiNative stubs these to throw in pure local mode;
@@ -276,6 +285,18 @@ async function _uploadImageConnected(file) {
   }
 }
 
+// Files go the same way as photos: to the server when it answers, so the
+// URL works on every device, else kept on the phone for sync to send later.
+async function _uploadFileConnected(file) {
+  try {
+    return await _NoteApiHttp.uploadFile(file);
+  } catch (e) {
+    if (/larger than this server accepts/i.test(e?.message || '')) throw e;
+    console.warn('[upload] server POST failed, saving the file locally for sync retry:', e?.message);
+    return await NoteApiNative.uploadFile(file);
+  }
+}
+
 // Dynamic proxy — picks the right impl per call based on platform mode.
 export const NoteApi = new Proxy({}, {
   get(_, prop) {
@@ -285,6 +306,9 @@ export const NoteApi = new Proxy({}, {
     // photo-taking.
     if (prop === 'uploadImage' && isNative && getServerUrl()) {
       return _uploadImageConnected;
+    }
+    if (prop === 'uploadFile' && isNative && getServerUrl()) {
+      return _uploadFileConnected;
     }
     let impl;
     if (!isNative)                                             impl = _NoteApiHttp;

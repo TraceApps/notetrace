@@ -308,6 +308,36 @@ let attPush = (await api('POST', '/api/sync/push', { tables: { note_attachments:
 ] } })).json;
 ok(attPush.tables.note_attachments.length === 1 && attPush.tables.note_attachments[0].client_id === 2, 'sync accepts uploaded images and holds back device-local paths');
 
+console.log('files');
+const upFile = async (bytes, type, name) => {
+  const fd = new FormData();
+  fd.append('file', new Blob([bytes], { type }), name);
+  const res = await fetch(B + '/api/upload', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: fd });
+  return { status: res.status, json: await res.json() };
+};
+const pdfUp = (await upFile('%PDF-1.4 tiny', 'application/pdf', 'Lease.pdf')).json;
+ok(/^\/uploads\/[\w.-]+\.pdf$/.test(pdfUp.url || '') && pdfUp.mime === 'application/pdf' && pdfUp.size === 13, `a PDF uploads under .pdf with its type and size (${pdfUp.url})`);
+const htmlUp = (await upFile('<script>alert(1)</script>', 'text/html', 'page.html')).json;
+ok(/\.bin$/.test(htmlUp.url || ''), `an HTML file is stored as .bin (${htmlUp.url})`);
+const docxUp = (await upFile('PK', 'application/octet-stream', 'plan.docx')).json;
+ok(/\.docx$/.test(docxUp.url || ''), 'a document with no type keeps its extension');
+const served = await fetch(B + pdfUp.url);
+ok(/attachment/.test(served.headers.get('content-disposition') || '') && served.headers.get('x-content-type-options') === 'nosniff', 'documents are served as downloads, never sniffed');
+const pic = await fetch(B + up.url);
+ok(!pic.headers.get('content-disposition'), 'pictures still display in place');
+const fileNote = (await api('POST', '/api/notes', { title: 'Lease', attachments: [
+  { uuid: 'file-uuid-1', url: pdfUp.url, mime: 'application/pdf', name: '../../Lease 2026.pdf', size_bytes: 13, preview_url: up.url },
+] })).json;
+const fa = fileNote.attachments?.[0];
+ok(fa?.name === 'Lease 2026.pdf' && fa.size_bytes === 13 && fa.preview_url === up.url, `a file keeps its name (folders stripped), size, and picture (${fa?.name})`);
+let fn = (await api('PATCH', `/api/notes/${fileNote.id}/attachments/file-uuid-1`, { preview_url: 'https://evil.example/x.jpg', extracted_text: 'Rent is due on the first' })).json;
+ok(fn.attachments[0].preview_url === null && fn.attachments[0].extracted_text === 'Rent is due on the first', 'a picture from anywhere else is refused; the text is kept');
+const found = (await api('GET', '/api/notes?q=rent')).json;
+ok(found.some(n => n.id === fileNote.id), 'text read from a file is searchable');
+const filePull = (await api('GET', '/api/sync/pull?since=1970-01-01')).json;
+const pulledFile = filePull.tables.note_attachments?.find(a => a.uuid === 'file-uuid-1');
+ok(pulledFile?.name === 'Lease 2026.pdf' && pulledFile.size_bytes === 13, 'a file syncs with its name and size');
+
 console.log('links');
 const target = (await api('POST', '/api/notes', { title: 'Garden plan' })).json;
 const linker = (await api('POST', '/api/notes', { title: 'Weekend', body_md: 'Work on [[garden plan]] and [[Nope]]' })).json;

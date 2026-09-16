@@ -107,6 +107,8 @@ export const NoteApiNative = {
 
   // Local-mode imports store their images on the device, like any upload.
   importUploadImage(file) { return this.uploadImage(file); },
+  importUploadFile(file) { return this.uploadFile(file); },
+  importUpdateAttachment(noteId, uuid, patch) { return NotesNative.updateAttachment(noteId, uuid, patch); },
 
   async uploadImage(file) {
     const base64 = await _fileToBase64(file);
@@ -134,5 +136,18 @@ export const NoteApiNative = {
     return (CapCore && typeof CapCore.convertFileSrc === 'function')
       ? CapCore.convertFileSrc(uri)
       : uri;
+  },
+
+  /** Any file for a note, kept on the phone until sync uploads it: { url, mime, size }. */
+  async uploadFile(file) {
+    const base64 = await _fileToBase64(file);
+    // The extension stays at the end: the sync upload pass reads the type from it.
+    const safe = String(file?.name || 'file').replace(/[^a-zA-Z0-9.]/g, '_').slice(-120);
+    const fileName = `file_${Date.now()}_${safe}`;
+    await Filesystem.writeFile({ path: `uploads/${fileName}`, data: base64, directory: Directory.Data, recursive: true });
+    const { uri } = await Filesystem.getUri({ path: `uploads/${fileName}`, directory: Directory.Data });
+    const { Capacitor: CapCore } = await import('@capacitor/core');
+    const url = (CapCore && typeof CapCore.convertFileSrc === 'function') ? CapCore.convertFileSrc(uri) : uri;
+    return { url, mime: file?.type || 'application/octet-stream', size: file?.size ?? null };
   },
 };

@@ -80,10 +80,25 @@ const EXT_BY_MIME = {
   'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov', 'video/ogg': 'ogv', 'video/3gpp': '3gp',
 };
 
+// Documents and other files a note can carry. One of these keeps its own
+// extension (a PDF is stored as .pdf), whatever type the uploader claimed.
+// Nothing that a browser would run or render as a page is on the list: HTML,
+// SVG, XML, and script become ".bin" like any other unknown file, and every
+// non-media file is served as a download (uploadDisposition below).
+const DOCUMENT_EXTS = [
+  'pdf', 'txt', 'md', 'markdown', 'csv', 'tsv', 'json', 'rtf', 'log', 'tex',
+  'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp', 'odg', 'pages', 'numbers', 'key',
+  'epub', 'mobi', 'azw3',
+  'zip', '7z', 'rar', 'gz', 'tgz', 'tar', 'bz2', 'xz',
+  'ics', 'vcf', 'gpx', 'kml', 'kmz', 'eml',
+  'psd', 'ai', 'sketch', 'fig', 'xd', 'stl', '3mf', 'obj', 'step', 'stp', 'dwg', 'dxf',
+  'ttf', 'otf', 'woff', 'woff2',
+];
+
 /**
  * The extension (with its dot) to store an upload under: the uploader's own
- * when it's a known one for that kind of file, else one from the type, else
- * ".bin", which is served as a download.
+ * when it's a known one for that kind of file (or a known document), else one
+ * from the type, else ".bin", which is served as a download.
  */
 export function safeUploadExtension(mimetype, originalname) {
   const mime = String(mimetype || '').toLowerCase().split(';')[0].trim();
@@ -91,7 +106,27 @@ export function safeUploadExtension(mimetype, originalname) {
   const own = path.extname(String(originalname || '')).toLowerCase().replace(/^\./, '');
   if (EXT_BY_KIND[kind]?.includes(own)) return `.${own}`;
   if (EXT_BY_MIME[mime]) return `.${EXT_BY_MIME[mime]}`;
+  if (DOCUMENT_EXTS.includes(own)) return `.${own}`;
   return '.bin';
+}
+
+const _MEDIA_EXTS = new Set(Object.values(EXT_BY_KIND).flat());
+
+/**
+ * How a stored upload is served: images, audio, and video display in place;
+ * everything else (documents, archives, unknown files) only ever downloads,
+ * so opening its link can't render it as a page on this origin. The app shows
+ * PDFs and text itself, from the file's bytes.
+ */
+export function uploadDisposition(fileName) {
+  const ext = path.extname(String(fileName || '')).toLowerCase().replace(/^\./, '');
+  return _MEDIA_EXTS.has(ext) ? 'inline' : 'attachment';
+}
+
+/** The largest upload accepted, in bytes (UPLOAD_MAX_MB, 100 by default). */
+export function uploadMaxBytes(env = process.env) {
+  const mb = Number(env.UPLOAD_MAX_MB);
+  return (Number.isFinite(mb) && mb > 0 ? Math.min(mb, 4096) : 100) * 1024 * 1024;
 }
 
 /**
