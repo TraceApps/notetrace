@@ -507,7 +507,6 @@
     display: flex; align-items: center; gap: 10px;
     cursor: pointer; font-size: 14px; color: var(--text-1);
   }
-  .check input { width: 18px; height: 18px; accent-color: var(--accent); }
 
   .error {
     color: var(--error, #f87171);

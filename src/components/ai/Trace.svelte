@@ -1041,13 +1041,6 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
     padding: 10px 14px;
     border-bottom: 1px solid var(--border);
   }
-  .panel-title {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-weight: 700;
-    color: var(--text-1);
-  }
   /* Brand block in the header — TraceFace avatar + stacked name/sub.
      Matches NutriTrace's Trace panel-header layout 1:1 for cross-app
      visual cohesion. */
@@ -1246,28 +1239,6 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
   .attach-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
   .attach-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .attach-btn .material-symbols-rounded { font-size: 20px; }
-  .mic-btn.recording {
-    background: color-mix(in srgb, var(--error, #ef4444) 18%, transparent);
-    border-color: var(--error, #ef4444);
-    color: var(--error, #ef4444);
-    animation: micPulse 1.2s ease-in-out infinite;
-  }
-  /* Smart Log session — same red ring but accented so it's distinct
-     from a plain dictation session. */
-  .mic-btn.recording.smart-log {
-    background: color-mix(in srgb, var(--accent) 22%, transparent);
-    border-color: var(--accent);
-    color: var(--accent);
-    animation: smartLogPulse 1.2s ease-in-out infinite;
-  }
-  @keyframes micPulse {
-    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--error, #ef4444) 50%, transparent); }
-    50%      { box-shadow: 0 0 0 6px color-mix(in srgb, var(--error, #ef4444) 0%, transparent); }
-  }
-  @keyframes smartLogPulse {
-    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent); }
-    50%      { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent); }
-  }
   /* Textarea — NT parity: stronger border, more rounded, taller line
      height, max 120 px scroll. */
   .input {

@@ -899,17 +899,7 @@
 
   /* Layout matches NutriTrace SettingsBackup verbatim. The selectors
      below mirror NT's class names + values exactly. */
-  .backup-body { display: flex; flex-direction: column; gap: 10px; }
 
-  .sub-label {
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--text-3);
-    padding: 4px 2px 2px;
-    margin: 0;
-  }
 
   .card.settings-card {
     background: var(--surface-1);

@@ -27,7 +27,6 @@ const RETRY_MIN_MS = 3_000;
 const RETRY_MAX_MS = 30_000;
 let _retryMs = RETRY_MIN_MS;
 function _backoff() { const ms = _retryMs; _retryMs = Math.min(RETRY_MAX_MS, _retryMs * 2); return ms; }
-const QUEUED = new Set(['createNote', 'updateNote', 'trashNote', 'restoreNote', 'addItem', 'updateItem', 'deleteItem', 'reorderItems']);
 // Server-only work that can't wait in the outbox.
 const NEEDS_SERVER = new Set([
   'convertNote', 'deleteNoteForever', 'emptyTrash', 'importNotes', 'restoreVersion', 'getVersions',
@@ -416,4 +415,3 @@ export function createOfflineApi(http) {
   });
 }
 
-export { QUEUED };

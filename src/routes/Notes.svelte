@@ -53,7 +53,6 @@
   import { cubicOut } from 'svelte/easing';
   import { disableAnimations } from '../stores/settings.js';
   import FilterMenu from '../components/notes/FilterMenu.svelte';
-  import { printNote } from '../lib/note-print.js';
   import { cleanTemplates, noteFromTemplate } from '../lib/note-templates.js';
   import { noteTemplates, dateFormat } from '../stores/settings.js';
   import { formatDate } from '../lib/format.js';
@@ -99,7 +98,6 @@
   let colorTarget = null, colorAnchor = null, colorOpen = false;
   let labelTarget = null, labelAnchor = null, labelOpen = false;
   let reminderTarget = null, reminderAnchor = null, reminderOpen = false;
-  let menuNote = null, menuOpen = false;
 
   // ── Filter chips under search ─────────────────────────────────────
   let filters = emptyFilters();
@@ -559,11 +557,6 @@
         case 'reminder':
           reminderTarget = note; reminderAnchor = anchor; reminderOpen = true;
           return;
-        case 'print': {
-          const full = await NoteApi.getNote(note.id).catch(() => note);
-          await printNote(full || note, { labels: (full?.labels || note.labels || []).map(id => $labelsById.get(id)?.name).filter(Boolean), t: $_ });
-          return;
-        }
       }
       refreshLabels();
     } catch (e) {
@@ -636,32 +629,6 @@
     } catch (e) { showError(e.message); }
   }
 
-  function onMenu(e) {
-    menuNote = e.detail.note;
-    menuOpen = true;
-  }
-  $: menuActions = !menuNote ? [] : view === 'trash'
-    ? [
-        { value: 'restore', label: $_('notes.restore'), icon: 'restore_from_trash' },
-        { value: 'deleteForever', label: $_('notes.delete_forever'), icon: 'delete_forever', danger: true },
-      ]
-    : [
-        ...(view === 'notes' ? [{ value: 'pin', label: menuNote.pinned ? $_('notes.unpin') : $_('notes.pin'), icon: 'keep' }] : []),
-        ...(isOwner(menuNote) ? [{ value: 'reminder', label: $_('reminders.remind_me'), icon: 'notification_add' }] : []),
-        ...(canEdit(menuNote) ? [{ value: 'color', label: $_('notes.color'), icon: 'palette' }] : []),
-        { value: 'labels', label: $_('notes.labels'), icon: 'label' },
-        view === 'archive'
-          ? { value: 'unarchive', label: $_('notes.unarchive'), icon: 'unarchive' }
-          : { value: 'archive', label: $_('notes.archive'), icon: 'archive' },
-        { value: 'print', label: $_('print.print'), icon: 'print' },
-        ...(isOwner(menuNote) ? [{ value: 'trash', label: $_('notes.move_to_trash'), icon: 'delete', danger: true }] : []),
-      ];
-
-  function onMenuSelect(e) {
-    const note = menuNote;
-    menuNote = null;
-    runAction(note, e.detail.value, null);
-  }
 
   // ── Multi-select ──────────────────────────────────────────────────
   // Ctrl/Cmd-click, the check on a card, or a long press starts selecting;
@@ -954,6 +921,7 @@
   {/if}
 
   <div class="notes-body" class:workspace-body={splitPane && !loading}>
+    {#if searchOpen}<h2 class="sr-only">{$_('notes.search_results')}</h2>{/if}
     {#if canCapture && !searchOpen && !splitPane}
       <div class="capture" role="group" aria-label={$_('notes.take_a_note')}>
         <button class="capture-main" on:click={() => newNote('text')}>{$_('notes.take_a_note')}</button>
@@ -1102,7 +1070,7 @@
         <section class="notes-section timeline">
           <h2 class="section-label"><span class="material-symbols-rounded fill">keep</span>{$_('notes.pinned')}</h2>
           <div class="timeline-list">
-            {#each pinned as n (n.id)}<NoteCard note={n} {view} {terms} selected={selectedIds.has(n.id)} {selecting} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} />{/each}
+            {#each pinned as n (n.id)}<NoteCard note={n} {view} {terms} selected={selectedIds.has(n.id)} {selecting} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:select={onSelect} />{/each}
           </div>
         </section>
       {/if}
@@ -1110,7 +1078,7 @@
         <section class="notes-section timeline">
           <h2 class="section-label"><span class="material-symbols-rounded">calendar_today</span>{dayLabel(day)}</h2>
           <div class="timeline-list">
-            {#each day.notes as n (n.id)}<NoteCard note={n} {view} {terms} selected={selectedIds.has(n.id)} {selecting} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} />{/each}
+            {#each day.notes as n (n.id)}<NoteCard note={n} {view} {terms} selected={selectedIds.has(n.id)} {selecting} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:select={onSelect} />{/each}
           </div>
         </section>
       {/each}
@@ -1119,21 +1087,21 @@
       {#if pinned.length}
         <section class="notes-section">
           <h2 class="section-label"><span class="material-symbols-rounded fill">keep</span>{$_('notes.pinned')}</h2>
-          <NoteGrid notes={pinned} {view} {terms} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} {swipeable} on:swipe={onSwipe} />
+          <NoteGrid notes={pinned} {view} {terms} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} {swipeable} on:swipe={onSwipe} />
         </section>
       {/if}
       {#if others.length}
         <section class="notes-section">
           {#if pinned.length}<h2 class="section-label">{$_('notes.others')}</h2>{/if}
           {#if view === 'reminders' && pastReminders.length}<h2 class="section-label">{$_('reminders.upcoming')}</h2>{/if}
-          <NoteGrid notes={othersShown} {view} {terms} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} {swipeable} on:swipe={onSwipe} />
+          <NoteGrid notes={othersShown} {view} {terms} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} {swipeable} on:swipe={onSwipe} />
         </section>
       {/if}
       {#if moreToShow}<div class="more-marker" use:growOnScroll={{ onGrow: showMore }} aria-hidden="true"></div>{/if}
       {#if view === 'reminders' && pastReminders.length}
         <section class="notes-section">
           <h2 class="section-label">{$_('reminders.past')}</h2>
-          <NoteGrid notes={pastReminders} {view} {terms} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:menu={onMenu} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} {swipeable} on:swipe={onSwipe} />
+          <NoteGrid notes={pastReminders} {view} {terms} on:open={openNote} on:action={onCardAction} on:toggleItem={onToggleItem} on:select={onSelect} selectedIds={selectedIds} {selecting} draggable={orderable && !selectedIds.size} on:reorder={onReorder} {swipeable} on:swipe={onSwipe} />
         </section>
       {/if}
     {/if}
@@ -1154,7 +1122,7 @@
 {#if fabMenu}
   <!-- One host on body for both layers: two portalled siblings in one block
        don't reliably both leave the page, and the menu then sat under its scrim. -->
-  <div class="fab-layer" use:portal>
+  <div class="fab-layer" use:portal role="dialog" aria-modal="true" aria-label={$_('notes.new_note')}>
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
   <div class="fab-scrim" on:click={() => fabMenu = false} transition:fade|global={{ duration: 150 }}></div>
@@ -1306,7 +1274,6 @@
     </button>
   </div>
 </Popover>
-<ActionSheet bind:open={menuOpen} title={menuNote?.title || ''} actions={menuActions} on:select={onMenuSelect} />
 <Popover open={filterMenuOpen} anchor={filterAnchor} label={activeGroup?.title} on:close={() => onFilterMenu(false)}>
   {#if activeGroup}
     <FilterMenu title={activeGroup.title} options={activeGroup.options} selected={filters[activeGroup.key]} layout={activeGroup.layout}

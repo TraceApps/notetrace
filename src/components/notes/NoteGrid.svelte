@@ -57,7 +57,7 @@
   {#each cols as col, ci (ci)}
     <div class="note-col">
       {#each col as { note, i } (note.id)}
-        <NoteCard {note} {view} {terms} index={i} selected={selectedIds.has(note.id)} {selecting} on:open on:action on:toggleItem on:menu on:select />
+        <NoteCard {note} {view} {terms} index={i} selected={selectedIds.has(note.id)} {selecting} on:open on:action on:toggleItem on:select />
       {/each}
     </div>
   {/each}

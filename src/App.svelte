@@ -817,33 +817,6 @@
     color: #fff;
   }
 
-  .sync-bar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    z-index: 200;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 6px 16px;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 8%, var(--bg));
-    border-bottom: 1px solid color-mix(in srgb, var(--accent) 15%, transparent);
-    transition: background 0.3s, color 0.3s;
-  }
-  .sync-bar-error {
-    color: var(--error, #f87171);
-    background: color-mix(in srgb, var(--error, #f87171) 8%, transparent);
-    border-color: color-mix(in srgb, var(--error, #f87171) 15%, transparent);
-  }
-  .sync-bar-icon { font-size: 16px; }
-  /* Allow the error string to wrap so a long failure (HTTP body, stack
-     frame) doesn't get clipped on narrow phones. */
-  .sync-bar-msg { flex: 1; min-width: 0; white-space: normal; word-break: break-word; }
 
   /* Smart connection banner. Ported from NT so it sits BELOW the
      device status bar and the app's compact header instead of covering

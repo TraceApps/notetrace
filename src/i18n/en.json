@@ -495,6 +495,7 @@
     "menu_drawing": "Drawing",
     "menu_image":              "Image",
     "hold_for_voice":          "Tap for a note, list, voice note, or image; hold for a voice note",
+    "search_results":          "Search results",
     "close_search":            "Close Search",
     "custom_order_on":         "Notes now keep the order you arrange. Switch back in Settings, Appearance, Note Order.",
     "close_formatting":        "Close Formatting",
