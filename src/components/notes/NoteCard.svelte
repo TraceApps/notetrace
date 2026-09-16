@@ -146,7 +146,7 @@
   {/if}
 
   {#if note.title}
-    <h3 class="card-title"><Highlight text={note.title} {terms} /></h3>
+    <h3 class="card-title" class:below-media={images.length > 0 || !!linkPreview}><Highlight text={note.title} {terms} /></h3>
   {/if}
 
   {#if hiddenMatch}
@@ -441,8 +441,7 @@
     border-bottom-color: var(--border-strong);
   }
   /* Under an image or a link preview the band isn't the top of the card. */
-  .note-card :global(.grid.card) + .card-title,
-  .card-link + .card-title { margin-top: 0; border-radius: 0; }
+  .card-title.below-media { margin-top: 0; border-radius: 0; }
   :global(html.density-compact) .card-title { margin: -11px -13px 0; padding: 8px 38px 7px 13px; border-radius: calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0 0; }
   .card-body {
     font-size: 14px;
