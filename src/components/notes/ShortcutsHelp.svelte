@@ -35,6 +35,17 @@
       [['g', 't'], $_('shortcuts.go_trash')],
       [['g', 's'], $_('shortcuts.go_settings')],
     ] },
+    { title: $_('shortcuts.group_tasks'), rows: [
+      [['n'], $_('shortcuts.task_add')],
+      [['j'], $_('shortcuts.task_next')],
+      [['k'], $_('shortcuts.task_previous')],
+      [['x'], $_('shortcuts.task_done')],
+      [['e'], $_('shortcuts.task_edit')],
+      [['d'], $_('shortcuts.task_due')],
+      [['m'], $_('shortcuts.task_move')],
+      [['o'], $_('shortcuts.task_open')],
+      [['#'], $_('shortcuts.task_delete')],
+    ] },
     { title: $_('shortcuts.group_editor'), rows: [
       [[mod, 'Enter'], $_('shortcuts.done')],
       [['Esc'], $_('shortcuts.close')],
