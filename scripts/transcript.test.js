@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseTimedText, fromVerboseJson, mergePieces, segmentAt, chunkSeconds, transcribeLimitBytes, whisperStyle } from '../server/lib/transcript.js';
-import { parseWaveform, parseSegments, barsFromLevels, WAVEFORM_BARS } from '../server/lib/voice-meta.js';
+import { parseWaveform, parseSegments, barsFromLevels, meterLevel, WAVEFORM_BARS } from '../server/lib/voice-meta.js';
 
 test('Gemini-style timed lines', () => {
   const r = parseTimedText('[0:00] Call the plumber.\n[0:04] He comes Friday,\nbefore noon.\n[1:02:03] Done.');
@@ -51,4 +51,22 @@ test('voice note waveform and segments are cleaned', () => {
   assert.equal(bars.length, WAVEFORM_BARS);
   assert.ok(Math.max(...bars) === 100 && Math.min(...bars) >= 4);
   assert.equal(barsFromLevels([0, 0]), null);
+});
+
+test('levels are measured by ear, not by amplitude', () => {
+  assert.equal(meterLevel(0), 0);
+  assert.equal(meterLevel(-1), 0);
+  assert.equal(meterLevel(1), 1);
+  // Speech at a tenth of full scale (-20 dB) should fill most of the meter,
+  // which is the whole point: amplitude alone would show a tenth of it.
+  const speech = meterLevel(0.1);
+  assert.ok(speech > 0.6 && speech < 0.8, `speech level ${speech}`);
+  // A quiet room stays near the floor.
+  assert.ok(meterLevel(0.001) < 0.05);
+  assert.ok(meterLevel(0.02) > meterLevel(0.01));
+  // Waveform bars keep the same ordering and lift the quiet parts off the floor.
+  const bars = barsFromLevels([1, 0.1, 0.01, 0.001], 4);
+  assert.equal(bars[0], 100);
+  assert.ok(bars[1] > 30 && bars[1] < 60, `quiet bar ${bars[1]}`);
+  assert.ok(bars[0] > bars[1] && bars[1] > bars[2] && bars[2] >= bars[3]);
 });

@@ -14,7 +14,13 @@
   let handle = null;
   let elapsed = 0;
   let paused = false;
-  let meter = Array(BARS).fill(0);
+  let meter = Array(BARS).fill({ v: 0, p: null });
+  // Microphones differ a lot in how hot they run, so the meter keeps the
+  // loudest of the last few seconds and scales to that, within limits: a quiet
+  // phone still fills the bars, a loud one doesn't sit pinned at the top.
+  const QUIET_TOP = 0.55;   // the lowest ceiling the meter will scale to
+  let recentTop = QUIET_TOP;
+  let shown = 0;
   let timer = null;
   let error = '';
   let stopping = false;
@@ -43,11 +49,16 @@
     if (!handle) return;
     elapsed = handle.elapsed();
     paused = handle.paused;
-    // The meter scrolls: a new bar about every 120ms while recording.
+    // The meter scrolls: a new bar about every 100ms while recording.
     const now = Date.now();
-    if (!paused && now - sampleAt > 120) {
+    if (!paused && now - sampleAt > 100) {
       sampleAt = now;
-      meter = [...meter.slice(1), handle.level()];
+      const raw = handle.level();
+      // Jump to a syllable at once, fall away gently, so speech reads as shape
+      // rather than as flicker.
+      shown = raw > shown ? raw : shown * 0.62 + raw * 0.38;
+      recentTop = Math.max(raw, recentTop * 0.992, QUIET_TOP);
+      meter = [...meter.slice(1), { v: Math.min(1, shown / recentTop), p: handle.pitch?.() ?? null }];
     }
     // Stopped from the Android notification, or at the time limit.
     if (handle.finished || elapsed >= handle.limitMs) stop();
@@ -83,7 +94,9 @@
       <span class="time">{formatDuration(elapsed)}</span>
     </div>
     <div class="vr-meter" class:paused aria-hidden="true">
-      {#each meter as v, i (i)}<span style="height:{Math.max(6, Math.round(v * 100))}%"></span>{/each}
+      {#each meter as b, i (i)}
+        <span style="height:{Math.max(5, Math.round((b?.v || 0) * 100))}%{b?.p == null ? '' : `;--pitch:${b.p.toFixed(2)}`}"></span>
+      {/each}
     </div>
     <p class="vr-hint">
       {handle?.native ? $_('voice.limit_native') : $_('voice.limit')}
@@ -110,8 +123,14 @@
   .dot.paused { background: var(--warning, #ffb547); }
   @keyframes pulse { 50% { opacity: 0.35; } }
   .time { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 600; }
-  .vr-meter { display: flex; align-items: center; gap: 3px; height: 48px; padding: 0 2px; }
-  .vr-meter span { flex: 1; min-height: 3px; border-radius: 3px; background: var(--accent); transition: height 90ms linear; }
+  .vr-meter { display: flex; align-items: center; gap: 3px; height: 58px; padding: 0 2px; }
+  /* Bars grow from the middle, and lean toward the second accent as the voice
+     gets brighter, so the meter shows pitch as well as loudness. */
+  .vr-meter span {
+    flex: 1; min-height: 3px; border-radius: 3px;
+    background: color-mix(in srgb, var(--accent-2) calc(var(--pitch, 0) * 100%), var(--accent));
+    transition: height 80ms linear;
+  }
   .vr-meter.paused span { background: var(--text-3); }
   .vr-hint { font-size: 12px; color: var(--text-3); display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
   .vr-file { font-size: 12px; color: var(--accent); padding: 0; }

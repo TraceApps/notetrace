@@ -68,7 +68,9 @@ public class VoiceRecorderService extends Service {
         public void run() {
             if (recorder != null && "recording".equals(state)) {
                 float level = 0f;
-                try { level = Math.min(1f, recorder.getMaxAmplitude() / 32767f * 1.6f); } catch (Exception ignored) { }
+                // Raw amplitude: the web layer turns it into what the meter shows
+                // (voice-meta.js meterLevel), so one curve serves both platforms.
+                try { level = Math.min(1f, recorder.getMaxAmplitude() / 32767f); } catch (Exception ignored) { }
                 peak = Math.max(peak, level);
                 synchronized (levels) { if (levels.size() < 60000) levels.add(level); }
                 if (elapsedMs() >= MAX_MS) { finish(); return; }

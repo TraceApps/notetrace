@@ -41,7 +41,28 @@ export function parseSegments(v) {
 export const waveformText = (v) => { const w = parseWaveform(v); return w ? JSON.stringify(w) : null; };
 export const segmentsText = (v) => { const s = parseSegments(v); return s ? JSON.stringify(s) : null; };
 
-/** Many level samples (0-1) to WAVEFORM_BARS bars scaled to the loudest. */
+/**
+ * How loud a level (0-1 of full scale) looks, as a share of a meter's height.
+ *
+ * Hearing works in decibels, not in amplitude, so a voice at a tenth of full
+ * scale (-20 dB) sounds about half as loud as full but measures a tenth. Read
+ * the amplitude straight into bar heights and ordinary speech barely leaves the
+ * floor; this maps the quietest level worth seeing to nothing and the loudest
+ * to the whole height.
+ */
+export const METER_FLOOR_DB = -52;
+export const METER_TOP_DB = -6;
+export function meterLevel(amp, floorDb = METER_FLOOR_DB, topDb = METER_TOP_DB) {
+  const a = Number(amp);
+  if (!(a > 0)) return 0;
+  const db = 20 * Math.log10(Math.min(1, a));
+  return Math.max(0, Math.min(1, (db - floorDb) / (topDb - floorDb)));
+}
+
+/**
+ * Many level samples (0-1) to WAVEFORM_BARS bars, the loudest moment full
+ * height and the rest by ear (see meterLevel) rather than by amplitude.
+ */
 export function barsFromLevels(levels, bars = WAVEFORM_BARS) {
   const list = (levels || []).map(n => Math.max(0, Number(n) || 0));
   if (!list.length) return null;
@@ -55,5 +76,7 @@ export function barsFromLevels(levels, bars = WAVEFORM_BARS) {
   }
   const top = Math.max(...out);
   if (!(top > 0)) return null;
-  return out.map(v => Math.max(4, Math.round((v / top) * 100)));
+  // 34 dB of range below the loudest moment: quiet speech still has shape,
+  // and a room's hiss stays near the floor.
+  return out.map(v => Math.max(4, Math.round(meterLevel(v / top, -34, 0) * 100)));
 }

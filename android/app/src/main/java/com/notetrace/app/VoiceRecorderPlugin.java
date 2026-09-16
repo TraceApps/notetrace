@@ -118,6 +118,13 @@ public class VoiceRecorderPlugin extends Plugin {
         call.resolve();
     }
 
+    /** A share of the meter's height for a level relative to the loudest, matching voice-meta.js. */
+    private static float meterShare(float ratio) {
+        if (ratio <= 0f) return 0f;
+        double db = 20 * Math.log10(Math.min(1f, ratio));
+        return (float) Math.max(0, Math.min(1, (db + 34) / 34));
+    }
+
     /** The level samples as WAVEFORM_BARS bars scaled to the loudest (0 to 100), like voice-meta.js. */
     private static JSArray waveform() {
         List<Float> list;
@@ -135,7 +142,7 @@ public class VoiceRecorderPlugin extends Plugin {
             top = Math.max(top, p);
         }
         if (top <= 0f) return out;
-        for (float b : bars) out.put(Math.max(4, Math.round(b / top * 100)));
+        for (float b : bars) out.put(Math.max(4, Math.round(meterShare(b / top) * 100)));
         return out;
     }
 

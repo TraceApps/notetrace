@@ -8,7 +8,7 @@
  * and returns a waveform made from the levels it saw.
  */
 import { NoteApi } from './api.js';
-import { barsFromLevels } from '../../server/lib/voice-meta.js';
+import { barsFromLevels, meterLevel } from '../../server/lib/voice-meta.js';
 import { isNative } from './platform.js';
 
 export const MAX_RECORDING_MS = 60 * 60 * 1000;
@@ -52,7 +52,10 @@ async function _startNative({ plugin: VR, Capacitor }) {
     /** Stopped from the notification while the app was in the background. */
     get finished() { return status.state === 'stopped'; },
     elapsed: () => (status.elapsedMs || 0) + (status.state === 'recording' ? Date.now() - seenAt : 0),
-    level: () => level,
+    level: () => meterLevel(level),
+    // The background recorder reports how loud it is, not what it hears, so
+    // there's no brightness to show on the Android app.
+    pitch: () => null,
     pause() { status = { ...status, state: 'paused' }; VR.pause().catch(() => {}); },
     resume() { status = { ...status, state: 'recording' }; seenAt = Date.now(); VR.resume().catch(() => {}); },
     async stop() {
@@ -92,7 +95,14 @@ function _mimeType() {
   return '';
 }
 
-/** A live input level (0 to 1) read from the microphone stream. */
+/**
+ * A live reading of the microphone: how loud (0 to 1, by ear) and how bright
+ * (0 to 1, low voice to high), so the meter can show the sound rather than a
+ * row of stubs. Brightness is the spectral centroid, which follows the pitch
+ * of a voice closely enough to watch.
+ */
+const PITCH_LOW_HZ = 120;
+const PITCH_HIGH_HZ = 2400;
 function _levelMeter(stream) {
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
@@ -101,23 +111,49 @@ function _levelMeter(stream) {
     ctx.resume?.().catch(() => {});
     const analyser = ctx.createAnalyser();
     analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.15;
     ctx.createMediaStreamSource(stream).connect(analyser);
-    const buf = new Float32Array(analyser.fftSize);
-    // Measure often and keep the loudest moment since the last read, so short sounds show.
-    let peak = 0;
+    const time = new Float32Array(analyser.fftSize);
+    const freq = new Float32Array(analyser.frequencyBinCount);
+    const binHz = ctx.sampleRate / analyser.fftSize;
+    const fromBin = Math.max(1, Math.round(80 / binHz));
+    const toBin = Math.min(freq.length, Math.round(5000 / binHz));
+    // Measure often and keep the loudest moment since the last read, so short
+    // sounds show. The meter and the waveform each get their own reading:
+    // sharing one meant whoever read second saw silence.
+    let metered = 0;
+    let recorded = 0;
+    let pitch = 0;
     const poll = setInterval(() => {
-      analyser.getFloatTimeDomainData(buf);
+      analyser.getFloatTimeDomainData(time);
       let sum = 0;
-      for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-      // RMS of speech sits around 0.02 to 0.2; stretch it so the meter moves.
-      peak = Math.max(peak, Math.min(1, Math.sqrt(sum / buf.length) * 4));
+      for (let i = 0; i < time.length; i++) sum += time[i] * time[i];
+      const rms = Math.sqrt(sum / time.length);
+      metered = Math.max(metered, rms);
+      recorded = Math.max(recorded, rms);
+      // Where the energy sits, weighted by how loud each frequency is. Only
+      // worth measuring while something is actually being said.
+      if (rms < 0.004) return;
+      analyser.getFloatFrequencyData(freq);
+      let weighted = 0;
+      let total = 0;
+      for (let i = fromBin; i < toBin; i++) {
+        const energy = Math.pow(10, freq[i] / 10);   // dBFS back to energy
+        weighted += energy * i * binHz;
+        total += energy;
+      }
+      if (total <= 0) return;
+      const centre = weighted / total;
+      pitch = Math.max(0, Math.min(1, Math.log2(Math.max(centre, PITCH_LOW_HZ) / PITCH_LOW_HZ) / Math.log2(PITCH_HIGH_HZ / PITCH_LOW_HZ)));
     }, 25);
     return {
-      read() { const v = peak; peak = 0; return v; },
+      read() { const v = metered; metered = 0; return v; },
+      take() { const v = recorded; recorded = 0; return v; },
+      pitchNow: () => pitch,
       close() { clearInterval(poll); ctx.close().catch(() => {}); },
     };
   } catch {
-    return { read: () => 0, close() {} };
+    return { read: () => 0, take: () => 0, pitchNow: () => null, close() {} };
   }
 }
 
@@ -139,10 +175,8 @@ export async function startRecording() {
   let recordedMs = 0;
   let runningSince = Date.now();
   const elapsed = () => recordedMs + (runningSince ? Date.now() - runningSince : 0);
-  // Sample the level for the waveform while recording.
-  // The meter and the waveform share one reading so neither empties it for the other.
-  let lastLevel = 0;
-  const sampler = setInterval(() => { if (runningSince) levels.push(Math.max(lastLevel, meter.read())); }, 200);
+  // Sample the level for the waveform while recording, on its own reading.
+  const sampler = setInterval(() => { if (runningSince) levels.push(meter.take()); }, 200);
   rec.start(1000);
   const release = () => { clearInterval(sampler); meter.close(); stream.getTracks().forEach(t => t.stop()); };
   let limitTimer = null;
@@ -162,7 +196,10 @@ export async function startRecording() {
     limitMs: MAX_RECORDING_MS,
     get paused() { return rec.state === 'paused'; },
     elapsed,
-    level: () => (rec.state === 'recording' ? (lastLevel = meter.read()) : 0),
+    // The waveform keeps the raw amplitudes (barsFromLevels scales them); the
+    // meter shows them by ear.
+    level: () => (rec.state === 'recording' ? meterLevel(meter.read()) : 0),
+    pitch: () => meter.pitchNow(),
     pause() {
       if (rec.state !== 'recording') return;
       rec.pause();
