@@ -4,6 +4,7 @@
   import { fade } from 'svelte/transition';
   import { _ } from 'svelte-i18n';
   import { portal } from '../../lib/portal.js';
+  import { onBack } from '../../lib/back-stack.js';
   import { resolveAssetUrl } from '../../lib/platform.js';
 
   export let attachments = [];
@@ -26,8 +27,9 @@
     else if (e.key === 'ArrowRight') go(1);
     else if (e.key === 'ArrowLeft') go(-1);
   }
-  onMount(() => window.addEventListener('keydown', onKey, true));
-  onDestroy(() => window.removeEventListener('keydown', onKey, true));
+  let releaseBack = () => {};
+  onMount(() => { window.addEventListener('keydown', onKey, true); releaseBack = onBack(close); });
+  onDestroy(() => { window.removeEventListener('keydown', onKey, true); releaseBack(); });
 </script>
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->

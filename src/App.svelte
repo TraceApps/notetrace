@@ -5,6 +5,7 @@
   import { fade, fly, slide } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { portal } from './lib/portal.js';
+  import { handleBack } from './lib/back-stack.js';
   import Router, { location, push } from 'svelte-spa-router';
 
   import BottomNav from './components/layout/BottomNav.svelte';
@@ -434,6 +435,8 @@
       import('@capacitor/app').then(({ App }) => {
         let lastBack = 0;
         App.addListener('backButton', ({ canGoBack }) => {
+          // A full-screen layer (a drawing, a file) closes before the page goes back.
+          if (handleBack()) return;
           if (canGoBack) {
             window.history.back();
           } else {

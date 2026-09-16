@@ -10,6 +10,7 @@
   import { fade } from 'svelte/transition';
   import { _ } from 'svelte-i18n';
   import { portal } from '../../lib/portal.js';
+  import { onBack } from '../../lib/back-stack.js';
   import { isNative, resolveAssetUrl } from '../../lib/platform.js';
   import { fetchAttachmentBlob } from '../../lib/ai-extract.js';
   import { fileIcon, fileTypeLabel, formatBytes, displayName, previewKind } from '../../lib/file-kinds.js';
@@ -123,8 +124,9 @@
     else if (e.key === 'ArrowRight' && files.length > 1) { e.preventDefault(); go(1); }
     else if (e.key === 'ArrowLeft' && files.length > 1) { e.preventDefault(); go(-1); }
   }
-  onMount(() => window.addEventListener('keydown', onKey, true));
-  onDestroy(() => { window.removeEventListener('keydown', onKey, true); cleanup(); });
+  let releaseBack = () => {};
+  onMount(() => { window.addEventListener('keydown', onKey, true); releaseBack = onBack(close); });
+  onDestroy(() => { window.removeEventListener('keydown', onKey, true); releaseBack(); cleanup(); });
 </script>
 
 <div use:portal class="fv" role="dialog" aria-modal="true" aria-label={current ? displayName(current) : $_('files.title')} transition:fade={{ duration: 150 }}>
