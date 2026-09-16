@@ -330,6 +330,8 @@ if (!columnExists('note_attachments', 'summary')) db.exec(`ALTER TABLE note_atta
 if (!columnExists('note_attachments', 'name')) db.exec(`ALTER TABLE note_attachments ADD COLUMN name TEXT`);
 if (!columnExists('note_attachments', 'size_bytes')) db.exec(`ALTER TABLE note_attachments ADD COLUMN size_bytes INTEGER`);
 if (!columnExists('note_attachments', 'preview_url')) db.exec(`ALTER TABLE note_attachments ADD COLUMN preview_url TEXT`);
+// A drawing's strokes (lib/drawing-meta.js), beside the PNG in url that every screen shows.
+if (!columnExists('note_attachments', 'drawing')) db.exec(`ALTER TABLE note_attachments ADD COLUMN drawing TEXT`);
 // Optional due date on a checklist item (YYYY-MM-DD, the user's calendar day).
 if (!columnExists('checklist_items', 'due_date')) db.exec(`ALTER TABLE checklist_items ADD COLUMN due_date TEXT`);
 // A repeating task (daily, weekdays, weekly, monthly, yearly): ticking it moves

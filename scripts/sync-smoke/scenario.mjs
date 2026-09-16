@@ -174,4 +174,17 @@ await A.N.updateAttachment(lease.id, 'file-uuid-1', { extracted_text: 'Rent is d
 await sync(A); await sync(B);
 ok((await B.N.getNote(leaseB.id)).attachments.find(a => a.uuid === 'file-uuid-1')?.extracted_text === 'Rent is due on the first', 'B: text read from a file on A syncs');
 
+// 13. Drawings: the strokes travel with the picture, and an edit on one device reaches the other.
+const sketch = { v: 1, w: 1600, h: 1200, bg: 'paper', grid: 'dots', strokes: [{ t: 'pen', c: '#1f1f1f', s: 2, p: [20, 20, 50, 400, 300, 50] }] };
+const sk = await A.N.createNote({ title: 'Sketch', attachments: [{ uuid: 'draw-uuid-1', url: '/uploads/sketch.png', mime: 'image/png', width: 800, height: 600, drawing: sketch }] });
+await sync(A); await sync(B);
+const skB = (await B.N.getNotes()).find(n => n.title === 'Sketch');
+ok(skB?.attachments[0]?.is_drawing === true, 'B: a drawing arrives marked as one');
+ok((await B.N.getAttachmentDrawing(skB.id, 'draw-uuid-1'))?.strokes.length === 1, 'B: with its strokes');
+await sleep(1100);
+await B.N.updateAttachment(skB.id, 'draw-uuid-1', { url: '/uploads/sketch-2.png', drawing: { ...sketch, strokes: [...sketch.strokes, { t: 'marker', c: '#1e88e5', s: 3, p: [100, 100, 50, 900, 200, 50] }] } });
+await sync(B); await sync(A);
+const skA = await A.N.getNote(sk.id);
+ok(skA.attachments[0].url === '/uploads/sketch-2.png' && (await A.N.getAttachmentDrawing(sk.id, 'draw-uuid-1'))?.strokes.length === 2, 'A: an edit to the drawing on B arrives, picture and strokes');
+
 console.log(f ? `${f} FAILED` : 'all passed'); process.exit(f ? 1 : 0);

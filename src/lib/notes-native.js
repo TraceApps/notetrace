@@ -10,6 +10,7 @@ import { cleanLabelIcon } from '../../server/lib/label-icons.js';
 import { parseWaveform, parseSegments, waveformText, segmentsText } from '../../server/lib/voice-meta.js';
 import { getDb, LOCAL_USER_ID } from './db-native.js';
 import { cleanTaskRepeat, nextDueDate } from '../../server/lib/task-rules.js';
+import { drawingText, parseDrawing } from '../../server/lib/drawing-meta.js';
 import { todayStr } from './due-dates.js';
 
 export const NOTE_COLORS = ['ember', 'clay', 'amber', 'sand', 'lime', 'moss', 'sage', 'mint', 'sky', 'tide', 'indigo', 'plum', 'orchid', 'rose', 'bark', 'slate'];
@@ -63,7 +64,7 @@ async function _hydrate(rows) {
     `SELECT note_id, uuid, text, checked, position, due_date, due_repeat, checked_at FROM checklist_items
       WHERE note_id IN (${ph}) AND deleted_at IS NULL ORDER BY position ASC, id ASC`, ids);
   const files = await _q(
-    `SELECT note_id, uuid, url, mime, name, size_bytes, preview_url, width, height, position, duration_ms, extracted_text, summary, waveform, segments FROM note_attachments
+    `SELECT note_id, uuid, url, mime, name, size_bytes, preview_url, drawing IS NOT NULL AS is_drawing, width, height, position, duration_ms, extracted_text, summary, waveform, segments FROM note_attachments
       WHERE note_id IN (${ph}) AND deleted_at IS NULL AND url != '' ORDER BY position ASC, id ASC`, ids);
   const links = await _q(
     `SELECT nl.note_id, nl.label_id FROM note_labels nl
@@ -78,7 +79,7 @@ async function _hydrate(rows) {
   const fileMap = new Map();
   for (const a of files) {
     if (!fileMap.has(a.note_id)) fileMap.set(a.note_id, []);
-    fileMap.get(a.note_id).push({ uuid: a.uuid, url: a.url, mime: a.mime, name: a.name || null, size_bytes: a.size_bytes ?? null, preview_url: a.preview_url || null, width: a.width, height: a.height, position: a.position, duration_ms: a.duration_ms, extracted_text: a.extracted_text, summary: a.summary, waveform: parseWaveform(a.waveform), segments: parseSegments(a.segments) });
+    fileMap.get(a.note_id).push({ uuid: a.uuid, url: a.url, mime: a.mime, name: a.name || null, size_bytes: a.size_bytes ?? null, preview_url: a.preview_url || null, is_drawing: !!a.is_drawing, width: a.width, height: a.height, position: a.position, duration_ms: a.duration_ms, extracted_text: a.extracted_text, summary: a.summary, waveform: parseWaveform(a.waveform), segments: parseSegments(a.segments) });
   }
   const labelMap = new Map();
   for (const l of links) {
@@ -238,11 +239,12 @@ async function _addAttachments(noteId, list, ts) {
       await _run(`UPDATE note_attachments SET deleted_at = NULL, updated_at = ?, sync_status = 'pending' WHERE id = ?`, [ts, existing.id]);
     } else {
       await _run(
-        `INSERT INTO note_attachments (uuid, user_id, note_id, url, mime, name, size_bytes, preview_url, width, height, position, duration_ms, extracted_text, summary, waveform, segments, created_at, updated_at, sync_status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+        `INSERT INTO note_attachments (uuid, user_id, note_id, url, mime, name, size_bytes, preview_url, drawing, width, height, position, duration_ms, extracted_text, summary, waveform, segments, created_at, updated_at, sync_status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
         [uuid, LOCAL_USER_ID, noteId, String(a.url), a.mime || null,
          typeof a.name === 'string' && a.name.trim() ? a.name.split(/[\\/]/).pop().slice(0, 255) : null,
          num(a.size_bytes), typeof a.preview_url === 'string' && a.preview_url ? a.preview_url : null,
+         a.drawing != null ? drawingText(a.drawing) : null,
          num(a.width), num(a.height), max + added + 1, num(a.duration_ms),
          typeof a.extracted_text === 'string' && a.extracted_text.trim() ? a.extracted_text : null,
          typeof a.summary === 'string' && a.summary.trim() ? a.summary : null,
@@ -554,6 +556,11 @@ export const NotesNative = {
   },
 
   // Local mode: imports create local notes, so their images are local too.
+  async getAttachmentDrawing(noteId, uuid) {
+    const row = (await _q(`SELECT drawing FROM note_attachments WHERE uuid = ? AND note_id = ? AND deleted_at IS NULL`, [uuid, Number(noteId)]))[0];
+    return row?.drawing ? parseDrawing(row.drawing) : null;
+  },
+
   async importAddAttachments(noteId, list = []) {
     return NotesNative.addAttachments(noteId, list);
   },
@@ -564,6 +571,10 @@ export const NotesNative = {
     const args = [];
     if ('extracted_text' in patch) { sets.push('extracted_text = ?'); args.push(typeof patch.extracted_text === 'string' ? patch.extracted_text : null); }
     if ('preview_url' in patch) { sets.push('preview_url = ?'); args.push(typeof patch.preview_url === 'string' && patch.preview_url ? patch.preview_url : null); }
+    if ('drawing' in patch) { sets.push('drawing = ?'); args.push(patch.drawing == null ? null : drawingText(patch.drawing)); }
+    if ('url' in patch && typeof patch.url === 'string' && patch.url) { sets.push('url = ?'); args.push(patch.url); }
+    if ('width' in patch) { sets.push('width = ?'); args.push(Number(patch.width) > 0 ? Math.round(Number(patch.width)) : null); }
+    if ('height' in patch) { sets.push('height = ?'); args.push(Number(patch.height) > 0 ? Math.round(Number(patch.height)) : null); }
     if ('summary' in patch) { sets.push('summary = ?'); args.push(typeof patch.summary === 'string' && patch.summary.trim() ? patch.summary : null); }
     if ('waveform' in patch) { sets.push('waveform = ?'); args.push(waveformText(patch.waveform)); }
     if ('segments' in patch) { sets.push('segments = ?'); args.push(segmentsText(patch.segments)); }

@@ -211,6 +211,7 @@ const _NoteApiHttp = {
   importAddAttachments(noteId, list) { return this.addAttachments(noteId, list); },
   deleteAttachment(noteId, uuid) { return this.del(`/api/notes/${noteId}/attachments/${encodeURIComponent(uuid)}`); },
   updateAttachment(noteId, uuid, patch) { return this.patch(`/api/notes/${noteId}/attachments/${encodeURIComponent(uuid)}`, patch); },
+  getAttachmentDrawing(noteId, uuid) { return this.get(`/api/notes/${noteId}/attachments/${encodeURIComponent(uuid)}/drawing`); },
 
   // Sharing
   getMembers(noteId)             { return this.get(`/api/notes/${noteId}/members`); },

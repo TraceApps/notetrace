@@ -38,6 +38,7 @@
  */
 
 import { Router } from 'express';
+import { drawingText } from '../lib/drawing-meta.js';
 import db from '../db.js';
 import { wrap } from '../logger.js';
 import { requireAuth, userMgmtActive } from '../middleware/auth.js';
@@ -86,7 +87,7 @@ const TABLES = {
     softDelete: true,
   },
   note_attachments: {
-    cols: ['uuid', 'note_id', 'url', 'mime', 'name', 'size_bytes', 'preview_url', 'width', 'height', 'position', 'duration_ms', 'extracted_text', 'summary', 'waveform', 'segments'],
+    cols: ['uuid', 'note_id', 'url', 'mime', 'name', 'size_bytes', 'preview_url', 'drawing', 'width', 'height', 'position', 'duration_ms', 'extracted_text', 'summary', 'waveform', 'segments'],
     parents: { note_id: 'notes' },
     uniqueKey: ['uuid'],
     softDelete: true,
@@ -136,6 +137,7 @@ router.post('/push', wrap((req, res) => {
           translated.url = clean;
           // A preview still on the device waits for the next upload pass; the file itself needn't.
           if ('preview_url' in translated) translated.preview_url = cleanAttachmentUrl(translated.preview_url);
+          if ('drawing' in translated && translated.drawing != null) translated.drawing = drawingText(translated.drawing);
         }
 
         let existing = null;
