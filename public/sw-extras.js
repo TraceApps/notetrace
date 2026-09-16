@@ -37,13 +37,14 @@ self.addEventListener('fetch', (event) => {
         const v = form.get(k);
         if (typeof v === 'string' && v) params.set(k, v.slice(0, 20000));
       }
-      const images = form.getAll('images').filter(f => f && typeof f === 'object' && /^(image|audio)\//.test(f.type)).slice(0, 20);
+      // Any kind of file: the editor sorts pictures, voice notes, and attachments.
+      const images = form.getAll('images').filter(f => f && typeof f === 'object').slice(0, 20);
       if (images.length) {
         const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const cache = await caches.open(SHARE_CACHE);
         await Promise.all(images.map((f, i) => cache.put(
           new Request(`${scope}__share/${id}/${i}`),
-          new Response(f, { headers: { 'Content-Type': f.type, 'X-File-Name': encodeURIComponent(f.name || `image-${i + 1}`) } }),
+          new Response(f, { headers: { 'Content-Type': f.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(f.name || `file-${i + 1}`) } }),
         )));
         params.set('files', id);
       }

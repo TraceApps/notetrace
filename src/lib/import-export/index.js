@@ -11,13 +11,15 @@
  */
 import { NoteApi } from '../api.js';
 import { isNative, getServerUrl, resolveAssetUrl } from '../platform.js';
-import { uploadNoteImages } from '../note-images.js';
+import { uploadNoteImages, isImageFile } from '../note-images.js';
 import { isAudioFile, prepareAudioFile } from '../voice-files.js';
 import { parseKeepNote } from './keep.js';
 import { parseBlinkoBackup, isBlinkoBackup } from './blinko.js';
 import { parseEnex, notebookFromFileName } from './evernote.js';
 import { base64ToBytes } from './md5.js';
 import { parseMarkdownNote, noteToMarkdown, exportFileName } from './markdown.js';
+import { isFile, displayName, extOf } from '../file-kinds.js';
+import { fileIndexPatch } from '../file-index.js';
 
 const BATCH = 200;
 const MD_RE = /\.(md|markdown|txt)$/i;
@@ -102,7 +104,7 @@ export async function parseImportFile(file, source, options = {}) {
     if (!ref) return null;
     // Evernote carries attachments inside the file as base64.
     if (ref.data) {
-      try { return new File([base64ToBytes(ref.data)], ref.name || 'image', { type: ref.mime || 'image/jpeg' }); }
+      try { return new File([base64ToBytes(ref.data)], ref.name || 'attachment', { type: ref.mime || 'image/jpeg' }); }
       catch { return null; }
     }
     if (!zip) return null;
@@ -120,6 +122,20 @@ const _sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 // The upload route allows 60 uploads a minute per client; a big Keep export
 // with photos waits out the limit instead of dropping images.
+/** Run an upload, waiting out the server's upload rate limit a few times. */
+async function _withRateLimit(fn) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (!/429|too many requests/i.test(String(e?.message || '')) || attempt >= 8) throw e;
+      await _sleep(15000);
+    }
+  }
+}
+
+const _newUuid = () => globalThis.crypto?.randomUUID?.() || `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+
 async function _uploadWithRetry(files) {
   const out = { attachments: [], failed: 0 };
   let pending = files;
@@ -141,7 +157,7 @@ async function _uploadWithRetry(files) {
  */
 export async function importParsedNotes(parsed, onProgress) {
   const { notes, readFile } = parsed;
-  const total = { imported: 0, skipped: 0, labels_created: 0, images: 0, imagesMissing: 0, imagesFailed: 0, voice: 0, voiceFailed: 0 };
+  const total = { imported: 0, skipped: 0, labels_created: 0, images: 0, imagesMissing: 0, imagesFailed: 0, voice: 0, voiceFailed: 0, files: 0, filesFailed: 0 };
   const withImages = [];
   for (let i = 0; i < notes.length; i += BATCH) {
     const batch = notes.slice(i, i + BATCH);
@@ -159,7 +175,10 @@ export async function importParsedNotes(parsed, onProgress) {
     const found = [];
     for (const ref of files) {
       const f = readFile ? await readFile(ref).catch(() => null) : null;
-      if (f) found.push(f); else if (ref.mime) total.voiceFailed++; else total.imagesMissing++;
+      if (f) found.push(f);
+      else if (/^audio\//.test(ref.mime || '')) total.voiceFailed++;
+      else if (ref.mime && !/^image\//.test(ref.mime)) total.filesFailed++;
+      else total.imagesMissing++;
     }
     // Voice recordings: uploaded as they are, or converted to M4A by the server.
     const audio = found.filter(f => isAudioFile(f) && !/^image\//.test(f.type));
@@ -175,6 +194,28 @@ export async function importParsedNotes(parsed, onProgress) {
         } catch { total.voiceFailed += voice.length; }
       }
       found.splice(0, found.length, ...found.filter(f => !audio.includes(f)));
+    }
+    // Anything that isn't a picture: uploaded as a file, with a PDF's picture and text read as it goes.
+    const others = found.filter(f => !isImageFile(f));
+    if (others.length) {
+      const atts = [];
+      for (const f of others) {
+        try {
+          const stored = await _withRateLimit(() => NoteApi.importUploadFile(f));
+          atts.push({ file: f, att: { uuid: _newUuid(), url: stored.url, mime: stored.mime || f.type || 'application/octet-stream', name: f.name || null, size_bytes: stored.size ?? f.size ?? null } });
+        } catch { total.filesFailed++; }
+      }
+      if (atts.length) {
+        try {
+          await NoteApi.importAddAttachments(id, atts.map(x => x.att));
+          total.files += atts.length;
+          for (const { file, att } of atts) {
+            const patch = await fileIndexPatch(att, file, { uploadImage: (img) => _withRateLimit(() => NoteApi.importUploadImage(img)) }).catch(() => ({}));
+            if (Object.keys(patch).length) await NoteApi.importUpdateAttachment(id, att.uuid, patch).catch(() => {});
+          }
+        } catch { total.filesFailed += atts.length; }
+      }
+      found.splice(0, found.length, ...found.filter(f => !others.includes(f)));
     }
     if (found.length) {
       const up = await _uploadWithRetry(found);
@@ -227,21 +268,26 @@ export async function buildMarkdownExport(onProgress) {
     const names = (note.labels || []).map(id => labelName.get(id)).filter(Boolean);
     const imagePaths = [];
     const voiceLines = [];
+    const fileLines = [];
     for (const a of note.attachments || []) {
       const blob = await _fetchImage(a.url);
       if (!blob) { imagesMissing++; continue; }
-      const ext = EXT_BY_MIME[(a.mime || blob.type || '').split(';')[0]] || (String(a.url).split('.').pop() || 'bin').replace(/[^a-z0-9]/gi, '').slice(0, 5);
+      const ext = EXT_BY_MIME[(a.mime || blob.type || '').split(';')[0]] || extOf(a) || 'bin';
       const file = `${a.uuid}.${ext}`;
       zip.file(`NoteTrace/attachments/${file}`, blob);
       if (/^audio\//i.test(a.mime || blob.type)) {
         // Voice notes: a link to the recording, with its transcript quoted below.
         voiceLines.push(`[Voice note](../attachments/${encodeURI(file)})${a.extracted_text ? `\n\n${a.extracted_text.split('\n').map(l => `> ${l}`).join('\n')}` : ''}`);
+      } else if (isFile(a)) {
+        // Other files: a link under the name they were added with.
+        fileLines.push(`[${displayName(a).replace(/[[\]]/g, '')}](../attachments/${encodeURI(file)})`);
       } else {
         imagePaths.push(`../attachments/${file}`);
       }
     }
     let md = noteToMarkdown(note, names, imagePaths);
     if (voiceLines.length) md = `${md.replace(/\n+$/, '')}\n\n${voiceLines.join('\n\n')}\n`;
+    if (fileLines.length) md = `${md.replace(/\n+$/, '')}\n\n${fileLines.join('  \n')}\n`;
     zip.file(`NoteTrace/${folder}/${exportFileName(note, used[folder])}`, md);
     count++;
     onProgress?.(count, all.length);

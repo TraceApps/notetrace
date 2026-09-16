@@ -102,14 +102,14 @@ test('Android reminders are native exact alarms, re-armed after reboot', () => {
   assert.doesNotMatch(js, /LocalNotifications\.schedule\(/, 'JS must not schedule reminders alongside the native alarms');
 });
 
-test('Android share sheet accepts text, images, and audio, single and multiple', () => {
+test('Android share sheet accepts text and files of any kind, single and multiple', () => {
   const manifest = read('../android/app/src/main/AndroidManifest.xml');
   assert.match(manifest, /action\.SEND"[\s\S]*?mimeType="text\/plain"/);
-  assert.match(manifest, /action\.SEND"[\s\S]*?mimeType="image\/\*"/);
-  assert.match(manifest, /action\.SEND_MULTIPLE"[\s\S]*?mimeType="image\/\*"/);
-  assert.match(manifest, /action\.SEND"[\s\S]*?mimeType="audio\/\*"/);
-  assert.match(manifest, /action\.SEND_MULTIPLE"[\s\S]*?mimeType="audio\/\*"/);
-  // Shared files go through addFiles, which sends images and audio each their own way.
+  assert.match(manifest, /action\.SEND"[\s\S]*?mimeType="\*\/\*"/);
+  assert.match(manifest, /action\.SEND_MULTIPLE"[\s\S]*?mimeType="\*\/\*"/);
+  // The plugin copies any stream it's given, not just pictures and audio.
+  assert.doesNotMatch(read('../android/app/src/main/java/com/notetrace/app/ShareIntentPlugin.java'), /mime\.startsWith\("image\/"\) \|\| mime\.startsWith\("audio\/"\)/);
+  // Shared files go through addFiles, which sends pictures, audio, and other files each their own way.
   assert.match(read('../src/components/notes/NoteEditor.svelte'), /prefill\?\.images\?\.length\) addFiles\(prefill\.images\)/);
 });
 

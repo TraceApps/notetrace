@@ -63,7 +63,7 @@ export function parseEnexNote(noteEl, { parseXml, notebook = '', labelNotebook =
     const attrs = child(r, 'resource-attributes');
     const fileName = text(child(attrs, 'file-name')).trim();
     const isImage = IMAGE_MIME.test(mime);
-    const res = { mime, data, isImage, name: fileName || `image.${EXT[mime] || 'img'}` };
+    const res = { mime, data, isImage, name: fileName || (isImage ? `image.${EXT[mime] || 'img'}` : 'attachment') };
     if (isImage) res.hash = md5Hex(base64ToBytes(data));
     res.width = Number(text(child(r, 'width'))) || null;
     res.height = Number(text(child(r, 'height'))) || null;
@@ -81,7 +81,9 @@ export function parseEnexNote(noteEl, { parseXml, notebook = '', labelNotebook =
     const m = src.match(/^data:(image\/[a-z0-9.+-]+);base64,(.*)$/i);
     if (m) images.push({ mime: m[1].toLowerCase(), data: m[2], name: `inline-${i + 1}.${EXT[m[1].toLowerCase()] || 'img'}` });
   });
-  const otherFiles = resources.filter(r => !r.isImage).length;
+  // Everything that isn't a picture (PDFs, documents, recordings) comes along as a file.
+  const otherFiles = 0;
+  const attachedFiles = resources.filter(r => !r.isImage).map(r => ({ data: r.data, mime: r.mime || 'application/octet-stream', name: r.name }));
 
   // Evernote 10 tasks live next to the content.
   const tasks = children(noteEl, 'task').map(t => ({
@@ -136,7 +138,7 @@ export function parseEnexNote(noteEl, { parseXml, notebook = '', labelNotebook =
       reminder_at: keepReminder ? reminder : null,
       reminder_rrule: null,
       reminder_tz: null,
-      files: images.map(r => ({ data: r.data, mime: r.mime, name: r.name })),
+      files: [...images.map(r => ({ data: r.data, mime: r.mime, name: r.name })), ...attachedFiles],
     },
     otherFiles,
   };

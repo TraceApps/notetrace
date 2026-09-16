@@ -53,8 +53,11 @@ export function parseBlinkoBackup(data, { username = '', includeTrashed = false 
     const images = [];
     for (const a of Array.isArray(n.attachments) ? n.attachments : []) {
       const name = String(a?.name || a?.path || '').split('/').pop();
-      if (IMAGE_RE.test(name) || /^image\//i.test(String(a?.type || ''))) images.push({ name });
-      else out.attachments++;
+      if (!name) { out.attachments++; continue; }
+      const type = String(a?.type || '').toLowerCase();
+      // Pictures by name; anything else (a PDF, a document) carries its type along.
+      if (IMAGE_RE.test(name) || /^image\//.test(type)) images.push({ name });
+      else images.push({ name, mime: type || 'application/octet-stream' });
     }
     // Image embeds that point at an attachment already listed aren't added twice.
     const seen = new Set(images.map(i => i.name.toLowerCase()));

@@ -58,8 +58,9 @@ export function parseKeepNote(obj) {
   const updated = usecToTs(obj.userEditedTimestampUsec);
   const created = usecToTs(obj.createdTimestampUsec) || updated;
   const all = Array.isArray(obj.attachments) ? obj.attachments : [];
-  // Photos, drawings, and voice recordings come along; anything else is counted as left out.
-  const kept = all.filter(a => typeof a?.filePath === 'string' && /^(image|audio)\//i.test(String(a.mimetype || '')));
+  // Photos, drawings, voice recordings, and any other file come along; only an
+  // entry with no file to read is counted as left out.
+  const kept = all.filter(a => typeof a?.filePath === 'string' && a.filePath);
   const attachments = all.length - kept.length;
   const note = {
     title: String(obj.title ?? '').trim().slice(0, 1000),
@@ -78,7 +79,7 @@ export function parseKeepNote(obj) {
     reminder_at: null,
     reminder_rrule: null,
     reminder_tz: null,
-    files: kept.map(a => ({ name: a.filePath.split('/').pop(), ...(/^audio\//i.test(a.mimetype) ? { mime: String(a.mimetype).toLowerCase() } : {}) })),
+    files: kept.map(a => ({ name: a.filePath.split('/').pop(), ...(a.mimetype && !/^image\//i.test(a.mimetype) ? { mime: String(a.mimetype).toLowerCase() } : {}) })),
   };
   const empty = !note.title && !note.body_md.trim() && !note.items.length && !note.files.length;
   return { note: empty ? null : note, attachments };

@@ -60,12 +60,13 @@ test('keep: checklist keeps order and checked state, drops blank items', () => {
   assert.equal(note.color, null);
 });
 
-test('keep: non-note JSON is ignored and attachment-only notes are counted', () => {
+test('keep: non-note JSON is ignored, any file comes along, and unreadable entries are counted', () => {
   assert.equal(isKeepNote({ name: 'Labels' }), false);
   assert.equal(parseKeepNote([1, 2]), null);
   const r = parseKeepNote({ textContent: '', title: '', isTrashed: false, attachments: [{ filePath: 'doc.pdf', mimetype: 'application/pdf' }, {}] });
-  assert.equal(r.note, null);
-  assert.equal(r.attachments, 2);
+  assert.deepEqual(r.note.files, [{ name: 'doc.pdf', mime: 'application/pdf' }], 'a PDF-only note is a note with its file');
+  assert.equal(r.attachments, 1, 'only the entry with no file is left out');
+  assert.equal(parseKeepNote({ textContent: '', title: '', isTrashed: false, attachments: [{}] }).note, null);
   const voiceOnly = parseKeepNote({ textContent: '', title: '', isTrashed: false, attachments: [{ filePath: 'a.m4a', mimetype: 'audio/mp4' }] });
   assert.equal(voiceOnly.note.files[0].mime, 'audio/mp4'); // a recording-only note is a note
   const photoOnly = parseKeepNote({ textContent: '', title: '', isTrashed: false, attachments: [{ filePath: 'p.png', mimetype: 'image/png' }] });
@@ -186,10 +187,10 @@ test('blinko: backup notes, tags from content, images, checklists; one account o
   const [a, b] = r.notes;
   assert.equal(a.body_md, 'Call the plumber #home');
   assert.deepEqual(a.labels, ['home']);
-  assert.deepEqual(a.files, [{ name: 'leak.jpg' }], 'embed of a listed attachment is not added twice');
+  assert.deepEqual(a.files, [{ name: 'leak.jpg' }, { name: 'quote.pdf', mime: 'application/pdf' }], 'the PDF comes along; an embed of a listed attachment is not added twice');
   assert.equal(a.pinned, true);
   assert.equal(a.created_at, '2026-08-01 10:00:00');
-  assert.equal(r.attachments, 1, 'the PDF is counted, not imported');
+  assert.equal(r.attachments, 0, 'nothing is left out');
   assert.equal(b.kind, 'checklist');
   assert.equal(b.archived, true);
   assert.deepEqual(b.items, [{ text: 'Milk', checked: false }, { text: 'Bread', checked: true }]);
@@ -222,8 +223,11 @@ test('memos: current API memo with tags, pin, archive, images, and a link', () =
   assert.equal(n.pinned, true);
   assert.equal(n.archived, true);
   assert.equal(n.created_at, '2026-07-01 09:30:00');
-  assert.deepEqual(n.files, [{ path: '/file/attachments/u1/cover%20photo.jpg', name: 'cover photo.jpg' }]);
-  assert.equal(r.otherFiles, 1);
+  assert.deepEqual(n.files, [
+    { path: '/file/attachments/u1/cover%20photo.jpg', name: 'cover photo.jpg' },
+    { path: '/file/attachments/u2/notes.pdf', name: 'notes.pdf', mime: 'application/pdf' },
+  ]);
+  assert.equal(r.otherFiles, 0);
 });
 
 test('memos: other people\'s memos, comments, and old-API resources', () => {
@@ -298,7 +302,7 @@ const enex = `<?xml version="1.0" encoding="UTF-8"?>
 test('evernote: text, formatting, lists, todos, tables, images by hash, tags, notebook, reminder', () => {
   const r = parseEnex(enex, { parseXml, notebook: notebookFromFileName('exports/Home Projects.enex') });
   assert.equal(r.notes.length, 3);
-  assert.equal(r.attachments, 1, 'the PDF is counted');
+  assert.equal(r.attachments, 0, 'the PDF comes along rather than being counted as left out');
   const [a, b, c] = r.notes;
   assert.equal(a.title, 'Kitchen reno & budget');
   assert.equal(a.kind, 'text');
@@ -306,7 +310,8 @@ test('evernote: text, formatting, lists, todos, tables, images by hash, tags, no
   assert.equal(a.updated_at, '2025-02-20 08:15:00');
   assert.deepEqual(a.labels, ['Home', 'Projects', 'Home Projects']);
   assert.equal(a.reminder_at, '2099-01-01 09:00:00');
-  assert.deepEqual(a.files.map(f => f.name), ['sketch.png']);
+  assert.deepEqual(a.files.map(f => f.name), ['sketch.png', 'quote.pdf']);
+  assert.equal(a.files[1].mime, 'application/pdf');
   assert.equal(a.body_md, [
     'Quote from **Acme**: [see quote](https://acme.test/q)  \nTotal 5 \\* 3 = 15\\_000',
     '- Cabinets\n- Counters\n  - Quartz\n- [x] Measure\n- [ ] Order tiles',

@@ -206,6 +206,8 @@
         <p>{$_('import_export.summary_imported', { values: { count: summary.imported } })}</p>
         {#if summary.skipped}<p class="muted">{$_('import_export.summary_skipped', { values: { count: summary.skipped } })}</p>{/if}
         {#if summary.images}<p class="muted">{$_('import_export.summary_images', { values: { count: summary.images } })}</p>{/if}
+        {#if summary.files}<p class="muted">{$_('import_export.summary_files', { values: { count: summary.files } })}</p>{/if}
+        {#if summary.filesFailed}<p class="muted">{$_('import_export.summary_files_failed', { values: { count: summary.filesFailed } })}</p>{/if}
         {#if summary.voice}<p class="muted">{$_('import_export.summary_voice', { values: { count: summary.voice } })}</p>{/if}
         {#if summary.voiceFailed}<p class="muted">{$_('import_export.summary_voice_failed', { values: { count: summary.voiceFailed } })}</p>{/if}
         {#if summary.imagesMissing || summary.imagesFailed}<p class="muted">{$_('import_export.summary_images_failed', { values: { count: summary.imagesMissing + summary.imagesFailed } })}</p>{/if}

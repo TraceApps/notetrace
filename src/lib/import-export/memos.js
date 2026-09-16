@@ -59,8 +59,9 @@ export function parseMemo(memo, { userName = '' } = {}) {
       continue;
     }
     const path = _attachmentPath(a);
-    if (isImage && path) files.push({ path, name: a.filename });
-    else otherFiles++;
+    if (!path) { otherFiles++; continue; }
+    if (isImage) files.push({ path, name: a.filename });
+    else files.push({ path, name: a.filename, mime: String(a?.type || '').toLowerCase() || 'application/octet-stream' });
   }
   if (!note && !files.length && !links) return null;
 

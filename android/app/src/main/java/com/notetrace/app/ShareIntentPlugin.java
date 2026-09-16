@@ -62,18 +62,17 @@ public class ShareIntentPlugin extends Plugin {
         String text = intent.getStringExtra(Intent.EXTRA_TEXT);
         String subject = intent.getStringExtra(Intent.EXTRA_SUBJECT);
         List<Uri> images = new ArrayList<>();
-        // Images and audio (voice recordings) come in as files; "*/*" is a mixed share.
-        if (type.startsWith("image/") || type.startsWith("audio/") || type.equals("*/*")) {
-            if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
-                ArrayList<Uri> list = IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri.class);
-                if (list != null) images.addAll(list);
-            } else {
-                Uri uri = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri.class);
-                if (uri != null) images.add(uri);
-            }
-        } else if (!type.startsWith("text/")) {
-            return;
+        // Anything with a stream is a file, whatever its type: a photo, a recording, a
+        // PDF, or a .txt from a file manager (text/plain with a stream). Text shared
+        // without one (a link from a browser) is just text.
+        if (Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+            ArrayList<Uri> list = IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri.class);
+            if (list != null) images.addAll(list);
+        } else {
+            Uri uri = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri.class);
+            if (uri != null) images.add(uri);
         }
+        if (images.isEmpty() && !type.startsWith("text/")) return;
         boolean hasText = (text != null && !text.isEmpty()) || (subject != null && !subject.isEmpty());
         if (!hasText && images.isEmpty()) return;
 
@@ -121,22 +120,23 @@ public class ShareIntentPlugin extends Plugin {
         ContentResolver cr = ctx.getContentResolver();
         for (Uri uri : uris) {
             String mime = cr.getType(uri);
-            if (mime == null || !(mime.startsWith("image/") || mime.startsWith("audio/"))) continue;
-            String ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime);
+            if (mime == null) mime = "application/octet-stream";
             String name = displayName(cr, uri);
-            File target = new File(dir, UUID.randomUUID() + "." + (ext != null ? ext : "img"));
+            String ext = MimeTypeMap.getSingleton().getExtensionFromMimeType(mime);
+            if (ext == null && name != null && name.lastIndexOf('.') > 0) ext = name.substring(name.lastIndexOf('.') + 1);
+            File target = new File(dir, UUID.randomUUID() + "." + (ext != null ? ext.replaceAll("[^A-Za-z0-9]", "") : "bin"));
             long copied = 0;
             try (InputStream in = cr.openInputStream(uri); OutputStream os = new FileOutputStream(target)) {
-                if (in == null) continue;
+                if (in == null) { target.delete(); continue; }
                 byte[] buf = new byte[64 * 1024];
                 int n;
                 while ((n = in.read(buf)) > 0) {
                     copied += n;
-                    if (copied > MAX_IMAGE_BYTES) throw new IllegalStateException("image too large");
+                    if (copied > MAX_IMAGE_BYTES) throw new IllegalStateException("file too large");
                     os.write(buf, 0, n);
                 }
             } catch (Exception e) {
-                Log.w(TAG, "couldn't copy shared image: " + e.getMessage());
+                Log.w(TAG, "couldn't copy shared file: " + e.getMessage());
                 target.delete();
                 continue;
             }
