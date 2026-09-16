@@ -267,23 +267,4 @@
     padding: 9px 12px; color: var(--text-1); font-size: 14px; height: 40px;
   }
   .input:focus { outline: 2px solid var(--accent-dim); border-color: var(--accent); }
-  .toggle-cb {
-    width: 40px; height: 24px; flex-shrink: 0;
-    appearance: none; -webkit-appearance: none;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 99px;
-    position: relative; cursor: pointer;
-    transition: background var(--dur-fast);
-  }
-  .toggle-cb::after {
-    content: '';
-    position: absolute; top: 1px; left: 1px;
-    width: 20px; height: 20px;
-    background: var(--text-3); border-radius: 50%;
-    transition: transform var(--dur-base) var(--ease-spring), background var(--dur-fast);
-  }
-  .toggle-cb:checked { background: var(--accent-dim); border-color: var(--accent); }
-  .toggle-cb:checked::after { background: var(--accent); transform: translateX(16px); }
-  .toggle-cb:disabled { opacity: 0.5; cursor: default; }
 </style>

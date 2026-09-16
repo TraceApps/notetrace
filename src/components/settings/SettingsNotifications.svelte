@@ -256,7 +256,9 @@
 
 <style>
   .notif-body { display: flex; flex-direction: column; gap: 10px; }
-  .time-input { width: 130px; }
+  /* Two classes, so the shared .input width: 100% can't stretch the clock and
+     squeeze the label into a column of letters. */
+  .input.time-input { width: 130px; flex: 0 0 auto; }
   .sub-label {
     font-size: 11px;
     font-weight: 700;
@@ -277,6 +279,8 @@
     gap: 12px; padding: 14px 16px;
   }
   .setting-row > div:first-child { flex: 1; min-width: 0; }
+  /* A row whose label isn't wrapped in a div still takes the space it needs. */
+  .setting-row > .setting-label { flex: 1; min-width: 0; }
   .setting-label { font-size: 14px; color: var(--text-1); display: block; font-weight: 500; }
   .setting-desc { font-size: 12px; color: var(--text-3); margin-top: 4px; line-height: 1.4; display: block; }
   .setting-divider { height: 1px; background: var(--border); margin: 0 16px; }
@@ -301,24 +305,6 @@
     appearance: none; -webkit-appearance: none; cursor: pointer;
   }
   .select.sel-sm { height: 36px; }
-  .toggle-cb {
-    width: 40px; height: 24px;
-    appearance: none;
-    background: var(--surface-2);
-    border: 1px solid var(--border);
-    border-radius: 99px;
-    position: relative; cursor: pointer;
-    transition: background var(--dur-fast);
-  }
-  .toggle-cb::after {
-    content: '';
-    position: absolute; top: 1px; left: 1px;
-    width: 20px; height: 20px;
-    background: var(--text-3); border-radius: 50%;
-    transition: transform var(--dur-base) var(--ease-spring), background var(--dur-fast);
-  }
-  .toggle-cb:checked { background: var(--accent-dim); border-color: var(--accent); }
-  .toggle-cb:checked::after { background: var(--accent); transform: translateX(16px); }
   .perm-ok { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--accent); white-space: nowrap; }
   .perm-ok .material-symbols-rounded { font-size: 18px; }
 </style>
