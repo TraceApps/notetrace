@@ -49,6 +49,10 @@
   import { itemAfterPatch } from '../../server/lib/task-rules.js';
   import { todayStr } from '../lib/due-dates.js';
   import { NOTE_COLORS, colorDot } from '../lib/note-colors.js';
+  import { printNote } from '../lib/note-print.js';
+  import { cleanTemplates, noteFromTemplate } from '../lib/note-templates.js';
+  import { noteTemplates, dateFormat } from '../stores/settings.js';
+  import { formatDate } from '../lib/format.js';
 
   export let params = {};
 
@@ -369,6 +373,26 @@
     if (splitPane) openInPane(entry);
     else editing = entry;
   }
+  // A note from a template: its shape, with {date} and friends filled in.
+  $: templates = cleanTemplates($noteTemplates);
+  let templatePickerOpen = false;
+  $: templateActions = templates.map(t => ({ value: t.id, label: t.name, icon: t.kind === 'checklist' ? 'checklist' : 'notes' }));
+  function newFromTemplate(template) {
+    const prefill = noteFromTemplate(template, { formatDate: (d) => formatDate(d, $dateFormat) });
+    if (!prefill) return;
+    const entry = { kind: prefill.kind, labels: labelId != null ? [labelId] : [], prefill };
+    if (splitPane) openInPane(entry);
+    else editing = entry;
+  }
+  function openTemplatePicker() {
+    if (templates.length === 1) newFromTemplate(templates[0]);
+    else templatePickerOpen = true;
+  }
+  function onTemplatePick(e) {
+    templatePickerOpen = false;
+    const t = templates.find(x => x.id === e.detail.value);
+    if (t) newFromTemplate(t);
+  }
   // A drawing note: a new note that opens straight into the drawing editor.
   function newDrawingNote() {
     const entry = { kind: 'text', labels: labelId != null ? [labelId] : [], drawing: true };
@@ -507,6 +531,11 @@
         case 'reminder':
           reminderTarget = note; reminderAnchor = anchor; reminderOpen = true;
           return;
+        case 'print': {
+          const full = await NoteApi.getNote(note.id).catch(() => note);
+          await printNote(full || note, { labels: (full?.labels || note.labels || []).map(id => $labelsById.get(id)?.name).filter(Boolean), t: $_ });
+          return;
+        }
       }
       refreshLabels();
     } catch (e) {
@@ -596,6 +625,7 @@
         view === 'archive'
           ? { value: 'unarchive', label: $_('notes.unarchive'), icon: 'unarchive' }
           : { value: 'archive', label: $_('notes.archive'), icon: 'archive' },
+        { value: 'print', label: $_('print.print'), icon: 'print' },
         ...(isOwner(menuNote) ? [{ value: 'trash', label: $_('notes.move_to_trash'), icon: 'delete', danger: true }] : []),
       ];
 
@@ -912,6 +942,11 @@
         <button class="capture-icon" on:click={() => captureImageInput.click()} title={$_('notes.new_with_image')} aria-label={$_('notes.new_with_image')}>
           <span class="material-symbols-rounded">add_photo_alternate</span>
         </button>
+        {#if templates.length}
+          <button class="capture-icon" on:click={openTemplatePicker} title={$_('templates.new_from')} aria-label={$_('templates.new_from')}>
+            <span class="material-symbols-rounded">note_stack</span>
+          </button>
+        {/if}
       </div>
     {/if}
     <input bind:this={captureImageInput} type="file" accept="image/*" multiple hidden
@@ -1097,6 +1132,7 @@
   <div class="fab-menu" role="menu" tabindex="-1" aria-label={$_('notes.new_note')}
     on:keydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); fabMenu = false; } }}>
     {#each [
+      ...(templates.length ? [['template', 'note_stack', 'templates.menu', openTemplatePicker]] : []),
       ['image', 'add_photo_alternate', 'notes.menu_image', () => captureImageInput.click()],
       ['drawing', 'draw', 'notes.menu_drawing', newDrawingNote],
       ...(canRecordVoice ? [['voice', 'mic', 'notes.menu_voice', newVoiceNote]] : []),
@@ -1104,7 +1140,7 @@
       ['text', 'edit_note', 'notes.menu_text', () => newNote('text')],
     ] as [key, icon, label, action], i (key)}
       <button class="fab-item" role="menuitem" on:click={() => fromFabMenu(action)}
-        in:fly|global={{ y: 12, duration: 180, delay: Math.max(0, (4 - i) * 30) }} out:fade|global={{ duration: 100 }}>
+        in:fly|global={{ y: 12, duration: 180, delay: Math.max(0, (templates.length ? 5 : 4) - i) * 30 }} out:fade|global={{ duration: 100 }}>
         <span class="fab-item-label">{$_(label)}</span>
         <span class="material-symbols-rounded fab-item-icon">{icon}</span>
       </button>
@@ -1242,6 +1278,7 @@
   </div>
 </Popover>
 <ActionSheet bind:open={menuOpen} title={menuNote?.title || ''} actions={menuActions} on:select={onMenuSelect} />
+<ActionSheet bind:open={templatePickerOpen} title={$_('templates.new_from')} actions={templateActions} on:select={onTemplatePick} />
 
 <style>
   /* Search in the banner */

@@ -23,6 +23,7 @@ export const USER_PREFS = new Set([
   'autoTranscribe','autoSummarizeLong','autoReadImages','aiTranscribeModel',
   // Note cards
   'linkPreviews', 'noteSort', 'noteOrder',
+  'noteTemplates',
   'tasksGroupBy', 'tasksAllChecklists',
   // Notifications
   'notifPushService',
@@ -279,6 +280,8 @@ export const linkPreviews      = createSettingStore('linkPreviews',      true);
 // 'edited' (newest edit first) or 'custom' (the order you dragged notes into).
 export const noteSort          = createSettingStore('noteSort',          'edited');
 export const noteOrder         = createSettingStore('noteOrder',         []);
+// Notes to start from (src/lib/note-templates.js).
+export const noteTemplates     = createSettingStore('noteTemplates',     []);
 export const keyboardShortcuts = createSettingStore('keyboardShortcuts', true);
 // Tasks view: 'due' (by due date) or 'note'.
 export const tasksGroupBy      = createSettingStore('tasksGroupBy',      'due');

@@ -5,6 +5,26 @@
   import { linkPreviews, noteSort, keyboardShortcuts, cardDensity, swipeToArchive, tasksAllChecklists } from '../../stores/settings.js';
   import { linkPreviewsAvailable } from '../../lib/link-preview.js';
   import ShortcutsHelp from '../notes/ShortcutsHelp.svelte';
+  import { noteTemplates } from '../../stores/settings.js';
+  import { cleanTemplates, MAX_NAME } from '../../lib/note-templates.js';
+  import { promptDialog } from '../../stores/confirmDialog.js';
+  import { showUndo } from '../../stores/toast.js';
+
+  $: templates = cleanTemplates($noteTemplates);
+
+  async function renameTemplate(t) {
+    const name = await promptDialog({
+      title: $_('templates.rename_title'), value: t.name, maxlength: MAX_NAME,
+      placeholder: $_('templates.name_placeholder'), confirmText: $_('common.save'), cancelText: $_('common.cancel'),
+    });
+    if (!name || name === t.name) return;
+    noteTemplates.set(cleanTemplates($noteTemplates).map(x => x.id === t.id ? { ...x, name } : x));
+  }
+  function deleteTemplate(t) {
+    const before = cleanTemplates($noteTemplates);
+    noteTemplates.set(before.filter(x => x.id !== t.id));
+    showUndo($_('templates.deleted'), () => noteTemplates.set(before), $_('common.undo'));
+  }
 
   let shortcutsOpen = false;
   const hasKeyboard = typeof window !== 'undefined' && window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
@@ -77,10 +97,39 @@
       </div>
     {/if}
   </div>
+
+  <p class="sub-label">{$_('templates.title')}</p>
+  <div class="card settings-card">
+    <p class="setting-desc templates-note">{$_('templates.desc')}</p>
+    {#each templates as t (t.id)}
+      <div class="setting-divider"></div>
+      <div class="setting-row template-row">
+        <span class="material-symbols-rounded template-icon" aria-hidden="true">{t.kind === 'checklist' ? 'checklist' : 'notes'}</span>
+        <div class="template-text">
+          <span class="setting-label">{t.name}</span>
+          <div class="setting-desc">{t.kind === 'checklist' ? $_('templates.items', { values: { n: t.items.length } }) : $_('templates.text')}</div>
+        </div>
+        <button class="icon-btn" on:click={() => renameTemplate(t)} title={$_('templates.rename')} aria-label="{$_('templates.rename')}: {t.name}">
+          <span class="material-symbols-rounded">edit</span>
+        </button>
+        <button class="icon-btn" on:click={() => deleteTemplate(t)} title={$_('templates.delete')} aria-label="{$_('templates.delete')}: {t.name}">
+          <span class="material-symbols-rounded">delete</span>
+        </button>
+      </div>
+    {:else}
+      <div class="setting-divider"></div>
+      <p class="setting-desc templates-note">{$_('templates.empty')}</p>
+    {/each}
+  </div>
 </div>
 
 <ShortcutsHelp bind:open={shortcutsOpen} />
 
 <style>
   .section-body { display: flex; flex-direction: column; }
+  .templates-note { margin: 4px 0; }
+  .template-row { gap: 8px; }
+  .template-icon { color: var(--text-3); font-size: 20px; flex-shrink: 0; }
+  .template-text { flex: 1; min-width: 0; }
+  .template-text .setting-label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>

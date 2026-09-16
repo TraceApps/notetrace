@@ -22,7 +22,10 @@
   import { noteColorStyle, colorDot } from '../../lib/note-colors.js';
   import { isEmptyNote } from '../../lib/note-preview.js';
   import { relativeTime } from '../../lib/relative-time.js';
-  import { confirmDialog } from '../../stores/confirmDialog.js';
+  import { confirmDialog, promptDialog } from '../../stores/confirmDialog.js';
+  import { printNote } from '../../lib/note-print.js';
+  import { templateFromNote, canTemplate, cleanTemplates, MAX_TEMPLATES, MAX_NAME } from '../../lib/note-templates.js';
+  import { noteTemplates } from '../../stores/settings.js';
   import { showError, showInfo, showUndo } from '../../stores/toast.js';
   import TipTapEditor from './TipTapEditor.svelte';
   import ChecklistEditor from './ChecklistEditor.svelte';
@@ -74,14 +77,14 @@
   let title = note?.title ?? prefill?.title ?? '';
   const openedTitle = note?.title ?? '';
   let body = note?.body_md ?? prefill?.body_md ?? '';
-  let kind = note?.kind ?? initialKind;
-  let color = note?.color ?? null;
+  let kind = note?.kind ?? prefill?.kind ?? initialKind;
+  let color = note?.color ?? prefill?.color ?? null;
   let pinned = !!note?.pinned;
   let inTasks = !!note?.in_tasks;
   let archived = !!note?.archived;
   let trashed = !!note?.trashed_at;
   let noteLabels = note?.labels ? [...note.labels] : [...initialLabels];
-  let items = note?.items ? note.items.map(i => ({ ...i })) : [];
+  let items = note?.items ? note.items.map(i => ({ ...i })) : (prefill?.items || []).map(i => ({ ...i }));
   let attachments = note?.attachments ? [...note.attachments] : [];
   let uploading = 0;
   // Images removed here, so a save still in flight can't put them back on screen.
@@ -804,6 +807,44 @@
     await queue;
   }
 
+  // ── Print and templates ───────────────────────────────────────────
+  let printing = false;
+  async function printThis() {
+    if (printing) return;
+    printing = true;
+    try {
+      await flushAll();
+      await printNote(
+        { title, body_md: body, kind, items, attachments, updated_at: updatedAt },
+        { labels: chips.map(l => l.name), t: $_ },
+      );
+    } catch (err) {
+      showError($_('print.failed'));
+      console.warn('[print]', err);
+    } finally {
+      printing = false;
+    }
+  }
+
+  async function saveAsTemplate() {
+    const current = cleanTemplates($noteTemplates);
+    if (current.length >= MAX_TEMPLATES) { showError($_('templates.too_many', { values: { n: MAX_TEMPLATES } })); return; }
+    const name = await promptDialog({
+      title: $_('templates.save_title'),
+      message: $_('templates.save_message'),
+      value: title.trim().slice(0, MAX_NAME),
+      placeholder: $_('templates.name_placeholder'),
+      maxlength: MAX_NAME,
+      confirmText: $_('common.save'),
+      cancelText: $_('common.cancel'),
+    });
+    if (!name) return;
+    const template = templateFromNote({ title, body_md: body, kind, items, color }, name);
+    if (!template) return;
+    noteTemplates.set([...current, template]);
+    showInfo($_('templates.saved', { values: { name: template.name } }));
+  }
+
   let closing = false;
   async function close(skipDiscard = false, navigate = null) {
     if (closing) return;
@@ -856,6 +897,9 @@
   function onKey(e) {
     // Ctrl/Cmd+Enter finishes the note, like the Done button.
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !showHistory) { e.preventDefault(); close(); return; }
+    // Ctrl/Cmd+P prints this note rather than the whole app screen.
+    if ((e.key === 'p' || e.key === 'P') && (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey) { e.preventDefault(); printThis(); return; }
+    if (document.querySelector('.dialog-backdrop')) return;
     if (e.key === 'Escape' && viewerIndex == null && !colorOpen && !labelsOpen && !reminderOpen && !shareOpen && !traceOpen && !recordOpen && !cookOpen && !addOpen && !moreOpen) {
       e.preventDefault();
       if (showHistory) showHistory = false;
@@ -956,7 +1000,7 @@
     window.visualViewport?.addEventListener('scroll', onViewport);
     await tick();
     if (!noteId) {
-      if (prefill?.title || prefill?.body_md) scheduleText(); // shared content saves without needing an edit
+      if (prefill?.title || prefill?.body_md || prefill?.items?.length) scheduleText(); // shared or template content saves without needing an edit
       if (prefill?.images?.length) addFiles(prefill.images);
       else if (kind === 'text' && !voiceFirst) titleEl?.focus();
     }
@@ -1296,12 +1340,9 @@
                 <span class="material-symbols-rounded">delete</span>
               </button>
             {/if}
-            {#if noteId}
-              <button class="icon-btn" on:click={async () => { await flushAll(); showHistory = true; }}
-                title={$_('notes.version_history')} aria-label={$_('notes.version_history')}>
-                <span class="material-symbols-rounded">history</span>
-              </button>
-            {/if}
+            <button class="icon-btn" on:click={openMore} title={$_('notes.more_options')} aria-label={$_('notes.more_options')} aria-haspopup="menu">
+              <span class="material-symbols-rounded">more_vert</span>
+            </button>
           </div>
           <span class="spacer"></span>
           <span class="edited" aria-live="polite">
@@ -1426,6 +1467,14 @@
     <button class="sheet-item" on:click={() => fromSheet(archive, moreAnchor)}>
       <span class="material-symbols-rounded">{archived ? 'unarchive' : 'archive'}</span>{archived ? $_('notes.unarchive') : $_('notes.archive')}
     </button>
+    <button class="sheet-item" on:click={() => fromSheet(printThis, moreAnchor)}>
+      <span class="material-symbols-rounded">print</span>{$_('print.print')}
+    </button>
+    {#if canTemplate({ title, body_md: body, kind, items })}
+      <button class="sheet-item" on:click={() => fromSheet(saveAsTemplate, moreAnchor)}>
+        <span class="material-symbols-rounded">note_stack_add</span>{$_('templates.save_as')}
+      </button>
+    {/if}
     {#if noteId}
       <button class="sheet-item" on:click={() => fromSheet(async () => { await flushAll(); showHistory = true; }, moreAnchor)}>
         <span class="material-symbols-rounded">history</span>{$_('notes.version_history')}

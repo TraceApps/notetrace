@@ -136,6 +136,33 @@
     "no_preview":      "{type} files can't be shown here, but you can open them in another app.",
     "text_truncated":  "Showing the first part of a long file."
   },
+  "print": {
+    "print":         "Print or Save as PDF",
+    "failed":        "Could not open printing",
+    "edited":        "Edited {when}",
+    "voice_notes":   "Voice Notes",
+    "recording":     "Recording",
+    "files":         "Files"
+  },
+  "templates": {
+    "title":             "Templates",
+    "save_as":           "Save as Template",
+    "save_title":        "Save as Template",
+    "save_message":      "New notes can start from this one: its title, text or list items, and colour. Pictures, files, and labels stay with the note.",
+    "name_placeholder":  "Template name",
+    "saved":             "Saved \"{name}\" as a template",
+    "too_many":          "You can keep up to {n} templates",
+    "new_from":          "New from Template",
+    "menu":              "Template",
+    "rename":            "Rename",
+    "rename_title":      "Rename Template",
+    "delete":            "Delete",
+    "deleted":           "Template deleted",
+    "empty":             "No templates yet. Open a note and choose Save as Template from its menu.",
+    "desc":              "Notes to start from. In a title, text, or list item, '{date}', '{time}', and '{weekday}' fill in when you use one.",
+    "items":             "{n, plural, one {# item} other {# items}}",
+    "text":              "Text note"
+  },
   "slash": {
     "title":     "Insert",
     "checklist": "Checklist",
