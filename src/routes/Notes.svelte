@@ -325,7 +325,9 @@
   // few thousand notes don't all land in the page at once.
   const PAGE = 60;
   let shown = PAGE;
-  $: filtered, view, query, (shown = PAGE);
+  // Switching view, searching, or filtering starts at the top again. Note edits
+  // and sync don't: they'd throw away how far the list has been scrolled.
+  $: view, labelId, query, filters, (shown = PAGE);
   $: windowed = filtered.slice(0, shown);
   $: othersShown = others.slice(0, shown);
   $: moreToShow = shown < (listMode ? filtered.length : others.length);

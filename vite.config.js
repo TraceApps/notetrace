@@ -72,7 +72,9 @@ export default defineConfig({
             options: {
               cacheName: 'note-files',
               rangeRequests: true,
-              cacheableResponse: { statuses: [0, 200, 206] },
+              // Only whole responses: the Cache API refuses a 206, and a partial
+              // stored as the whole file would play back truncated.
+              cacheableResponse: { statuses: [0, 200] },
               expiration: { maxEntries: 400, maxAgeSeconds: 60 * 60 * 24 * 60, purgeOnQuotaError: true },
             }
           },
