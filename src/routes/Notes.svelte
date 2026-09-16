@@ -1062,7 +1062,9 @@
   </div>
 
   {#if canCapture}
-    <button class="fab" class:hidden-fab={selecting || fabMenu} on:click={onFabClick} on:pointerdown={() => fabHeld = false} aria-label={$_('notes.new_note')}
+    <!-- On body: the page wrapper has will-change, which would otherwise hold a
+         fixed button inside the scroll and carry it away with the notes. -->
+    <button class="fab" use:portal class:hidden-fab={selecting || fabMenu} on:click={onFabClick} on:pointerdown={() => fabHeld = false} aria-label={$_('notes.new_note')}
       aria-haspopup="menu" aria-expanded={fabMenu}
       title={canRecordVoice ? $_('notes.hold_for_voice') : undefined}
       use:longpress on:longpress={() => { if (canRecordVoice) { fabHeld = true; navigator.vibrate?.(20); newVoiceNote(); } }}>
@@ -1116,7 +1118,9 @@
   <LabelPicker selected={labelTarget?.labels || []} on:change={(e) => setLabels(e.detail)} />
 </Popover>
 {#if selecting}
-  <div class="bulk-bar" role="toolbar" aria-label={$_('select.toolbar')} transition:fly={{ y: 24, duration: 220 }}>
+  <!-- On body for the same reason as the + button: the page wrapper would
+       otherwise carry it away with the notes. -->
+  <div class="bulk-bar" use:portal role="toolbar" aria-label={$_('select.toolbar')} transition:fly={{ y: 24, duration: 220 }}>
     <button class="bulk-btn" on:click={clearSelection} title={$_('select.clear')} aria-label={$_('select.clear')}>
       <span class="material-symbols-rounded">close</span>
     </button>
@@ -1478,7 +1482,7 @@
     color: var(--accent-text);
     box-shadow: var(--shadow-lg);
     display: none; align-items: center; justify-content: center;
-    z-index: 30;
+    z-index: 40;   /* over the notes, under the bottom bar at 50 */
   }
   .fab .material-symbols-rounded { font-size: 30px; }
   .fab.hidden-fab { visibility: hidden; }

@@ -109,7 +109,7 @@
   let _pullStartT = 0;
   function _startPullSync(event) {
     if (!_pullEnabled || _pullRefreshing || sidebarOpen || showNativeSetup) return;
-    if (event.target?.closest?.('.editor-backdrop, .bulk-bar, .pop-backdrop')) return;
+    if (event.target?.closest?.('.editor-backdrop, .bulk-bar, .pop-backdrop, .fab, .fab-menu, .fab-scrim')) return;
     if (event.target?.closest?.('[role="dialog"], .sheet-backdrop, .sidebar-panel, .sidebar-backdrop, .bottom-nav')) return;
     // Walk up from the touch target to the nearest scrolling ancestor.
     // Handles both editor pages (their own `.page-shell.editor-page`
