@@ -19,6 +19,8 @@
   import { get } from 'svelte/store';
   import { Editor } from '@tiptap/core';
   import StarterKit from '@tiptap/starter-kit';
+  import { TaskList, TaskItem } from '@tiptap/extension-list';
+  import Highlight from '@tiptap/extension-highlight';
   import { Markdown } from '@tiptap/markdown';
   import { Placeholder } from '@tiptap/extensions';
   import { NoteLink } from '../../lib/note-link-extension.js';
@@ -46,12 +48,14 @@
   $: suggestions = !suggest ? [] : suggest.mode === 'slash' ? _slashMatches(suggest.query, slashActions) : _matches(suggest.query);
 
   const SLASH = [
-    { key: 'checklist', icon: 'checklist',            words: 'checklist list todo checkbox tasks', parent: true },
+    { key: 'todo',      icon: 'check_box',            words: 'todo checkbox check tick task' },
+    { key: 'checklist', icon: 'checklist',            words: 'checklist list convert tasks', parent: true },
     { key: 'h1',        icon: 'format_h1',            words: 'heading title h1 large' },
     { key: 'h2',        icon: 'format_h2',            words: 'heading subtitle h2 medium' },
     { key: 'h3',        icon: 'format_h3',            words: 'heading h3 small' },
     { key: 'bullet',    icon: 'format_list_bulleted', words: 'bullet list unordered' },
     { key: 'numbered',  icon: 'format_list_numbered', words: 'numbered list ordered' },
+    { key: 'highlight', icon: 'ink_highlighter',      words: 'highlight marker mark' },
     { key: 'quote',     icon: 'format_quote',         words: 'quote blockquote' },
     { key: 'code',      icon: 'code_blocks',          words: 'code block snippet' },
     { key: 'divider',   icon: 'horizontal_rule',      words: 'divider line rule separator' },
@@ -81,6 +85,8 @@
       case 'h1': chain.setHeading({ level: 1 }).run(); break;
       case 'h2': chain.setHeading({ level: 2 }).run(); break;
       case 'h3': chain.setHeading({ level: 3 }).run(); break;
+      case 'todo': chain.toggleTaskList().run(); break;
+      case 'highlight': chain.toggleHighlight().run(); break;
       case 'bullet': chain.toggleBulletList().run(); break;
       case 'numbered': chain.toggleOrderedList().run(); break;
       case 'quote': chain.toggleBlockquote().run(); break;
@@ -145,6 +151,11 @@
           heading: { levels: [1, 2, 3] },
           link: { openOnClick: false, autolink: true, defaultProtocol: 'https' },
         }),
+        // Checkboxes inside a text note (- [ ] in Markdown) and ==highlighted== text.
+        TaskList,
+        TaskItem.configure({ nested: true }),
+        // Not inclusive: typing on after a highlight, or a new line, isn't highlighted too.
+        Highlight.extend({ inclusive: false }),
         Markdown,
         Placeholder.configure({ placeholder }),
         NoteLink,
@@ -210,6 +221,8 @@
       h: editor.isActive('heading'),
       bullet: editor.isActive('bulletList'),
       ordered: editor.isActive('orderedList'),
+      todo: editor.isActive('taskList'),
+      highlight: editor.isActive('highlight'),
       quote: editor.isActive('blockquote'),
       code: editor.isActive('code'),
     };
@@ -233,6 +246,8 @@
     { key: 'bold', icon: 'format_bold', label: 'notes.fmt_bold', fn: c => c.toggleBold() },
     { key: 'italic', icon: 'format_italic', label: 'notes.fmt_italic', fn: c => c.toggleItalic() },
     { key: 'strike', icon: 'strikethrough_s', label: 'notes.fmt_strike', fn: c => c.toggleStrike() },
+    { key: 'highlight', icon: 'ink_highlighter', label: 'notes.fmt_highlight', fn: c => c.toggleHighlight() },
+    { key: 'todo', icon: 'check_box', label: 'notes.fmt_checkboxes', fn: c => c.toggleTaskList() },
     { key: 'bullet', icon: 'format_list_bulleted', label: 'notes.fmt_bullets', fn: c => c.toggleBulletList() },
     { key: 'ordered', icon: 'format_list_numbered', label: 'notes.fmt_numbers', fn: c => c.toggleOrderedList() },
     { key: 'quote', icon: 'format_quote', label: 'notes.fmt_quote', fn: c => c.toggleBlockquote() },
@@ -307,6 +322,30 @@
   .tiptap-host :global(.tiptap-body ol) { padding-left: 1.4em; }
   .tiptap-host :global(.tiptap-body li + li) { margin-top: 0.2em; }
   .tiptap-host :global(.tiptap-body li p) { margin: 0; }
+  /* Checkboxes in text: the box sits beside its line, and a ticked line fades. */
+  .tiptap-host :global(.tiptap-body ul[data-type="taskList"]) { list-style: none; padding-left: 0.1em; }
+  .tiptap-host :global(.tiptap-body ul[data-type="taskList"] ul[data-type="taskList"]) { padding-left: 1.5em; }
+  .tiptap-host :global(.tiptap-body li[data-checked]) { display: flex; align-items: flex-start; gap: 0.55em; }
+  .tiptap-host :global(.tiptap-body li[data-checked] > label) { flex: 0 0 auto; margin-top: 0.28em; user-select: none; }
+  .tiptap-host :global(.tiptap-body li[data-checked] > div) { flex: 1; min-width: 0; }
+  .tiptap-host :global(.tiptap-body li[data-checked] input[type="checkbox"]) {
+    appearance: none; -webkit-appearance: none; margin: 0; cursor: pointer;
+    width: 1.15em; height: 1.15em; border-radius: 0.3em;
+    border: 2px solid var(--text-3); background: transparent; display: grid; place-content: center;
+    transition: background var(--dur-fast), border-color var(--dur-fast);
+  }
+  .tiptap-host :global(.tiptap-body li[data-checked] input[type="checkbox"]::after) {
+    content: ''; width: 0.32em; height: 0.6em; margin-top: -0.12em;
+    border: solid var(--accent-text); border-width: 0 0.14em 0.14em 0; transform: rotate(45deg) scale(0);
+    transition: transform 140ms ease;
+  }
+  .tiptap-host :global(.tiptap-body li[data-checked="true"] input[type="checkbox"]) { background: var(--accent); border-color: var(--accent); }
+  .tiptap-host :global(.tiptap-body li[data-checked="true"] input[type="checkbox"]::after) { transform: rotate(45deg) scale(1); }
+  .tiptap-host :global(.tiptap-body li[data-checked="true"] > div) { color: var(--text-3); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--text-3) 70%, transparent); }
+  .tiptap-host :global(.tiptap-body mark) {
+    background: color-mix(in srgb, #FFD54F 45%, transparent); color: inherit;
+    border-radius: 0.2em; padding: 0 0.1em; box-decoration-break: clone; -webkit-box-decoration-break: clone;
+  }
   .tiptap-host :global(.tiptap-body blockquote) {
     padding-left: 12px;
     border-left: 3px solid var(--border-strong);

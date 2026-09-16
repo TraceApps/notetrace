@@ -543,7 +543,8 @@ export const convertNote = db.transaction((u, id, kind) => {
     const items = db.prepare(
       `SELECT text, checked FROM checklist_items WHERE note_id = ? AND deleted_at IS NULL ORDER BY position, id`
     ).all(id);
-    const body = items.map(it => it.checked ? `~~${it.text}~~` : it.text).join('\n\n');
+    // Checkboxes in the text, so ticks survive and converting back gives the same list.
+    const body = items.map(it => `- [${it.checked ? 'x' : ' '}] ${it.text}`).join('\n');
     db.prepare(`UPDATE checklist_items SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND deleted_at IS NULL`)
       .run(ts, ts, id);
     db.prepare(`UPDATE notes SET kind = 'text', body_md = ?, updated_at = ? WHERE id = ?`).run(body, ts, id);

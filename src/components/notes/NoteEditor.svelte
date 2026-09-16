@@ -717,13 +717,16 @@
         if (next === 'checklist') {
           items = String(body || '').split('\n').map(l => l.trim()).filter(Boolean)
             .map((line, i) => {
+              const task = line.match(/^[-*+]\s+\[([ xX])\]\s+(.*)$/);
               const bare = line.replace(/^([-*+]|\d+[.)])\s+/, '');
               const struck = bare.match(/^~~(.+)~~$/);
-              return { uuid: crypto.randomUUID?.() || String(Date.now() + i), text: struck ? struck[1] : bare, checked: !!struck, position: i + 1 };
+              const text = task ? task[2] : struck ? struck[1] : bare;
+              const checked = task ? task[1].toLowerCase() === 'x' : !!struck;
+              return { uuid: crypto.randomUUID?.() || String(Date.now() + i), text, checked, position: i + 1 };
             });
           body = '';
         } else {
-          body = items.map(i => i.checked ? `~~${i.text}~~` : i.text).join('\n\n');
+          body = items.map(i => `- [${i.checked ? 'x' : ' '}] ${i.text}`).join('\n');
           items = [];
         }
         kind = next;

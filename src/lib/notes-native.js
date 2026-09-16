@@ -417,7 +417,7 @@ export const NotesNative = {
       await _run(`UPDATE notes SET kind = 'checklist', body_md = '', updated_at = ?, sync_status = 'pending' WHERE id = ?`, [ts, id]);
     } else {
       const items = await _q(`SELECT text, checked FROM checklist_items WHERE note_id = ? AND deleted_at IS NULL ORDER BY position, id`, [id]);
-      const body = items.map(it => it.checked ? `~~${it.text}~~` : it.text).join('\n\n');
+      const body = items.map(it => `- [${it.checked ? 'x' : ' '}] ${it.text}`).join('\n');
       await _tombstoneItems(id, ts);
       await _run(`UPDATE notes SET kind = 'text', body_md = ?, updated_at = ?, sync_status = 'pending' WHERE id = ?`, [body, ts, id]);
     }

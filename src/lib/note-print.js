@@ -11,6 +11,8 @@
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from '@tiptap/markdown';
+import { TaskList, TaskItem } from '@tiptap/extension-list';
+import Highlight from '@tiptap/extension-highlight';
 import { NoteLink } from './note-link-extension.js';
 import { isNative, resolveAssetUrl } from './platform.js';
 import { isAudio, isImage, isFile, fileTypeLabel, formatBytes, displayName } from './file-kinds.js';
@@ -22,7 +24,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 export function markdownToHtml(md) {
   if (!String(md || '').trim()) return '';
   const editor = new Editor({
-    extensions: [StarterKit.configure({ underline: false, heading: { levels: [1, 2, 3] } }), Markdown, NoteLink],
+    extensions: [StarterKit.configure({ underline: false, heading: { levels: [1, 2, 3] } }), TaskList, TaskItem.configure({ nested: true }), Highlight, Markdown, NoteLink],
     content: md,
     contentType: 'markdown',
   });
@@ -64,6 +66,11 @@ const PRINT_CSS = `
   .body hr { border: 0; border-top: 1px solid #d0d0d6; margin: 12pt 0; }
   .body a { color: #3a5bd9; }
   .note-link { color: #3a5bd9; }
+  .body ul[data-type="taskList"] { list-style: none; padding-left: 2pt; }
+  .body li[data-checked] { display: flex; gap: 6pt; align-items: baseline; }
+  .body li[data-checked] > label input { margin: 0; }
+  .body li[data-checked="true"] > div { text-decoration: line-through; color: #8a8a90; }
+  .body mark { background: #FFE58A; color: inherit; padding: 0 1pt; }
   ul.items { list-style: none; padding: 0; margin: 0 0 10pt; }
   ul.items li { display: flex; gap: 8pt; align-items: baseline; padding: 2.5pt 0; page-break-inside: avoid; }
   .box { font-size: 12pt; line-height: 1; }
