@@ -26,6 +26,7 @@
   import { refreshHomeWidget } from './lib/home-widget.js';
   import { appLocked } from './lib/app-lock.js';
   import LockScreen from './components/LockScreen.svelte';
+  import OfflineStatus from './components/OfflineStatus.svelte';
   import { describeConnectionIssue } from './lib/connection-message.js';
 
   // Sync state — mirrored from the real sync store (dynamically imported).
@@ -178,6 +179,10 @@
       });
       rescheduleReminders();
     }).catch(() => {});
+  }
+  // Edits made offline in the browser reached the server: screens reload with the server's copy.
+  if (!isNative && typeof window !== 'undefined') {
+    window.addEventListener('note:offline-synced', () => { signalNotesChanged(); });
   }
   // The home screen Notes widget follows the notes, and hides them behind App Lock.
   // (changes and user are only there so a change or a sign-in sends a fresh snapshot.)
@@ -728,6 +733,7 @@
 
 <Toast />
 <Trace />
+{#if !isNative}<OfflineStatus />{/if}
 
 {/if}
 

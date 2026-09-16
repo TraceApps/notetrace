@@ -50,7 +50,9 @@ const _NoteApiHttp = {
     });
     if (!res.ok) {
       const e = await res.json().catch(() => ({}));
-      throw new Error(e.error || `API error ${res.status}`);
+      const err = new Error(e.error || `API error ${res.status}`);
+      err.status = res.status;
+      throw err;
     }
     if (res.status === 204) return null;
     return res.json();
@@ -249,6 +251,10 @@ const _NoteApiHttp = {
 
 import { NoteApiNative } from './api-native.js';
 import { NoteApiCached } from './api-cached.js';
+import { createOfflineApi } from './offline-api.js';
+
+// The web app: the server, with note edits kept and sent later when it can't be reached.
+const _NoteApiWeb = isNative ? null : createOfflineApi(_NoteApiHttp);
 
 // Endpoints without a local mirror in NoteApiNative: inherently
 // server-scoped (sharing peers, user management, app config). In pure
@@ -312,11 +318,12 @@ export const NoteApi = new Proxy({}, {
       return _uploadFileConnected;
     }
     let impl;
-    if (!isNative)                                             impl = _NoteApiHttp;
+    if (!isNative)                                             impl = _NoteApiWeb;
     else if (!getServerUrl())                                  impl = NoteApiNative;
     else if (SERVER_ONLY_METHODS.has(prop))                    impl = _NoteApiHttp;
     else                                                       impl = NoteApiCached;
-    return typeof impl[prop] === 'function' ? impl[prop].bind(impl) : impl[prop];
+    const value = impl[prop];
+    return typeof value === 'function' && impl !== _NoteApiWeb ? value.bind(impl) : value;
   },
 });
 

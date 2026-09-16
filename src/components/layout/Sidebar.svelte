@@ -15,6 +15,8 @@
   import { NoteApi } from '../../lib/api.js';
   import { nextOccurrence } from '../../lib/reminders.js';
   import { syncState } from '../../lib/sync.js';
+  import { offlineState } from '../../lib/offline-api.js';
+  import { confirmDialog } from '../../stores/confirmDialog.js';
   import { relativeTime } from '../../lib/relative-time.js';
   import { todayStr } from '../../lib/due-dates.js';
   import LabelManager from '../notes/LabelManager.svelte';
@@ -45,6 +47,19 @@
   $: if (!rail) tip = null;
 
   async function handleLogout() {
+    // Edits made offline in this browser go with the sign-out: try sending them first, then ask.
+    if (!isNative) {
+      const { flushOutbox, pendingCount } = await import('../../lib/offline-api.js');
+      await flushOutbox().catch(() => {});
+      const n = await pendingCount();
+      if (n && !await confirmDialog({
+        title: $_('offline.logout_title'),
+        message: $_('offline.logout_message', { values: { n } }),
+        confirmText: $_('offline.logout_confirm'),
+        cancelText: $_('common.cancel'),
+        dangerous: true,
+      })) return;
+    }
     await logout();
     open = false;
     dispatch('close');
@@ -155,12 +170,18 @@
 
   // ── Sync status (Android app connected to a server) ───────────────
   $: syncMode = isNative && getNativeMode() === 'server';
-  $: syncText = (_tick, !syncMode) ? ''
+  // The web app says so when it's offline or has edits waiting.
+  $: webSyncText = isNative ? ''
+    : !$offlineState.online ? $_('sidebar.offline')
+    : $offlineState.syncing ? $_('sidebar.syncing')
+    : $offlineState.pending ? $_('offline.waiting', { values: { n: $offlineState.pending } })
+    : '';
+  $: syncText = !isNative ? webSyncText : (_tick, !syncMode) ? ''
     : !$syncState.online || $syncState.connectionIssue ? $_('sidebar.offline')
     : $syncState.syncing ? $_('sidebar.syncing')
     : $syncState.lastSync ? $_('sidebar.synced', { values: { when: relativeTime($syncState.lastSync).toLowerCase() } })
     : $_('sidebar.not_synced');
-  $: syncBad = syncMode && (!$syncState.online || !!$syncState.connectionIssue);
+  $: syncBad = isNative ? syncMode && (!$syncState.online || !!$syncState.connectionIssue) : !$offlineState.online;
   // Refresh the "Synced 2 min ago" text now and then.
   let _tick = 0;
   const _tickTimer = setInterval(() => { _tick++; }, 60 * 1000);

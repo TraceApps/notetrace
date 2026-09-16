@@ -170,6 +170,19 @@
     "image":       "Image",
     "file":        "File"
   },
+  "offline": {
+    "offline":           "Offline. Edits are kept here",
+    "offline_waiting":   "Offline. {n, plural, one {# edit} other {# edits}} waiting",
+    "waiting":           "{n, plural, one {# edit} other {# edits}} waiting to sync",
+    "syncing":           "Syncing edits…",
+    "failed":            "{n, plural, one {# edit} other {# edits}} couldn't sync yet. Retrying",
+    "synced":            "Edits synced",
+    "retry":             "Sync now",
+    "needs_connection":  "You're offline. This needs a connection.",
+    "logout_title":      "Sign out with unsynced edits?",
+    "logout_message":    "{n, plural, one {# edit made offline hasn't} other {# edits made offline haven't}} reached the server yet. Signing out removes them from this browser.",
+    "logout_confirm":    "Sign Out Anyway"
+  },
   "slash": {
     "title":     "Insert",
     "checklist": "Checklist",

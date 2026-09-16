@@ -297,6 +297,8 @@ export async function logout() {
     } catch {}
   }
   if (isNative) import('../lib/home-widget.js').then(({ clearHomeWidget }) => clearHomeWidget()).catch(() => {});
+  // This account's offline copy of its notes stays behind on a shared computer otherwise.
+  else { try { await (await import('../lib/offline-api.js')).clearOfflineData(); } catch { /* nothing stored */ } }
   localStorage.removeItem('wl:userId');
   localStorage.removeItem('note:cachedUser');
   localStorage.removeItem('note:csrf');
