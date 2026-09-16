@@ -44,6 +44,8 @@
   import { autoTranscribe, autoSummarizeLong, autoReadImages } from '../../stores/settings.js';
   import { traceReady, askTrace, TRACE_ACTIONS, titleLine } from '../../lib/trace-run.js';
   import { AUTO_SUMMARY_MS, worthSummarizing } from '../../../server/lib/voice-meta.js';
+  import { itemAfterPatch } from '../../../server/lib/task-rules.js';
+  import { todayStr } from '../../lib/due-dates.js';
   import AttachmentGrid from './AttachmentGrid.svelte';
   import ImageViewer from './ImageViewer.svelte';
   import { uploadNoteImages, isImageFile } from '../../lib/note-images.js';
@@ -201,7 +203,8 @@
   function onItemUpdate(e) {
     touched = true;
     const { uuid, patch: p } = e.detail;
-    items = items.map(i => i.uuid === uuid ? { ...i, ...p } : i);
+    // itemAfterPatch applies the repeat rule, so a repeating task moves on here too.
+    items = items.map(i => i.uuid === uuid ? itemAfterPatch(i, p, p.today || todayStr()) : i);
     enqueue(async () => {
       if (!noteId) { await ensureNote(); return; }
       const n = await NoteApi.updateItem(noteId, uuid, p);

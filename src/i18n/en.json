@@ -44,7 +44,24 @@
     "empty_title":     "Nothing to Do",
     "empty_body":      "Checklist items with a due date show up here, along with everything on checklists you show in Tasks. Add a task above, or open a checklist's menu and choose Show in Tasks.",
     "show_in_tasks":   "Show in Tasks",
-    "shown_in_tasks":  "Shown in Tasks"
+    "shown_in_tasks":  "Shown in Tasks",
+    "edit":            "Edit",
+    "delete":          "Delete",
+    "deleted":         "Deleted: {text}",
+    "options":         "Task options",
+    "due_and_repeat":  "Due Date and Repeat",
+    "move_to_list":    "Move to List",
+    "moved":           "Moved to {list}",
+    "no_other_lists":  "No other lists you can edit.",
+    "open_note":       "Open the List",
+    "add_to_list":     "Add to List",
+    "completed":       "Completed",
+    "next_due":        "Next due {date}",
+    "moved_shown":     "Moved to {list}, now shown in Tasks",
+    "added_shown":     "Added to {list}, now shown in Tasks",
+    "hide_list":       "Hide the List",
+    "other_lists":     "Other Lists",
+    "other_lists_hint": "An undated task shows the list in Tasks"
   },
   "due": {
     "title":     "Due Date",
@@ -55,7 +72,14 @@
     "yesterday": "Yesterday",
     "next_week": "Next Week",
     "pick":      "Pick a Date",
-    "clear":     "No Due Date"
+    "clear":     "No Due Date",
+    "repeat":          "Repeat",
+    "repeat_none":     "Never",
+    "repeat_daily":    "Daily",
+    "repeat_weekdays": "Weekdays",
+    "repeat_weekly":   "Weekly",
+    "repeat_monthly":  "Monthly",
+    "repeat_yearly":   "Yearly"
   },
   "slash": {
     "title":     "Insert",
@@ -105,7 +129,17 @@
     "done":            "Done",
     "close":           "Close the note",
     "slash":           "Insert a checklist, heading, and more",
-    "link":            "Link to a note"
+    "link":            "Link to a note",
+    "group_tasks":     "In Tasks",
+    "task_next":       "Next task",
+    "task_previous":   "Previous task",
+    "task_add":        "Add a task",
+    "task_done":       "Tick the task",
+    "task_edit":       "Edit the task",
+    "task_due":        "Due date and repeat",
+    "task_move":       "Move to another list",
+    "task_open":       "Open its list",
+    "task_delete":     "Delete the task"
   },
   "select": {
     "select":            "Select Note",

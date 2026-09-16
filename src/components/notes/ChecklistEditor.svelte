@@ -14,7 +14,9 @@
   import { dragHandleZone, dragHandle } from 'svelte-dnd-action';
   import Popover from './Popover.svelte';
   import DuePicker from './DuePicker.svelte';
-  import { dueLabel, dueStatus } from '../../lib/due-dates.js';
+  import { dueLabel, dueStatus, todayStr } from '../../lib/due-dates.js';
+  import { nextDueDate, cleanTaskRepeat } from '../../../server/lib/task-rules.js';
+  import { showInfo } from '../../stores/toast.js';
 
   export let items = [];
   export let editable = true;
@@ -38,8 +40,19 @@
     dueOpen = false;
     const item = dueFor;
     if (!item) return;
-    list = list.map(i => i.uuid === item.uuid ? { ...i, due_date: value } : i);
-    dispatch('update', { uuid: item.uuid, patch: { due_date: value } });
+    // Clearing the date clears its repeat too: a repeat needs a date to move on from.
+    list = list.map(i => i.uuid === item.uuid ? { ...i, due_date: value, ...(value ? {} : { due_repeat: null }) } : i);
+    dispatch('update', { uuid: item.uuid, patch: value ? { due_date: value } : { due_date: null, due_repeat: null } });
+    dueFor = null;
+  }
+  function setRepeat(repeat) {
+    const item = dueFor;
+    if (!item) return;
+    // A repeat needs a date to move on from: with none yet, it starts today.
+    const due = item.due_date || (repeat ? todayStr() : null);
+    dueFor = { ...item, due_date: due, due_repeat: repeat };
+    list = list.map(i => i.uuid === item.uuid ? { ...i, due_date: due, due_repeat: repeat } : i);
+    dispatch('update', { uuid: item.uuid, patch: { due_date: due, due_repeat: repeat } });
   }
   $: done = list.filter(i => i.checked);
 
@@ -93,8 +106,17 @@
 
   function toggle(item) {
     if (!editable) return;
-    list = list.map(i => i.uuid === item.uuid ? { ...i, checked: !i.checked } : i);
-    dispatch('update', { uuid: item.uuid, patch: { checked: !item.checked } });
+    const today = todayStr();
+    // A repeating item moves to its next date instead of being ticked, the same
+    // rule the server applies when it receives the tick.
+    const next = !item.checked && cleanTaskRepeat(item.due_repeat) ? nextDueDate(item.due_date, item.due_repeat, today) : null;
+    if (next) {
+      list = list.map(i => i.uuid === item.uuid ? { ...i, due_date: next } : i);
+      showInfo($_('tasks.next_due', { values: { date: dueLabel(next, $_) } }));
+    } else {
+      list = list.map(i => i.uuid === item.uuid ? { ...i, checked: !i.checked } : i);
+    }
+    dispatch('update', { uuid: item.uuid, patch: { checked: !item.checked, today } });
   }
 
   async function addAfter(item) {
@@ -184,6 +206,7 @@
           <button type="button" class="due-chip due-{dueStatus(item.due_date)}" disabled={!editable}
             on:click={(e) => openDue(e, item)} title={$_('due.change')}>
             <span class="material-symbols-rounded">event</span>{dueLabel(item.due_date, $_)}
+            {#if item.due_repeat}<span class="material-symbols-rounded repeat-mark" aria-label={$_(`due.repeat_${item.due_repeat}`)}>repeat</span>{/if}
           </button>
         {:else if editable}
           <button type="button" class="due-add" on:click={(e) => openDue(e, item)} aria-label={$_('due.add')} title={$_('due.add')}>
@@ -233,7 +256,8 @@
 </div>
 
 <Popover bind:open={dueOpen} anchor={dueAnchor}>
-  {#if dueOpen}<DuePicker value={dueFor?.due_date || null} on:select={(e) => setDue(e.detail)} />{/if}
+  {#if dueOpen}<DuePicker value={dueFor?.due_date || null} repeat={dueFor?.due_repeat || null} repeats
+    on:select={(e) => setDue(e.detail)} on:repeat={(e) => setRepeat(e.detail)} />{/if}
 </Popover>
 
 <style>
@@ -244,6 +268,7 @@
     background: color-mix(in srgb, var(--text-1) 8%, transparent); color: var(--text-2);
   }
   .due-chip .material-symbols-rounded { font-size: 15px; }
+  .due-chip .repeat-mark { font-size: 13px; margin-left: -1px; opacity: 0.85; }
   .due-chip.due-overdue { background: color-mix(in srgb, var(--danger) 16%, transparent); color: var(--danger); }
   .due-chip.due-today { background: var(--accent-dim); color: var(--accent); }
   .due-chip:disabled { cursor: default; }

@@ -25,6 +25,7 @@ router.get('/', wrap((req, res) => {
     view,
     labelId: Number.isFinite(label) ? label : null,
     q: typeof req.query.q === 'string' ? req.query.q : '',
+    kind: typeof req.query.kind === 'string' ? req.query.kind : null,
   }));
 }));
 

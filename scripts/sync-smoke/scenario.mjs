@@ -139,4 +139,22 @@ ok((await A.N.findNoteByTitle('READING LIST'))?.id === tgt.id && (await A.N.getB
 await A.N.updateNote(tgt.id, { title: 'Books to read' });
 ok((await A.N.getNote(src.id)).body_md === 'Check [[Books to read]]', 'A: renaming updates links in local notes');
 
+// 11. Repeating tasks: the repeat travels, and a tick on one device moves the date on everywhere.
+const chores = await A.N.createNote({ title: 'Chores', kind: 'checklist', items: [{ text: 'Bins out', due_date: '2026-09-15', due_repeat: 'weekly' }] });
+await sync(A); await sync(B);
+let choresB = (await B.N.getNotes()).find(n => n.title === 'Chores');
+ok(choresB?.items[0]?.due_repeat === 'weekly' && choresB.items[0].due_date === '2026-09-15', 'B: a repeating task arrives with its repeat');
+await sleep(1100);
+await B.N.updateItem(choresB.id, choresB.items[0].uuid, { checked: true, today: '2026-09-15' });
+await sync(B); await sync(A);
+const choresA = await A.N.getNote(chores.id);
+ok(choresA.items[0].checked === false && choresA.items[0].due_date === '2026-09-22', `A: ticking it on B moved it on for A too (${choresA.items[0].due_date})`);
+await sleep(1100);
+const mop = await A.N.addItem(chores.id, { text: 'Mop' });
+const mopItem = mop.items.find(i => i.text === 'Mop');
+await A.N.updateItem(chores.id, mopItem.uuid, { checked: true });
+await sync(A); await sync(B);
+choresB = await B.N.getNote(choresB.id);
+ok(!!choresB.items.find(i => i.text === 'Mop')?.checked_at, 'B: when an item was ticked syncs too, for Completed');
+
 console.log(f ? `${f} FAILED` : 'all passed'); process.exit(f ? 1 : 0);

@@ -80,7 +80,7 @@ const TABLES = {
     softDelete: true,
   },
   checklist_items: {
-    cols: ['uuid', 'note_id', 'text', 'checked', 'position', 'due_date'],
+    cols: ['uuid', 'note_id', 'text', 'checked', 'position', 'due_date', 'due_repeat', 'checked_at'],
     parents: { note_id: 'notes' },
     uniqueKey: ['uuid'],
     softDelete: true,

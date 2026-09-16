@@ -9,6 +9,8 @@
 import { cleanLabelIcon } from '../../server/lib/label-icons.js';
 import { parseWaveform, parseSegments, waveformText, segmentsText } from '../../server/lib/voice-meta.js';
 import { getDb, LOCAL_USER_ID } from './db-native.js';
+import { cleanTaskRepeat, nextDueDate } from '../../server/lib/task-rules.js';
+import { todayStr } from './due-dates.js';
 
 export const NOTE_COLORS = ['ember', 'clay', 'amber', 'sand', 'lime', 'moss', 'sage', 'mint', 'sky', 'tide', 'indigo', 'plum', 'orchid', 'rose', 'bark', 'slate'];
 const REPEATS = ['daily', 'weekly', 'monthly', 'yearly'];
@@ -58,7 +60,7 @@ async function _hydrate(rows) {
   const ids = rows.map(r => r.id);
   const ph = ids.map(() => '?').join(',');
   const items = await _q(
-    `SELECT note_id, uuid, text, checked, position, due_date FROM checklist_items
+    `SELECT note_id, uuid, text, checked, position, due_date, due_repeat, checked_at FROM checklist_items
       WHERE note_id IN (${ph}) AND deleted_at IS NULL ORDER BY position ASC, id ASC`, ids);
   const files = await _q(
     `SELECT note_id, uuid, url, mime, width, height, position, duration_ms, extracted_text, summary, waveform, segments FROM note_attachments
@@ -70,7 +72,8 @@ async function _hydrate(rows) {
   const itemMap = new Map();
   for (const it of items) {
     if (!itemMap.has(it.note_id)) itemMap.set(it.note_id, []);
-    itemMap.get(it.note_id).push({ uuid: it.uuid, text: it.text, checked: !!it.checked, position: it.position, due_date: it.due_date || null });
+    itemMap.get(it.note_id).push({ uuid: it.uuid, text: it.text, checked: !!it.checked, position: it.position, due_date: it.due_date || null,
+      due_repeat: it.due_date ? (it.due_repeat || null) : null, checked_at: it.checked ? (it.checked_at || null) : null });
   }
   const fileMap = new Map();
   for (const a of files) {
@@ -139,7 +142,7 @@ function _searchClause(q) {
 
 async function _itemsJson(noteId) {
   const rows = await _q(
-    `SELECT uuid, text, checked, position, due_date FROM checklist_items
+    `SELECT uuid, text, checked, position, due_date, due_repeat, checked_at FROM checklist_items
       WHERE note_id = ? AND deleted_at IS NULL ORDER BY position ASC, id ASC`, [noteId]);
   return rows.length ? JSON.stringify(rows.map(r => ({ ...r, checked: !!r.checked }))) : null;
 }
@@ -173,15 +176,18 @@ async function _upsertItem(noteId, it, ts) {
   const text = String(it.text ?? '').slice(0, 5000);
   const position = Number.isFinite(+it.position) ? +it.position : 0;
   const due = /^\d{4}-\d{2}-\d{2}$/.test(String(it.due_date || '')) ? String(it.due_date) : null;
+  const repeat = due ? cleanTaskRepeat(it.due_repeat) : null;
+  // Same rule as the server: ticked now unless told otherwise, null keeps an old tick undated.
+  const checkedAt = it.checked ? (typeof it.checked_at === 'string' && it.checked_at ? it.checked_at : (it.checked_at === null ? null : ts)) : null;
   if (existing) {
     await _run(
-      `UPDATE checklist_items SET text = ?, checked = ?, position = ?, due_date = ?, updated_at = ?, deleted_at = NULL, sync_status = 'pending' WHERE id = ?`,
-      [text, it.checked ? 1 : 0, position, due, ts, existing.id]);
+      `UPDATE checklist_items SET text = ?, checked = ?, position = ?, due_date = ?, due_repeat = ?, checked_at = ?, updated_at = ?, deleted_at = NULL, sync_status = 'pending' WHERE id = ?`,
+      [text, it.checked ? 1 : 0, position, due, repeat, checkedAt, ts, existing.id]);
   } else {
     await _insert(
-      `INSERT INTO checklist_items (uuid, user_id, note_id, text, checked, position, due_date, created_at, updated_at, sync_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
-      [uuid, LOCAL_USER_ID, noteId, text, it.checked ? 1 : 0, position, due, ts, ts]);
+      `INSERT INTO checklist_items (uuid, user_id, note_id, text, checked, position, due_date, due_repeat, checked_at, created_at, updated_at, sync_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+      [uuid, LOCAL_USER_ID, noteId, text, it.checked ? 1 : 0, position, due, repeat, checkedAt, ts, ts]);
   }
   return uuid;
 }
@@ -268,7 +274,7 @@ async function _setLabels(noteId, labelIds, ts) {
 // ── API ──────────────────────────────────────────────────────────────
 
 export const NotesNative = {
-  async getNotes({ view = 'notes', label = null, q = '' } = {}) {
+  async getNotes({ view = 'notes', label = null, q = '', kind = null } = {}) {
     // Local mode has no server to empty the trash, so the first read of
     // each session does it. Connected devices get the server's purge via
     // sync as well; purging twice is harmless.
@@ -285,6 +291,7 @@ export const NotesNative = {
       where.push('n.trashed_at IS NULL');
       where.push(view === 'archive' ? 'n.archived = 1' : 'n.archived = 0');
     }
+    if (kind === 'checklist' || kind === 'text') { where.push('n.kind = ?'); args.push(kind); }
     if (label != null) {
       where.push(`EXISTS (SELECT 1 FROM note_labels nl WHERE nl.note_id = n.id AND nl.label_id = ? AND nl.deleted_at IS NULL)`);
       args.push(Number(label));
@@ -458,7 +465,7 @@ export const NotesNative = {
       const max = (await _q(`SELECT MAX(position) AS p FROM checklist_items WHERE note_id = ? AND deleted_at IS NULL`, [noteId]))[0];
       position = (max?.p || 0) + 1;
     }
-    await _upsertItem(noteId, { uuid: data.uuid, text: data.text, checked: data.checked, position, due_date: data.due_date }, ts);
+    await _upsertItem(noteId, { uuid: data.uuid, text: data.text, checked: data.checked, position, due_date: data.due_date, due_repeat: data.due_repeat }, ts);
     await _touch(noteId, ts);
     return _note(noteId);
   },
@@ -468,12 +475,22 @@ export const NotesNative = {
     const item = (await _q(`SELECT * FROM checklist_items WHERE uuid = ? AND note_id = ? AND deleted_at IS NULL`, [uuid, noteId]))[0];
     if (!item) throw new Error('Item not found');
     const ts = _now();
+    let checked = 'checked' in patch ? !!patch.checked : !!item.checked;
+    let dueDate = 'due_date' in patch ? patch.due_date : item.due_date;
+    const repeat = 'due_repeat' in patch ? patch.due_repeat : item.due_repeat;
+    // Ticking a repeating task moves it to its next date and leaves it open (task-rules.js).
+    if (checked && !item.checked && cleanTaskRepeat(repeat) && dueDate) {
+      dueDate = nextDueDate(dueDate, repeat, /^\d{4}-\d{2}-\d{2}$/.test(String(patch.today || '')) ? patch.today : todayStr());
+      checked = false;
+    }
     await _upsertItem(noteId, {
       uuid,
       text: 'text' in patch ? patch.text : item.text,
-      checked: 'checked' in patch ? patch.checked : item.checked,
+      checked,
       position: 'position' in patch ? patch.position : item.position,
-      due_date: 'due_date' in patch ? patch.due_date : item.due_date,
+      due_date: dueDate,
+      due_repeat: repeat,
+      checked_at: checked ? (item.checked ? item.checked_at : undefined) : null,
     }, ts);
     await _touch(noteId, ts);
     return _note(noteId);

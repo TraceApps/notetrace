@@ -327,6 +327,11 @@ if (!columnExists('note_attachments', 'extracted_text')) db.exec(`ALTER TABLE no
 if (!columnExists('note_attachments', 'summary')) db.exec(`ALTER TABLE note_attachments ADD COLUMN summary TEXT`);
 // Optional due date on a checklist item (YYYY-MM-DD, the user's calendar day).
 if (!columnExists('checklist_items', 'due_date')) db.exec(`ALTER TABLE checklist_items ADD COLUMN due_date TEXT`);
+// A repeating task (daily, weekdays, weekly, monthly, yearly): ticking it moves
+// due_date on instead of checking it (lib/task-rules.js nextDueDate).
+if (!columnExists('checklist_items', 'due_repeat')) db.exec(`ALTER TABLE checklist_items ADD COLUMN due_repeat TEXT`);
+// When an item was ticked, for the Completed list in Tasks.
+if (!columnExists('checklist_items', 'checked_at')) db.exec(`ALTER TABLE checklist_items ADD COLUMN checked_at TEXT`);
 if (!columnExists('labels', 'icon')) db.exec(`ALTER TABLE labels ADD COLUMN icon TEXT`);
 // Show in Tasks: the owner's choice on notes, a member's own on note_members.
 // A checklist named Tasks (the Tasks view's own list) starts out shown.

@@ -64,6 +64,32 @@ ok(counts.tasksDue === 0, 'an archived list stops counting');
 await api('PATCH', `/api/notes/${due.id}`, { archived: false });
 counts = (await api('GET', '/api/notes/counts?today=bogus')).json;
 ok(counts.tasksDue >= 0 && /^\d{4}-\d{2}-\d{2}$/.test(counts.today), 'a bad date falls back to the server date');
+
+console.log('repeating tasks');
+const rep = (await api('POST', '/api/notes', { title: 'Chores', kind: 'checklist', items: [
+  { text: 'Bins out', due_date: '2026-09-15', due_repeat: 'weekly' },
+  { text: 'One-off', due_date: '2026-09-15' },
+] })).json;
+const bins = rep.items.find(i => i.text === 'Bins out');
+ok(bins.due_repeat === 'weekly', 'a repeat is stored with its date');
+let after = (await api('PATCH', `/api/notes/${rep.id}/items/${bins.uuid}`, { checked: true, today: '2026-09-15' })).json;
+let binsNow = after.items.find(i => i.uuid === bins.uuid);
+ok(binsNow.checked === false && binsNow.due_date === '2026-09-22', 'ticking a repeating task moves it on and leaves it open');
+after = (await api('PATCH', `/api/notes/${rep.id}/items/${bins.uuid}`, { checked: true, today: '2026-10-08' })).json;
+binsNow = after.items.find(i => i.uuid === bins.uuid);
+ok(binsNow.due_date === '2026-10-13', 'ticked late, the missed weeks are skipped');
+const oneOff = rep.items.find(i => i.text === 'One-off');
+after = (await api('PATCH', `/api/notes/${rep.id}/items/${oneOff.uuid}`, { checked: true })).json;
+const offNow = after.items.find(i => i.uuid === oneOff.uuid);
+ok(offNow.checked === true && !!offNow.checked_at, 'an ordinary tick records when it happened');
+after = (await api('PATCH', `/api/notes/${rep.id}/items/${oneOff.uuid}`, { checked: false })).json;
+ok(after.items.find(i => i.uuid === oneOff.uuid).checked_at === null, 'unticking clears it');
+after = (await api('PATCH', `/api/notes/${rep.id}/items/${bins.uuid}`, { due_date: null })).json;
+ok(after.items.find(i => i.uuid === bins.uuid).due_repeat === null, 'clearing the date clears the repeat');
+const lists = (await api('GET', '/api/notes?kind=checklist')).json;
+ok(lists.length >= 1 && lists.every(n => n.kind === 'checklist'), 'kind=checklist returns only checklists');
+await api('DELETE', `/api/notes/${rep.id}/forever`);
+
 await api('DELETE', `/api/notes/${due.id}/forever`);   // leave the rest of the checks with two notes
 
 console.log('labels');

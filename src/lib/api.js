@@ -157,11 +157,12 @@ const _NoteApiHttp = {
   },
 
   // Notes
-  getNotes({ view = 'notes', label = null, q = '' } = {}) {
+  getNotes({ view = 'notes', label = null, q = '', kind = null } = {}) {
     const p = new URLSearchParams();
     if (view !== 'notes') p.set('view', view);
     if (label != null) p.set('label', label);
     if (q) p.set('q', q);
+    if (kind) p.set('kind', kind);
     const qs = p.toString();
     return this.get(`/api/notes${qs ? '?' + qs : ''}`);
   },

@@ -5,6 +5,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { executeNoteTool, NOTE_TOOLS, parseToolTime } from '../server/lib/note-tools.js';
+import { itemAfterPatch } from '../server/lib/task-rules.js';
 
 function fakeApi() {
   let nextId = 1, nextLabel = 1;
@@ -32,7 +33,7 @@ function fakeApi() {
     },
     async updateNote(id, p) { Object.assign(notes.get(id), p); return clone(notes.get(id)); },
     async addItem(id, { text, due_date = null }) { const n = notes.get(id); n.items.push({ uuid: `a${n.items.length}`, text, checked: false, due_date }); return clone(n); },
-    async updateItem(id, uuid, p) { const it = notes.get(id).items.find(i => i.uuid === uuid); Object.assign(it, p); return clone(notes.get(id)); },
+    async updateItem(id, uuid, p) { const it = notes.get(id).items.find(i => i.uuid === uuid); Object.assign(it, itemAfterPatch(it, p, p.today || '2099-01-01')); return clone(notes.get(id)); },
     async trashNote(id) { notes.get(id).trashed_at = 'now'; return clone(notes.get(id)); },
   };
 }
@@ -131,6 +132,22 @@ test('due dates: add with due, set, clear, and list tasks', async () => {
   assert.deepEqual(all.tasks.map(t => t.text), ['Sweep', 'Bins']);
   const text = await api.createNote({ title: 'Plain again', kind: 'text' });
   assert.match((await executeNoteTool('update_note', { id: text.id, show_in_tasks: true }, api)).error, /Only checklists/);
+});
+
+test('Trace can make a task repeat, and ticking it moves it on', async () => {
+  const api = fakeApi();
+  const list = await api.createNote({ title: 'Chores', kind: 'checklist', items: [{ text: 'Bins out' }] });
+  const set = await executeNoteTool('set_due_date', { id: list.id, item: 'bins', due: '2099-01-06', repeat: 'weekly' }, api);
+  assert.equal(set.repeat, 'weekly');
+  assert.equal((await executeNoteTool('get_note', { id: list.id }, api)).items[0].repeat, 'weekly');
+  const ticked = await executeNoteTool('check_checklist_item', { id: list.id, item: 'bins' }, api);
+  assert.equal(ticked.checked, false);
+  assert.equal(ticked.next_due, '2099-01-13');
+  // Changing only the repeat keeps the date; "none" stops it.
+  const stopped = await executeNoteTool('set_due_date', { id: list.id, item: 'bins', repeat: 'none' }, api);
+  assert.equal(stopped.due, '2099-01-13');
+  assert.equal(stopped.repeat, undefined);
+  assert.match((await executeNoteTool('set_due_date', { id: list.id, item: 'bins', repeat: 'hourly' }, api)).error, /Unknown repeat/);
 });
 
 test('MCP tiers cover every tool exactly once', async () => {

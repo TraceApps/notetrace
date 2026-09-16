@@ -46,6 +46,8 @@
   import { growOnScroll } from '../lib/grow-on-scroll.js';
   import { searchTerms } from '../lib/highlight.js';
   import { portal } from '../lib/portal.js';
+  import { itemAfterPatch } from '../../server/lib/task-rules.js';
+  import { todayStr } from '../lib/due-dates.js';
   import { NOTE_COLORS, colorDot } from '../lib/note-colors.js';
 
   export let params = {};
@@ -513,10 +515,12 @@
 
   async function onToggleItem(e) {
     const { note, item } = e.detail;
-    // Optimistic: flip it in place so the card responds instantly.
-    replace({ ...note, items: note.items.map(i => i.uuid === item.uuid ? { ...i, checked: !i.checked } : i) });
+    // Optimistic: flip it in place so the card responds instantly (a repeating
+    // task moves to its next date instead).
+    const patch = { checked: !item.checked, today: todayStr() };
+    replace({ ...note, items: note.items.map(i => i.uuid === item.uuid ? itemAfterPatch(i, patch, patch.today) : i) });
     try {
-      replace(await NoteApi.updateItem(note.id, item.uuid, { checked: !item.checked }));
+      replace(await NoteApi.updateItem(note.id, item.uuid, patch));
       signalCountsChanged();   // the Tasks badge, without reloading the list
     } catch (err) {
       replace(note);

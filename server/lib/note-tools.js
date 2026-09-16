@@ -11,7 +11,7 @@
  * server and the client bundle and tested against a fake api.
  */
 import { REPEATS, toUtcString, localTimeZone, nextOccurrence, zonedToUtc } from './reminders.js';
-import { isTask } from './task-rules.js';
+import { isTask, cleanTaskRepeat } from './task-rules.js';
 
 const BODY_LIMIT = 4000;
 const RESULT_LIMIT = 25;
@@ -119,14 +119,15 @@ export const NOTE_TOOLS = [
   },
   {
     name: 'set_due_date',
-    description: 'Set or clear the due date of a checklist item, found by its text (exact match first, then the only item containing the text).',
+    description: 'Set or clear the due date of a checklist item, found by its text (exact match first, then the only item containing the text). Can also make it repeat: ticking a repeating task moves its date to the next time instead of finishing it (for "every Tuesday", set due to the next Tuesday and repeat weekly).',
     parameters: {
       type: 'object',
       properties: {
         id: { type: 'integer', description: 'Note id' },
         item: { type: 'string', description: 'Item text' },
         due: { type: 'string', description: 'YYYY-MM-DD, or leave out with clear=true.' },
-        clear: { type: 'boolean' },
+        repeat: { type: 'string', enum: ['none', 'daily', 'weekdays', 'weekly', 'monthly', 'yearly'], description: 'How often it comes round. Leave out to keep the current repeat; "none" stops it repeating.' },
+        clear: { type: 'boolean', description: 'Remove the due date (and any repeat).' },
       },
       required: ['id', 'item'],
     },
@@ -212,7 +213,7 @@ function _full(note, labelName) {
     title: note.title,
     kind: note.kind,
     text: note.kind === 'text' ? (body.length > BODY_LIMIT ? `${body.slice(0, BODY_LIMIT)}\n…(truncated)` : body) : undefined,
-    items: note.kind === 'checklist' ? (note.items || []).map(i => ({ text: i.text, checked: !!i.checked, ...(i.due_date ? { due: i.due_date } : {}) })) : undefined,
+    items: note.kind === 'checklist' ? (note.items || []).map(i => ({ text: i.text, checked: !!i.checked, ...(i.due_date ? { due: i.due_date } : {}), ...(i.due_repeat ? { repeat: i.due_repeat } : {}) })) : undefined,
     labels: (note.labels || []).map(id => labelName.get(id)).filter(Boolean),
     color: note.color || null,
     pinned: !!note.pinned,
@@ -406,7 +407,7 @@ export async function executeNoteTool(name, args = {}, api, opts = {}) {
       const notes = (await api.getNotes({ view: 'notes' })).filter(n => n.kind === 'checklist');
       const tasks = notes.flatMap(n => (n.items || [])
         .filter(i => isTask(n, i, { allChecklists }))
-        .map(i => ({ text: i.text, due: i.due_date || null, note_id: n.id, list: n.title || '' })))
+        .map(i => ({ text: i.text, due: i.due_date || null, ...(i.due_repeat ? { repeat: i.due_repeat } : {}), note_id: n.id, list: n.title || '' })))
         .filter(t => t.due ? (!dueBy || t.due <= dueBy) : undated)
         .sort((x, y) => (x.due ? 0 : 1) - (y.due ? 0 : 1) || String(x.due || '').localeCompare(String(y.due || '')));
       return { count: tasks.length, tasks: tasks.slice(0, limit) };
@@ -417,10 +418,15 @@ export async function executeNoteTool(name, args = {}, api, opts = {}) {
       if (note.kind !== 'checklist') return { error: 'This note is not a checklist.' };
       const found = _findItem(note.items || [], a.item);
       if (found.error) return { error: found.error };
-      const due = a.clear ? null : _dueDate(a.due);
+      if (a.repeat != null && a.repeat !== 'none' && !cleanTaskRepeat(a.repeat)) return { error: `Unknown repeat "${a.repeat}". Use daily, weekdays, weekly, monthly, yearly, or none.` };
+      const due = a.clear ? null : (a.due != null ? _dueDate(a.due) : found.item.due_date || null);
       if (!a.clear && !due) return { error: 'Give due as YYYY-MM-DD, or clear=true.' };
-      await api.updateItem(note.id, found.item.uuid, { due_date: due });
-      return { ok: true, item: found.item.text, due };
+      const patch = { due_date: due };
+      if (a.clear || a.repeat === 'none') patch.due_repeat = null;
+      else if (a.repeat) patch.due_repeat = a.repeat;
+      await api.updateItem(note.id, found.item.uuid, patch);
+      const repeat = 'due_repeat' in patch ? patch.due_repeat : (found.item.due_repeat || null);
+      return { ok: true, item: found.item.text, due, ...(due && repeat ? { repeat } : {}) };
     }
     case 'check_checklist_item': {
       const note = await need(a.id);
@@ -429,7 +435,12 @@ export async function executeNoteTool(name, args = {}, api, opts = {}) {
       const found = _findItem(note.items || [], a.item);
       if (found.error) return { error: found.error };
       const checked = a.checked !== false;
-      await api.updateItem(note.id, found.item.uuid, { checked });
+      const after = await api.updateItem(note.id, found.item.uuid, { checked });
+      const now = (after?.items || []).find(i => i.uuid === found.item.uuid);
+      // A repeating task isn't finished by a tick: it moves on to its next date.
+      if (checked && now && !now.checked && now.due_repeat) {
+        return { ok: true, item: found.item.text, checked: false, repeats: now.due_repeat, next_due: now.due_date };
+      }
       return { ok: true, item: found.item.text, checked };
     }
     case 'set_reminder': {
