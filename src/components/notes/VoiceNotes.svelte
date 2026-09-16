@@ -10,9 +10,9 @@
   import { formatDuration, waveformFromBlob } from '../../lib/voice-recorder.js';
   import { fetchAttachmentBlob } from '../../lib/ai-extract.js';
   import { voicePlaybackRate } from '../../stores/settings.js';
-  import { WAVEFORM_BARS } from '../../../server/lib/voice-meta.js';
+  import { WAVEFORM_BARS, worthSummarizing, longEnoughToSummarize } from '../../../server/lib/voice-meta.js';
   import { segmentAt } from '../../../server/lib/transcript.js';
-  import { worthSummarizing } from '../../lib/trace-run.js';
+
 
   export let notes = [];          // audio attachments
   export let editable = false;
@@ -280,7 +280,7 @@
               <span class="material-symbols-rounded" class:spin={busy[a.uuid] === 'transcribing'}>{busy[a.uuid] === 'transcribing' ? 'progress_activity' : 'subtitles'}</span>
               {busy[a.uuid] === 'transcribing' ? $_('trace_extract.transcribing') : $_('trace_extract.transcribe')}
             </button>
-            {#if canSummarize}
+            {#if canSummarize && longEnoughToSummarize(a.duration_ms)}
               <button class="vn-link" on:click={() => dispatch('summarize', a)} disabled={!!busy[a.uuid]}>
                 <span class="material-symbols-rounded" class:spin={busy[a.uuid] === 'summarizing'}>{busy[a.uuid] === 'summarizing' ? 'progress_activity' : 'auto_awesome'}</span>
                 {busy[a.uuid] === 'summarizing' ? $_('trace_extract.summarizing') : $_('trace_extract.summarize')}

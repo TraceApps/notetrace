@@ -60,16 +60,6 @@ export const TRACE_ACTIONS = {
   },
 };
 
-/**
- * Long enough to be worth summarising. Under this a summary is as long as the
- * transcript, so the app doesn't offer one (or spend a request on it).
- */
-export const SUMMARY_MIN_CHARS = 400;
-export const worthSummarizing = (text) => String(text || '').trim().length >= SUMMARY_MIN_CHARS;
-
-/** Recordings this long get a summary on their own when the setting is on. */
-export const AUTO_SUMMARY_MS = 10 * 60 * 1000;
-
 /** Clean a model reply: drop code fences and a leading "Here is..." line some models add anyway. */
 export function cleanTraceReply(text) {
   let s = String(text || '').trim();

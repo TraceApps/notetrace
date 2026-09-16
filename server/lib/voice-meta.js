@@ -80,3 +80,17 @@ export function barsFromLevels(levels, bars = WAVEFORM_BARS) {
   // and a room's hiss stays near the floor.
   return out.map(v => Math.max(4, Math.round(meterLevel(v / top, -34, 0) * 100)));
 }
+
+/**
+ * When a summary is worth asking for. Speech runs about 750 characters a
+ * minute, so the two thresholds are the same judgement: half a minute of
+ * talking, or the transcript it produces. Below that a summary is as long as
+ * the thing it summarises.
+ */
+export const SUMMARY_MIN_CHARS = 400;
+export const SUMMARY_MIN_MS = 30 * 1000;
+export const worthSummarizing = (text) => String(text || '').trim().length >= SUMMARY_MIN_CHARS;
+export const longEnoughToSummarize = (ms) => Number(ms || 0) >= SUMMARY_MIN_MS;
+
+/** Recordings at least this long can be summarised without being asked. */
+export const AUTO_SUMMARY_MS = 10 * 60 * 1000;

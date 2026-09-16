@@ -42,7 +42,8 @@
   import { recordingSupported, uploadVoiceNote, formatDuration } from '../../lib/voice-recorder.js';
   import { extractSupport, transcribeVoiceNote, summarizeVoiceNote, readImageText, fetchAttachmentBlob, isAudio, isImage } from '../../lib/ai-extract.js';
   import { autoTranscribe, autoSummarizeLong, autoReadImages } from '../../stores/settings.js';
-  import { traceReady, askTrace, TRACE_ACTIONS, titleLine, AUTO_SUMMARY_MS, worthSummarizing } from '../../lib/trace-run.js';
+  import { traceReady, askTrace, TRACE_ACTIONS, titleLine } from '../../lib/trace-run.js';
+  import { AUTO_SUMMARY_MS, worthSummarizing } from '../../../server/lib/voice-meta.js';
   import AttachmentGrid from './AttachmentGrid.svelte';
   import ImageViewer from './ImageViewer.svelte';
   import { uploadNoteImages, isImageFile } from '../../lib/note-images.js';

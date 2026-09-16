@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseTimedText, fromVerboseJson, mergePieces, segmentAt, chunkSeconds, transcribeLimitBytes, whisperStyle } from '../server/lib/transcript.js';
-import { parseWaveform, parseSegments, barsFromLevels, meterLevel, WAVEFORM_BARS } from '../server/lib/voice-meta.js';
+import { parseWaveform, parseSegments, barsFromLevels, meterLevel, worthSummarizing, longEnoughToSummarize, SUMMARY_MIN_CHARS, SUMMARY_MIN_MS, WAVEFORM_BARS } from '../server/lib/voice-meta.js';
 
 test('Gemini-style timed lines', () => {
   const r = parseTimedText('[0:00] Call the plumber.\n[0:04] He comes Friday,\nbefore noon.\n[1:02:03] Done.');
@@ -51,6 +51,18 @@ test('voice note waveform and segments are cleaned', () => {
   assert.equal(bars.length, WAVEFORM_BARS);
   assert.ok(Math.max(...bars) === 100 && Math.min(...bars) >= 4);
   assert.equal(barsFromLevels([0, 0]), null);
+});
+
+test('summaries are only offered when there is something to compress', () => {
+  assert.equal(worthSummarizing(''), false);
+  assert.equal(worthSummarizing('Call the plumber.'), false);
+  assert.equal(worthSummarizing('x'.repeat(SUMMARY_MIN_CHARS)), true);
+  // Before there's a transcript, length stands in for it: a 10 second memo
+  // isn't worth a summary, a 5 minute one is, and 10 minutes is only the
+  // threshold for summarising without being asked.
+  assert.equal(longEnoughToSummarize(10 * 1000), false);
+  assert.equal(longEnoughToSummarize(SUMMARY_MIN_MS), true);
+  assert.equal(longEnoughToSummarize(5 * 60 * 1000), true);
 });
 
 test('levels are measured by ear, not by amplitude', () => {
