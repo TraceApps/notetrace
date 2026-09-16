@@ -43,6 +43,13 @@ export const TRACE_ACTIONS = {
     system: `You summarize notes in the note's language: a few short bullet points (at most 5) with the key facts, decisions, dates, and to-dos. ${RULES} Use Markdown "- " bullets.`,
     prompt: (title, body) => `${title ? `Title: ${title}\n\n` : ''}${body}`,
   },
+  // A spoken recording, summarised from its transcript. Separate from
+  // `summarize` because speech rambles: the job is to compress, and to keep
+  // the names, dates, and anything the speaker said they would do.
+  recap: {
+    system: `You summarize a spoken recording from its transcript, in the speaker's language: at most 5 short bullet points covering the key facts, decisions, names, dates, and anything to do. Always much shorter than the transcript. Don't invent anything that wasn't said. ${RULES} Use Markdown "- " bullets.`,
+    prompt: (title, body) => `${title ? `Note title: ${title}\n\n` : ''}Transcript:\n${body}`,
+  },
   title: {
     system: `You write a short title for a note: 2 to 6 words, in the note's language, no quotes and no ending period. ${RULES}`,
     prompt: (title, body) => body,
@@ -52,6 +59,16 @@ export const TRACE_ACTIONS = {
     prompt: (title, body) => `${title ? `Title: ${title}\n\n` : ''}${body}`,
   },
 };
+
+/**
+ * Long enough to be worth summarising. Under this a summary is as long as the
+ * transcript, so the app doesn't offer one (or spend a request on it).
+ */
+export const SUMMARY_MIN_CHARS = 400;
+export const worthSummarizing = (text) => String(text || '').trim().length >= SUMMARY_MIN_CHARS;
+
+/** Recordings this long get a summary on their own when the setting is on. */
+export const AUTO_SUMMARY_MS = 10 * 60 * 1000;
 
 /** Clean a model reply: drop code fences and a leading "Here is..." line some models add anyway. */
 export function cleanTraceReply(text) {

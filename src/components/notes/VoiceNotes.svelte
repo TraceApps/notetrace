@@ -12,14 +12,22 @@
   import { voicePlaybackRate } from '../../stores/settings.js';
   import { WAVEFORM_BARS } from '../../../server/lib/voice-meta.js';
   import { segmentAt } from '../../../server/lib/transcript.js';
+  import { worthSummarizing } from '../../lib/trace-run.js';
 
   export let notes = [];          // audio attachments
   export let editable = false;
   export let canTranscribe = false;
-  export let busy = {};           // uuid -> true while transcribing
+  export let busy = {};           // uuid -> 'transcribing' | 'summarizing' | true while Trace works
+  export let canSummarize = false;
 
   const dispatch = createEventDispatcher();
   const RATES = [1, 1.25, 1.5, 2];
+  // With a summary on a recording, the transcript folds away behind it: the
+  // summary is what you came to read, the transcript is the evidence.
+  let showTranscript = {};        // uuid -> true
+  const toggleTranscript = (id) => showTranscript = { ...showTranscript, [id]: !showTranscript[id] };
+  const summaryLines = (text) => String(text || '').split('\n').map(l => l.replace(/^\s*[-*\u2022]\s*/, '').trim()).filter(Boolean);
+  const busyLabel = (state) => state === 'summarizing' ? 'trace_extract.summarizing' : 'trace_extract.transcribing';
   const POS_KEY = 'note:voicepos';
 
   let playing = null;             // uuid
@@ -201,41 +209,84 @@
             </button>
           {/if}
         </div>
-        {#if a.extracted_text && a.segments?.length}
-          {@const cur = playing === a.uuid || at > 0 ? segmentAt(a.segments, at) : -1}
-          <ol class="vn-segs">
-            {#each visibleSegments(a, at, playing === a.uuid, expanded[a.uuid]) as { s, i } (i)}
-              <li>
-                <button class="vn-seg" class:current={i === cur} on:click={() => seek(a, s.start, true)}
-                  aria-label={$_('voice.play_from', { values: { time: formatDuration(s.start * 1000) } })}>
-                  <span class="vn-ts">{formatDuration(s.start * 1000)}</span><span class="vn-line">{s.text}</span>
+        {#if a.summary}
+          <div class="vn-sum">
+            <span class="vn-sum-head"><span class="material-symbols-rounded">auto_awesome</span>{$_('trace_extract.summary')}</span>
+            <ul class="vn-sum-list">
+              {#each summaryLines(a.summary) as line}<li>{line}</li>{/each}
+            </ul>
+          </div>
+          <div class="vn-actions">
+            {#if editable}
+              <button class="vn-link" on:click={() => dispatch('addtext', a.summary)}>
+                <span class="material-symbols-rounded">note_add</span>{$_('trace_extract.add_to_note')}
+              </button>
+            {/if}
+            {#if a.extracted_text}
+              <button class="vn-link" on:click={() => toggleTranscript(a.uuid)}>
+                <span class="material-symbols-rounded">{showTranscript[a.uuid] ? 'unfold_less' : 'notes'}</span>
+                {showTranscript[a.uuid] ? $_('trace_extract.hide_transcript') : $_('trace_extract.show_transcript')}
+              </button>
+            {/if}
+            {#if canSummarize && editable}
+              <button class="vn-link vn-quiet" on:click={() => dispatch('summarize', a)} disabled={!!busy[a.uuid]}>
+                <span class="material-symbols-rounded" class:spin={!!busy[a.uuid]}>{busy[a.uuid] ? 'progress_activity' : 'refresh'}</span>
+                {busy[a.uuid] ? $_(busyLabel(busy[a.uuid])) : $_('trace_extract.summarize_again')}
+              </button>
+            {/if}
+          </div>
+        {/if}
+        {#if a.extracted_text && (!a.summary || showTranscript[a.uuid])}
+          {#if a.segments?.length}
+            {@const cur = playing === a.uuid || at > 0 ? segmentAt(a.segments, at) : -1}
+            <ol class="vn-segs">
+              {#each visibleSegments(a, at, playing === a.uuid, expanded[a.uuid]) as { s, i } (i)}
+                <li>
+                  <button class="vn-seg" class:current={i === cur} on:click={() => seek(a, s.start, true)}
+                    aria-label={$_('voice.play_from', { values: { time: formatDuration(s.start * 1000) } })}>
+                    <span class="vn-ts">{formatDuration(s.start * 1000)}</span><span class="vn-line">{s.text}</span>
+                  </button>
+                </li>
+              {/each}
+            </ol>
+            {#if a.segments.length > SHORT + 2}
+              <button class="vn-link" on:click={() => expanded = { ...expanded, [a.uuid]: !expanded[a.uuid] }}>
+                <span class="material-symbols-rounded">{expanded[a.uuid] ? 'unfold_less' : 'unfold_more'}</span>
+                {expanded[a.uuid] ? $_('voice.show_less') : $_('voice.show_all', { values: { count: a.segments.length } })}
+              </button>
+            {/if}
+          {:else}
+            <p class="vn-text">{a.extracted_text}</p>
+          {/if}
+          {#if !a.summary}
+            <div class="vn-actions">
+              {#if editable}
+                <button class="vn-link" on:click={() => dispatch('addtext', a.extracted_text)}>
+                  <span class="material-symbols-rounded">note_add</span>{$_('trace_extract.add_to_note')}
                 </button>
-              </li>
-            {/each}
-          </ol>
-          {#if a.segments.length > SHORT + 2}
-            <button class="vn-link" on:click={() => expanded = { ...expanded, [a.uuid]: !expanded[a.uuid] }}>
-              <span class="material-symbols-rounded">{expanded[a.uuid] ? 'unfold_less' : 'unfold_more'}</span>
-              {expanded[a.uuid] ? $_('voice.show_less') : $_('voice.show_all', { values: { count: a.segments.length } })}
-            </button>
+              {/if}
+              {#if canSummarize && editable && worthSummarizing(a.extracted_text)}
+                <button class="vn-link" on:click={() => dispatch('summarize', a)} disabled={!!busy[a.uuid]}>
+                  <span class="material-symbols-rounded" class:spin={!!busy[a.uuid]}>{busy[a.uuid] ? 'progress_activity' : 'auto_awesome'}</span>
+                  {busy[a.uuid] ? $_(busyLabel(busy[a.uuid])) : $_('trace_extract.summarize')}
+                </button>
+              {/if}
+            </div>
           {/if}
-          {#if editable}
-            <button class="vn-link" on:click={() => dispatch('addtext', a.extracted_text)}>
-              <span class="material-symbols-rounded">note_add</span>{$_('trace_extract.add_to_note')}
+        {/if}
+        {#if !a.extracted_text && !a.summary && canTranscribe && editable}
+          <div class="vn-actions">
+            <button class="vn-link" on:click={() => dispatch('transcribe', a)} disabled={!!busy[a.uuid]}>
+              <span class="material-symbols-rounded" class:spin={busy[a.uuid] === 'transcribing'}>{busy[a.uuid] === 'transcribing' ? 'progress_activity' : 'subtitles'}</span>
+              {busy[a.uuid] === 'transcribing' ? $_('trace_extract.transcribing') : $_('trace_extract.transcribe')}
             </button>
-          {/if}
-        {:else if a.extracted_text}
-          <p class="vn-text">{a.extracted_text}</p>
-          {#if editable}
-            <button class="vn-link" on:click={() => dispatch('addtext', a.extracted_text)}>
-              <span class="material-symbols-rounded">note_add</span>{$_('trace_extract.add_to_note')}
-            </button>
-          {/if}
-        {:else if canTranscribe && editable}
-          <button class="vn-link" on:click={() => dispatch('transcribe', a)} disabled={busy[a.uuid]}>
-            <span class="material-symbols-rounded" class:spin={busy[a.uuid]}>{busy[a.uuid] ? 'progress_activity' : 'subtitles'}</span>
-            {busy[a.uuid] ? $_('trace_extract.transcribing') : $_('trace_extract.transcribe')}
-          </button>
+            {#if canSummarize}
+              <button class="vn-link" on:click={() => dispatch('summarize', a)} disabled={!!busy[a.uuid]}>
+                <span class="material-symbols-rounded" class:spin={busy[a.uuid] === 'summarizing'}>{busy[a.uuid] === 'summarizing' ? 'progress_activity' : 'auto_awesome'}</span>
+                {busy[a.uuid] === 'summarizing' ? $_('trace_extract.summarizing') : $_('trace_extract.summarize')}
+              </button>
+            {/if}
+          </div>
         {/if}
       </li>
     {/each}
@@ -274,6 +325,27 @@
   .vn-ts { flex-shrink: 0; min-width: 38px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-3); }
   .vn-line { flex: 1; min-width: 0; }
   .vn-text { margin: 8px 2px 2px; font-size: 14px; line-height: 1.5; color: var(--text-1); white-space: pre-wrap; }
+  /* Trace's summary reads first: a tinted block with the bullets it wrote. */
+  .vn-sum {
+    margin: 8px 2px 2px; padding: 9px 11px; border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  .vn-sum-head {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--accent);
+  }
+  .vn-sum-head .material-symbols-rounded { font-size: 14px; }
+  .vn-sum-list { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 5px; }
+  .vn-sum-list li { position: relative; padding-left: 15px; font-size: 14px; line-height: 1.5; color: var(--text-1); }
+  .vn-sum-list li::before {
+    content: ''; position: absolute; left: 3px; top: 8px;
+    width: 5px; height: 5px; border-radius: 50%; background: var(--accent);
+  }
+  .vn-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; }
+  .vn-quiet { color: var(--text-3); }
+  .vn-quiet:hover:not(:disabled) { color: var(--text-1); background: color-mix(in srgb, var(--text-1) 8%, transparent); }
   .vn-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; padding: 4px 6px; border-radius: 8px; font-size: 13px; color: var(--accent); }
   .vn-link:hover:not(:disabled) { background: var(--accent-dim); }
   .vn-link .material-symbols-rounded { font-size: 17px; }

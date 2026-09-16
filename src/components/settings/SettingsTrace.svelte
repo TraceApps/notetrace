@@ -1,6 +1,6 @@
 <script>
   import { _ } from 'svelte-i18n';
-  import { aiEnabled, aiProvider, aiApiKey, aiModel, aiBaseUrl, aiAssistantName, aiKeyVerified, smartLogEnabled, autoTranscribe, autoReadImages, aiTranscribeModel, envLocks as envLocksStore } from '../../stores/settings.js';
+  import { aiEnabled, aiProvider, aiApiKey, aiModel, aiBaseUrl, aiAssistantName, aiKeyVerified, smartLogEnabled, autoTranscribe, autoSummarizeLong, autoReadImages, aiTranscribeModel, envLocks as envLocksStore } from '../../stores/settings.js';
   import { AI_PROVIDERS, AI_DEFAULT_MODELS, AI_MODELS, AI_MODEL_CUSTOM, callAI, callAIProxy } from '../../lib/aiChat.js';
   import { showError, showSuccess } from '../../stores/toast.js';
   import ConnectionStatus from './ConnectionStatus.svelte';
@@ -333,6 +333,15 @@
       </div>
       <input type="checkbox" class="toggle-cb" checked={$autoTranscribe} on:change={e => autoTranscribe.set(e.target.checked)} />
     </div>
+    {#if $autoTranscribe}
+      <div class="setting-row">
+        <div>
+          <span class="setting-label">{$_('trace_extract.auto_summarize')}</span>
+          <span class="setting-desc">{$_('trace_extract.auto_summarize_desc')}</span>
+        </div>
+        <input type="checkbox" class="toggle-cb" checked={$autoSummarizeLong} on:change={e => autoSummarizeLong.set(e.target.checked)} />
+      </div>
+    {/if}
     {#if $aiProvider === 'custom' || $aiProvider === 'openai'}
       <div class="setting-row">
         <div>

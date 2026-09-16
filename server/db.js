@@ -322,6 +322,9 @@ if (!columnExists('note_attachments', 'duration_ms')) db.exec(`ALTER TABLE note_
 if (!columnExists('note_attachments', 'waveform')) db.exec(`ALTER TABLE note_attachments ADD COLUMN waveform TEXT`);
 if (!columnExists('note_attachments', 'segments')) db.exec(`ALTER TABLE note_attachments ADD COLUMN segments TEXT`);
 if (!columnExists('note_attachments', 'extracted_text')) db.exec(`ALTER TABLE note_attachments ADD COLUMN extracted_text TEXT`);
+// Trace's summary of a voice note, kept beside the transcript it was made from
+// so it syncs, survives a re-read, and never has to live in the note's text.
+if (!columnExists('note_attachments', 'summary')) db.exec(`ALTER TABLE note_attachments ADD COLUMN summary TEXT`);
 // Optional due date on a checklist item (YYYY-MM-DD, the user's calendar day).
 if (!columnExists('checklist_items', 'due_date')) db.exec(`ALTER TABLE checklist_items ADD COLUMN due_date TEXT`);
 if (!columnExists('labels', 'icon')) db.exec(`ALTER TABLE labels ADD COLUMN icon TEXT`);

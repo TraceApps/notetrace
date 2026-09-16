@@ -40,9 +40,9 @@
   import VoiceRecorder from './VoiceRecorder.svelte';
   import VoiceNotes from './VoiceNotes.svelte';
   import { recordingSupported, uploadVoiceNote, formatDuration } from '../../lib/voice-recorder.js';
-  import { extractSupport, transcribeVoiceNote, readImageText, fetchAttachmentBlob, isAudio, isImage } from '../../lib/ai-extract.js';
-  import { autoTranscribe, autoReadImages } from '../../stores/settings.js';
-  import { traceReady, askTrace, TRACE_ACTIONS, titleLine } from '../../lib/trace-run.js';
+  import { extractSupport, transcribeVoiceNote, summarizeVoiceNote, readImageText, fetchAttachmentBlob, isAudio, isImage } from '../../lib/ai-extract.js';
+  import { autoTranscribe, autoSummarizeLong, autoReadImages } from '../../stores/settings.js';
+  import { traceReady, askTrace, TRACE_ACTIONS, titleLine, AUTO_SUMMARY_MS, worthSummarizing } from '../../lib/trace-run.js';
   import AttachmentGrid from './AttachmentGrid.svelte';
   import ImageViewer from './ImageViewer.svelte';
   import { uploadNoteImages, isImageFile } from '../../lib/note-images.js';
@@ -316,6 +316,39 @@
       await enqueue(async () => {
         if (!noteId) return;
         await NoteApi.updateAttachment(noteId, att.uuid, isAudio(att) ? { extracted_text: text, segments } : { extracted_text: text });
+      });
+      // A long recording is the one nobody wants to read back, so it can get
+      // its summary in the same pass when the setting is on.
+      if (isAudio(att) && $autoSummarizeLong && (att.duration_ms || 0) >= AUTO_SUMMARY_MS && worthSummarizing(text)) {
+        const { [att.uuid]: _t, ...others } = extracting;
+        extracting = others;
+        await summarizeVoice({ ...att, extracted_text: text });
+      }
+    } catch (err) {
+      showError($_('trace_extract.failed', { values: { error: err.message || '' } }));
+    } finally {
+      const { [att.uuid]: _done, ...rest } = extracting;
+      extracting = rest;
+    }
+  }
+
+  /**
+   * Summarise a voice note, transcribing first when there's nothing to work
+   * from, so one press is enough on a recording Trace has never seen.
+   */
+  async function summarizeVoice(att, blob = null) {
+    if (extracting[att.uuid]) return;
+    const step = (s) => extracting = { ...extracting, [att.uuid]: s };
+    step('summarizing');
+    try {
+      const { summary, text, segments } = await summarizeVoiceNote(att, blob, { onStep: step });
+      if (!summary) { showInfo($_(text ? 'trace_extract.no_summary' : 'trace_extract.no_speech')); return; }
+      attachments = attachments.map(a => a.uuid === att.uuid
+        ? { ...a, summary, ...(text ? { extracted_text: text, segments } : {}) }
+        : a);
+      await enqueue(async () => {
+        if (!noteId) return;
+        await NoteApi.updateAttachment(noteId, att.uuid, text ? { summary, extracted_text: text, segments } : { summary });
       });
     } catch (err) {
       showError($_('trace_extract.failed', { values: { error: err.message || '' } }));
@@ -919,8 +952,10 @@
             {/each}
           </ul>
         {/if}
-        <VoiceNotes notes={voiceNotes} editable={!contentLocked} canTranscribe={$extractSupport.transcribe} busy={extracting}
+        <VoiceNotes notes={voiceNotes} editable={!contentLocked} canTranscribe={$extractSupport.transcribe}
+          canSummarize={$extractSupport.transcribe && $traceReady} busy={extracting}
           on:remove={removeImage} on:transcribe={(e) => extractText(e.detail)} on:addtext={(e) => addTextToNote(e.detail)}
+          on:summarize={(e) => summarizeVoice(e.detail)}
           on:waveform={(e) => saveWaveform(e.detail)} />
         {#key editorKey}
           {#if kind === 'text'}

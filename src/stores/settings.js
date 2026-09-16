@@ -20,7 +20,7 @@ export const USER_PREFS = new Set([
   // Smart Log (hold-to-record on the FAB → AI parses spoken intent → tool execution)
   'smartLogEnabled',
   // Voice notes and images: automatic transcription / reading text with Trace
-  'autoTranscribe','autoReadImages','aiTranscribeModel',
+  'autoTranscribe','autoSummarizeLong','autoReadImages','aiTranscribeModel',
   // Note cards
   'linkPreviews', 'noteSort', 'noteOrder',
   'tasksGroupBy', 'tasksAllChecklists',
@@ -365,6 +365,7 @@ export const aiKeyVerified  = createSettingStore('aiKeyVerified',  false);
 // Defaults off; user enables explicitly in Settings → Trace.
 export const smartLogEnabled = createSettingStore('smartLogEnabled', false);
 export const autoTranscribe    = createSettingStore('autoTranscribe',    true);
+export const autoSummarizeLong = createSettingStore('autoSummarizeLong', false);
 export const autoReadImages    = createSettingStore('autoReadImages',    false);
 export const aiTranscribeModel = createSettingStore('aiTranscribeModel', '');
 

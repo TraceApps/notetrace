@@ -222,3 +222,31 @@ export async function readImageText(blob) {
 
 export const isAudio = (a) => /^audio\//i.test(String(a?.mime || '')) || /\.(webm|ogg|m4a|mp3|wav|aac)$/i.test(String(a?.url || ''));
 export const isImage = (a) => !isAudio(a) && (/^image\//i.test(String(a?.mime || '')) || !a?.mime);
+
+/**
+ * A short summary of a voice note, from its transcript. Transcribes first when
+ * there's nothing to summarise yet, so one press is enough on a recording that
+ * has never been through Trace.
+ *
+ * `onStep` is called with 'transcribing' or 'summarizing' for the progress line.
+ * Resolves { summary, text, segments }: text and segments are set only when
+ * this call did the transcribing.
+ */
+export async function summarizeVoiceNote(att, blob = null, { onStep = () => {} } = {}) {
+  let text = att?.extracted_text || '';
+  let segments = null;
+  let transcribed = false;
+  if (!text.trim()) {
+    onStep('transcribing');
+    const r = await transcribeVoiceNote(att, blob);
+    text = r?.text || '';
+    segments = r?.segments || null;
+    transcribed = true;
+    if (!text.trim()) return { summary: '', text: '', segments: null };
+  }
+  onStep('summarizing');
+  const { askTrace, TRACE_ACTIONS, cleanTraceReply } = await import('./trace-run.js');
+  const a = TRACE_ACTIONS.recap;
+  const summary = cleanExtracted(cleanTraceReply(await askTrace({ systemPrompt: a.system, prompt: a.prompt('', text) })));
+  return transcribed ? { summary, text, segments } : { summary, text: '', segments: null };
+}
