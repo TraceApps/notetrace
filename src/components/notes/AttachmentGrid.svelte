@@ -36,6 +36,9 @@
         {:else}
           <img src={resolveAssetUrl(a.url)} alt="" loading="lazy" draggable="false" style={layout === 'one' ? `aspect-ratio:${ratio(a)}` : ''} />
         {/if}
+        {#if a.is_drawing || a.drawing}
+          <span class="draw-mark" title={$_('drawing.title')} aria-hidden="true"><span class="material-symbols-rounded">draw</span></span>
+        {/if}
         {#if extra > 0 && i === shown.length - 1}
           <span class="more">+{extra}</span>
         {/if}
@@ -88,4 +91,13 @@
   .placeholder { display: flex; align-items: center; justify-content: center; color: var(--text-3); min-height: 120px; }
   .spin { animation: spin 1s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+  /* A drawing opens for editing; a small brush says so. */
+  .draw-mark {
+    position: absolute; left: 6px; bottom: 6px; width: 24px; height: 24px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; pointer-events: none;
+    background: rgba(15, 16, 20, 0.62); color: #fff;
+  }
+  .draw-mark .material-symbols-rounded { font-size: 15px; }
+  .card .draw-mark { width: 20px; height: 20px; border-radius: 6px; }
+  .card .draw-mark .material-symbols-rounded { font-size: 13px; }
 </style>

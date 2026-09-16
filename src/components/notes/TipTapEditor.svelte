@@ -59,6 +59,7 @@
     { key: 'time',      icon: 'schedule',             words: 'time now clock' },
     { key: 'image',     icon: 'add_photo_alternate',  words: 'image photo picture', parent: true },
     { key: 'file',      icon: 'attach_file',          words: 'file attach attachment pdf document', parent: true },
+    { key: 'drawing',   icon: 'draw',                 words: 'drawing draw sketch whiteboard handwriting', parent: true },
     { key: 'voice',     icon: 'mic',                  words: 'voice record audio', parent: true },
     { key: 'reminder',  icon: 'notification_add',     words: 'reminder remind alarm', parent: true },
   ];

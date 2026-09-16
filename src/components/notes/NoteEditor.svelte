@@ -41,6 +41,7 @@
   import VoiceNotes from './VoiceNotes.svelte';
   import FileAttachments from './FileAttachments.svelte';
   import FileViewer from './FileViewer.svelte';
+  import DrawingEditor from './DrawingEditor.svelte';
   import { isFile, previewKind } from '../../lib/file-kinds.js';
   import { fileIndexPatch } from '../../lib/file-index.js';
   import { recordingSupported, uploadVoiceNote, formatDuration } from '../../lib/voice-recorder.js';
@@ -506,6 +507,81 @@
       extracting = rest;
     }
   }
+  // ── Drawings ───────────────────────────────────────────────────────
+  // A drawing is a picture on the note (the PNG every screen shows) that keeps
+  // its strokes, so tapping it opens it again for editing.
+  let drawingFor = null;          // { att, doc } while the drawing editor is open
+  let drawingBusy = false;
+  let drawFirst = false;          // opened as a new drawing note
+  const isDrawing = (a) => !!(a?.is_drawing || a?.drawing);
+
+  function newDrawing() {
+    if (contentLocked) return;
+    drawingFor = { att: null, doc: null };
+  }
+  async function openDrawing(att) {
+    let doc = att.drawing || null;
+    if (!doc && noteId) {
+      try { doc = await NoteApi.getAttachmentDrawing(noteId, att.uuid); }
+      catch (err) { showError($_('drawing.load_failed', { values: { error: err.message || '' } })); return; }
+    }
+    drawingFor = { att, doc };
+  }
+  function openImage(i) {
+    const a = imageAttachments[i];
+    if (isDrawing(a) && !contentLocked) openDrawing(a);
+    else viewerIndex = i;
+  }
+
+  async function onDrawingDone(e) {
+    const { drawing, changed } = e.detail;
+    const target = drawingFor?.att || null;
+    if (!changed) {
+      drawingFor = null;
+      if (drawFirst && !noteId && isEmptyNote({ title, body_md: body, items, attachments })) close();
+      return;
+    }
+    if (!drawing.strokes.length) {
+      drawingFor = null;
+      if (target) removeImage({ detail: target.uuid });
+      else if (drawFirst && !noteId && isEmptyNote({ title, body_md: body, items, attachments })) close();
+      return;
+    }
+    drawingBusy = true;
+    try {
+      const { renderDrawingPng } = await import('../../lib/drawing-render.js');
+      const png = await renderDrawingPng(drawing);
+      const url = await NoteApi.uploadImage(new File([png.blob], 'drawing.png', { type: 'image/png' }));
+      if (!url) throw new Error($_('notes.save_failed'));
+      touched = true;
+      const reread = $autoReadImages && $extractSupport.readImages;
+      if (target) {
+        const patch = { url, width: png.width, height: png.height, drawing, ...(reread ? {} : { extracted_text: null }) };
+        const updated = { ...target, ...patch, mime: 'image/png', is_drawing: true };
+        attachments = attachments.map(a => a.uuid === target.uuid ? updated : a);
+        await enqueue(async () => {
+          if (!noteId) { await ensureNote(); return; }
+          await NoteApi.updateAttachment(noteId, target.uuid, patch);
+        });
+        if (reread) extractText(updated);
+      } else {
+        const att = { uuid: crypto.randomUUID?.() || `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`,
+          url, mime: 'image/png', width: png.width, height: png.height, drawing, is_drawing: true };
+        attachments = [...attachments, att];
+        await enqueue(async () => {
+          if (!noteId) { await ensureNote(); return; }
+          apply(await NoteApi.addAttachments(noteId, [att]));
+        });
+        if (reread) extractText(att);
+      }
+      drawingFor = null;
+    } catch (err) {
+      showError($_('drawing.save_failed', { values: { error: err.message || '' } }));
+    } finally {
+      drawingBusy = false;
+    }
+  }
+
   function openFile(e) {
     const i = fileAttachments.findIndex(f => f.uuid === e.detail.uuid);
     if (i >= 0) fileViewerIndex = i;
@@ -797,6 +873,8 @@
   export let inline = false;
   /** A quick voice note: start recording as soon as the editor opens. */
   export let autoRecord = false;
+  /** Open straight into a new drawing (the + menu's Drawing). */
+  export let autoDraw = false;
   // A narrow reading pane (a half-open foldable) keeps the main actions and moves the rest into More.
   let barW = 800;
   // A narrow editor card (beside a half-open fold) uses the phone's compact toolbar.
@@ -837,6 +915,7 @@
     if (key === 'checklist') convert();
     else if (key === 'image') imageInput.click();
     else if (key === 'file') openFilePicker();
+    else if (key === 'drawing') newDrawing();
     else if (key === 'voice') openRecorder(fake);
     else if (key === 'reminder') { reminderAnchor = rect; reminderOpen = true; }
   }
@@ -867,6 +946,7 @@
 
   onMount(async () => {
     if (autoRecord && canRecord && !noteId) startQuickVoice();
+    if (autoDraw && !noteId && !contentLocked) { drawFirst = true; newDrawing(); }
     loadLinks();
     loadCooktraceLink();
     window.addEventListener('keydown', onKey);
@@ -959,6 +1039,9 @@
             <button class="icon-btn" on:click={openFilePicker} title={$_('files.attach')} aria-label={$_('files.attach')}>
               <span class="material-symbols-rounded">attach_file</span>
             </button>
+            <button class="icon-btn" on:click={newDrawing} title={$_('drawing.new')} aria-label={$_('drawing.new')}>
+              <span class="material-symbols-rounded">draw</span>
+            </button>
             {#if canRecord}
               <button class="icon-btn" data-record on:click={openRecorder} title={$_('voice.record')} aria-label={$_('voice.record')}>
                 <span class="material-symbols-rounded">mic</span>
@@ -1011,7 +1094,7 @@
         {#if imageAttachments.length || uploading}
           <div class="editor-images">
             <AttachmentGrid attachments={imageAttachments} pending={uploading} editable={!contentLocked}
-              on:open={(e) => viewerIndex = e.detail} on:remove={removeImage} />
+              on:open={(e) => openImage(e.detail)} on:remove={removeImage} />
           </div>
         {/if}
         {#if pendingHere.length}
@@ -1037,7 +1120,7 @@
           {#if kind === 'text'}
             <TipTapEditor bind:this={bodyRef} bind:value={body} editable={!contentLocked} showToolbar={!narrow}
               on:formats={(e) => formats = e.detail}
-              slashActions={contentLocked ? [] : ['checklist', 'image', 'file', ...(canRecord ? ['voice'] : []), ...(isOwner ? ['reminder'] : [])]}
+              slashActions={contentLocked ? [] : ['checklist', 'image', 'file', 'drawing', ...(canRecord ? ['voice'] : []), ...(isOwner ? ['reminder'] : [])]}
               on:slash={(e) => onSlash(e.detail)}
               linkTitles={linkTitles.filter(t => t.toLowerCase() !== title.trim().toLowerCase())}
               placeholder={$_('notes.body_placeholder')} on:change={scheduleText} on:openlink={(e) => openLinked(e.detail)} />
@@ -1176,6 +1259,9 @@
               <button class="icon-btn" on:click={openFilePicker} title={$_('files.attach')} aria-label={$_('files.attach')}>
                 <span class="material-symbols-rounded">attach_file</span>
               </button>
+              <button class="icon-btn" on:click={newDrawing} title={$_('drawing.new')} aria-label={$_('drawing.new')}>
+                <span class="material-symbols-rounded">draw</span>
+              </button>
               {#if canRecord}
                 <button class="icon-btn" data-record on:click={openRecorder} title={$_('voice.record')} aria-label={$_('voice.record')}>
                   <span class="material-symbols-rounded">mic</span>
@@ -1238,6 +1324,9 @@
   on:change={(e) => { addAudioFiles([...e.target.files]); e.target.value = ''; }} />
 <input bind:this={fileInput} class="note-file-input" type="file" multiple hidden
   on:change={(e) => { addFiles([...e.target.files]); e.target.value = ''; }} />
+{#if drawingFor}
+  <DrawingEditor drawing={drawingFor.doc} busy={drawingBusy} on:done={onDrawingDone} />
+{/if}
 {#if fileViewerIndex != null}
   <FileViewer files={fileAttachments} index={fileViewerIndex} on:close={() => fileViewerIndex = null} />
 {/if}
@@ -1254,6 +1343,9 @@
     </button>
     <button class="sheet-item" on:click={() => { addOpen = false; openFilePicker(); }}>
       <span class="material-symbols-rounded">attach_file</span>{$_('files.attach')}
+    </button>
+    <button class="sheet-item" on:click={() => { addOpen = false; newDrawing(); }}>
+      <span class="material-symbols-rounded">draw</span>{$_('drawing.new')}
     </button>
     {#if canRecord}
       <button class="sheet-item" on:click={() => fromSheet(openRecorder, addAnchor)}>
@@ -1284,6 +1376,9 @@
           </button>
           <button class="sheet-item" on:click={() => { moreOpen = false; openFilePicker(); }}>
             <span class="material-symbols-rounded">attach_file</span>{$_('files.attach')}
+          </button>
+          <button class="sheet-item" on:click={() => { moreOpen = false; newDrawing(); }}>
+            <span class="material-symbols-rounded">draw</span>{$_('drawing.new')}
           </button>
           {#if canRecord}
             <button class="sheet-item" on:click={() => fromSheet(openRecorder, moreAnchor)}>

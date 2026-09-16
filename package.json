@@ -46,6 +46,7 @@
     "jszip": "^3.10.1",
     "nodemailer": "^9.0.3",
     "pdfjs-dist": "^6.3.289",
+    "perfect-freehand": "^1.2.3",
     "svelte-dnd-action": "^0.9.70",
     "svelte-i18n": "^4.0.1",
     "svelte-spa-router": "^4.0.1"

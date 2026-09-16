@@ -369,6 +369,12 @@
     if (splitPane) openInPane(entry);
     else editing = entry;
   }
+  // A drawing note: a new note that opens straight into the drawing editor.
+  function newDrawingNote() {
+    const entry = { kind: 'text', labels: labelId != null ? [labelId] : [], drawing: true };
+    if (splitPane) openInPane(entry);
+    else editing = entry;
+  }
   // A quick voice note: a new note that opens straight into recording.
   const canRecordVoice = recordingSupported();
   function newVoiceNote() {
@@ -409,6 +415,7 @@
       replaceRoute(path);
       await tick();
       if (fresh === 'voice') newVoiceNote();
+      else if (fresh === 'drawing') newDrawingNote();
       else newNote(fresh === 'checklist' ? 'checklist' : 'text');
       return;
     }
@@ -899,6 +906,9 @@
             <span class="material-symbols-rounded">mic</span>
           </button>
         {/if}
+        <button class="capture-icon" on:click={newDrawingNote} title={$_('notes.new_drawing')} aria-label={$_('notes.new_drawing')}>
+          <span class="material-symbols-rounded">draw</span>
+        </button>
         <button class="capture-icon" on:click={() => captureImageInput.click()} title={$_('notes.new_with_image')} aria-label={$_('notes.new_with_image')}>
           <span class="material-symbols-rounded">add_photo_alternate</span>
         </button>
@@ -977,7 +987,7 @@
         <div class="pane">
           {#if pane}
             {#key paneKey}
-              <NoteEditor bind:this={paneRef} inline autoRecord={!!pane.voice} note={pane.note || null} initialKind={pane.kind || 'text'}
+              <NoteEditor bind:this={paneRef} inline autoRecord={!!pane.voice} autoDraw={!!pane.drawing} note={pane.note || null} initialKind={pane.kind || 'text'}
                 initialLabels={pane.labels || []} prefill={pane.prefill || null} on:close={closePane} />
             {/key}
           {:else}
@@ -1078,19 +1088,23 @@
 </div>
 
 {#if fabMenu}
+  <!-- One host on body for both layers: two portalled siblings in one block
+       don't reliably both leave the page, and the menu then sat under its scrim. -->
+  <div class="fab-layer" use:portal>
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div class="fab-scrim" use:portal on:click={() => fabMenu = false} transition:fade={{ duration: 150 }}></div>
-  <div class="fab-menu" use:portal role="menu" tabindex="-1" aria-label={$_('notes.new_note')}
+  <div class="fab-scrim" on:click={() => fabMenu = false} transition:fade|global={{ duration: 150 }}></div>
+  <div class="fab-menu" role="menu" tabindex="-1" aria-label={$_('notes.new_note')}
     on:keydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); fabMenu = false; } }}>
     {#each [
       ['image', 'add_photo_alternate', 'notes.menu_image', () => captureImageInput.click()],
+      ['drawing', 'draw', 'notes.menu_drawing', newDrawingNote],
       ...(canRecordVoice ? [['voice', 'mic', 'notes.menu_voice', newVoiceNote]] : []),
       ['list', 'checklist', 'notes.menu_list', () => newNote('checklist')],
       ['text', 'edit_note', 'notes.menu_text', () => newNote('text')],
     ] as [key, icon, label, action], i (key)}
       <button class="fab-item" role="menuitem" on:click={() => fromFabMenu(action)}
-        in:fly|global={{ y: 12, duration: 180, delay: (3 - i) * 30 }} out:fade|global={{ duration: 100 }}>
+        in:fly|global={{ y: 12, duration: 180, delay: Math.max(0, (4 - i) * 30) }} out:fade|global={{ duration: 100 }}>
         <span class="fab-item-label">{$_(label)}</span>
         <span class="material-symbols-rounded fab-item-icon">{icon}</span>
       </button>
@@ -1100,13 +1114,14 @@
       <span class="material-symbols-rounded">close</span>
     </button>
   </div>
+  </div>
 {/if}
 
 {#if editing}
   <!-- Keyed per open: reopening while the last editor is still fading out
        would otherwise resume that editor with the previous note's state. -->
   {#key editing}
-    <NoteEditor bind:this={overlayRef} autoRecord={!!editing.voice} note={editing.note || null} initialKind={editing.kind || 'text'} initialLabels={editing.labels || []}
+    <NoteEditor bind:this={overlayRef} autoRecord={!!editing.voice} autoDraw={!!editing.drawing} note={editing.note || null} initialKind={editing.kind || 'text'} initialLabels={editing.labels || []}
       prefill={editing.prefill || null} originId={editing.originId ?? null} on:close={closeEditor} />
   {/key}
 {/if}
@@ -1491,6 +1506,7 @@
   .fab .material-symbols-rounded { font-size: 30px; }
   .fab.hidden-fab { visibility: hidden; }
   /* The + menu sits above everything, Trace's button included. */
+  :global(.fab-layer) { display: contents; }
   :global(.fab-scrim) {
     position: fixed; inset: 0; z-index: 430;
     background: color-mix(in srgb, var(--bg) 70%, transparent);
