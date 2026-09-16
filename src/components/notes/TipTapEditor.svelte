@@ -21,6 +21,7 @@
   import StarterKit from '@tiptap/starter-kit';
   import { TaskList, TaskItem } from '@tiptap/extension-list';
   import Highlight from '@tiptap/extension-highlight';
+  import { promptDialog } from '../../stores/confirmDialog.js';
   import { Markdown } from '@tiptap/markdown';
   import { Placeholder } from '@tiptap/extensions';
   import { NoteLink } from '../../lib/note-link-extension.js';
@@ -183,12 +184,13 @@
         refreshActive();
         _updateSuggest(ed);
       },
-      onSelectionUpdate: ({ editor: ed }) => { refreshActive(); _updateSuggest(ed); },
-      onFocus: () => dispatch('focus'),
-      onBlur: () => { dispatch('blur'); setTimeout(() => { suggest = null; }, 150); },
+      onSelectionUpdate: ({ editor: ed }) => { refreshActive(); _updateSuggest(ed); updateBubble(); },
+      onFocus: () => { dispatch('focus'); updateBubble(); },
+      onBlur: () => { dispatch('blur'); setTimeout(() => { suggest = null; if (!editor?.isFocused) bubble = null; }, 150); },
     });
     refreshActive();
     el.addEventListener('click', onLinkClick);
+    window.addEventListener('scroll', hideBubble, true);
   });
 
   // A tap on a [[link]] chip opens that note (read-only notes too).
@@ -201,7 +203,9 @@
     dispatch('openlink', chip.getAttribute('data-note-link') || chip.textContent || '');
   }
 
-  onDestroy(() => { el?.removeEventListener('click', onLinkClick); editor?.destroy(); });
+  // Scrolling moves the text out from under the bar; it comes back with the next selection change.
+  const hideBubble = () => { if (bubble) bubble = null; };
+  onDestroy(() => { el?.removeEventListener('click', onLinkClick); window.removeEventListener('scroll', hideBubble, true); editor?.destroy(); });
 
   // Reload when the value changes from outside (version restore, sync),
   // never for our own keystrokes, or the cursor would jump.
@@ -218,6 +222,7 @@
       italic: editor.isActive('italic'),
       strike: editor.isActive('strike'),
       underline: editor.isActive('underline'),
+      link: editor.isActive('link'),
       h: editor.isActive('heading'),
       bullet: editor.isActive('bulletList'),
       ordered: editor.isActive('orderedList'),
@@ -233,7 +238,8 @@
 
   /** The formatting tools, for a toolbar outside this component (the phone editor bar). */
   export function formatTools() { return tools.map(({ key, icon, label }) => ({ key, icon, label })); }
-  export function format(key) { const t = tools.find(x => x.key === key); if (t) run(t.fn); }
+  export function format(key) { const t = tools.find(x => x.key === key); if (t) useTool(t); }
+  function useTool(t) { if (t.action) t.action(); else run(t.fn); }
 
   function run(fn) {
     if (!editor) return;
@@ -253,16 +259,85 @@
     { key: 'ordered', icon: 'format_list_numbered', label: 'notes.fmt_numbers', fn: c => c.toggleOrderedList() },
     { key: 'quote', icon: 'format_quote', label: 'notes.fmt_quote', fn: c => c.toggleBlockquote() },
     { key: 'code', icon: 'code', label: 'notes.fmt_code', fn: c => c.toggleCode() },
+    { key: 'link', icon: 'link', label: 'notes.fmt_link', action: () => editLink() },
+    { key: 'clear', icon: 'format_clear', label: 'notes.fmt_clear', fn: c => c.unsetAllMarks() },
+    // Nesting uses Tab on a keyboard; a phone has no Tab key, so its bar gets buttons.
+    { key: 'outdent', icon: 'format_indent_decrease', label: 'notes.fmt_outdent', phone: true, action: () => nest(false) },
+    { key: 'indent', icon: 'format_indent_increase', label: 'notes.fmt_indent', phone: true, action: () => nest(true) },
   ];
+
+  function nest(deeper) {
+    if (!editor) return;
+    const type = editor.isActive('taskItem') ? 'taskItem' : 'listItem';
+    const chain = editor.chain().focus();
+    (deeper ? chain.sinkListItem(type) : chain.liftListItem(type)).run();
+    refreshActive();
+  }
+
+  // A link on the selected words (or the link the cursor is in); an empty address removes it.
+  async function editLink() {
+    if (!editor) return;
+    if (editor.isActive('link')) editor.chain().extendMarkRange('link').run();
+    const { from, to } = editor.state.selection;
+    const current = editor.getAttributes('link').href || '';
+    const answer = await promptDialog({
+      title: get(_)(current ? 'notes.link_edit' : 'notes.link_add'),
+      message: current ? get(_)('notes.link_remove_hint') : '',
+      value: current, placeholder: 'https://', type: 'url', allowEmpty: !!current, maxlength: 2000,
+      confirmText: get(_)('common.save'), cancelText: get(_)('common.cancel'),
+    });
+    if (answer == null) { editor.chain().focus().setTextSelection({ from, to }).run(); return; }
+    const chain = editor.chain().focus().setTextSelection({ from, to });
+    if (answer === '') { chain.extendMarkRange('link').unsetLink().run(); refreshActive(); return; }
+    let href = answer.trim();
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(href)) href = (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(href) ? 'mailto:' : 'https://') + href;
+    if (!/^(https?|mailto|tel):/i.test(href)) return;
+    if (from === to) chain.insertContent({ type: 'text', text: answer.trim(), marks: [{ type: 'link', attrs: { href } }] }).run();
+    else chain.extendMarkRange('link').setLink({ href }).run();
+    refreshActive();
+  }
+
+  // The small bar over a selection: the formatting people reach for most.
+  const BUBBLE_KEYS = ['bold', 'italic', 'underline', 'highlight', 'link', 'clear'];
+  $: bubbleTools = tools.filter(t => BUBBLE_KEYS.includes(t.key));
+  let bubble = null;   // { x, y, below }
+  let fmtBarEl;
+  const coarse = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
+  function updateBubble() {
+    if (!editor || !editor.isEditable || !editor.isFocused || suggest) { bubble = null; return; }
+    const sel = editor.state.selection;
+    if (sel.empty || sel.node || !editor.state.doc.textBetween(sel.from, sel.to, ' ').trim()) { bubble = null; return; }
+    const view = editor.view;
+    const a = view.coordsAtPos(sel.from), b = view.coordsAtPos(sel.to);
+    const left = Math.min(a.left, b.left), right = Math.max(a.right, b.right);
+    const x = Math.max(120, Math.min(window.innerWidth - 120, (left + right) / 2));
+    // On a touch screen the system's own copy/paste menu sits above the selection, so this goes below.
+    const top = Math.min(a.top, b.top);
+    // Also below when above would cover the formatting toolbar or run off the top.
+    const barBottom = fmtBarEl?.getBoundingClientRect().bottom ?? 0;
+    const below = coarse || top - 54 < Math.max(8, barBottom);
+    bubble = { x, y: below ? Math.max(a.bottom, b.bottom) + 10 : top - 10, below };
+  }
 </script>
 
 {#if showToolbar && editable}
-  <div class="fmt-bar" role="toolbar" aria-label={$_('notes.formatting')}>
-    {#each tools as t (t.key)}
+  <div class="fmt-bar" bind:this={fmtBarEl} role="toolbar" aria-label={$_('notes.formatting')}>
+    {#each tools.filter(t => !t.phone) as t (t.key)}
       <button type="button" class="fmt-btn" class:on={active[t.key]}
         title={$_(t.label)} aria-label={$_(t.label)} aria-pressed={!!active[t.key]}
         on:mousedown|preventDefault
-        on:click={() => run(t.fn)}>
+        on:click={() => useTool(t)}>
+        <span class="material-symbols-rounded">{t.icon}</span>
+      </button>
+    {/each}
+  </div>
+{/if}
+{#if bubble && bubbleTools.length}
+  <div class="sel-bubble" class:below={bubble.below} use:portal role="toolbar" aria-label={$_('notes.formatting')}
+    style="left:{bubble.x}px; top:{bubble.y}px">
+    {#each bubbleTools as t (t.key)}
+      <button type="button" class="sel-btn" class:on={active[t.key]} title={$_(t.label)} aria-label={$_(t.label)} aria-pressed={!!active[t.key]}
+        on:mousedown|preventDefault on:touchstart|preventDefault={() => useTool(t)} on:click={() => useTool(t)}>
         <span class="material-symbols-rounded">{t.icon}</span>
       </button>
     {/each}
@@ -304,6 +379,22 @@
   .fmt-btn .material-symbols-rounded { font-size: 20px; }
   .fmt-btn:hover { background: color-mix(in srgb, var(--text-1) 8%, transparent); color: var(--text-1); }
   .fmt-btn.on { background: var(--accent-dim); color: var(--accent); }
+
+  .sel-bubble {
+    position: fixed; z-index: 3900; transform: translate(-50%, -100%);
+    display: flex; gap: 2px; padding: 4px;
+    background: var(--surface-1); border: 1px solid var(--border-strong); border-radius: 12px;
+    box-shadow: var(--shadow-lg, 0 10px 30px rgba(0, 0, 0, 0.35));
+    animation: sel-in 120ms ease-out;
+  }
+  .sel-bubble.below { transform: translate(-50%, 0); }
+  .sel-btn { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--text-1); }
+  .sel-btn .material-symbols-rounded { font-size: 20px; }
+  .sel-btn:hover { background: color-mix(in srgb, var(--text-1) 8%, transparent); }
+  .sel-btn.on { background: var(--accent-dim); color: var(--accent); }
+  @keyframes sel-in { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .sel-bubble { animation: none; } }
+  :global(html.no-animations) .sel-bubble { animation: none; }
 
   .tiptap-host { min-height: 120px; }
   .tiptap-host :global(.tiptap-body) {

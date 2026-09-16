@@ -8,6 +8,7 @@ import { writable } from 'svelte/store';
  *
  *  With `input` ({ value, placeholder, maxlength, label }) it asks for a line
  *  of text and resolves to what was typed (trimmed), or null when cancelled.
+ *  With allowEmpty, confirming an empty box resolves to '' instead of null.
  *
  *  A single <ConfirmDialogMount /> instance (mounted in App.svelte) renders
  *  the Dialog and resolves the awaiting promise on user action.
@@ -29,6 +30,6 @@ export function confirmDialog({
 }
 
 /** Ask for a line of text. Resolves to the trimmed text, or null. */
-export function promptDialog({ value = '', placeholder = '', maxlength = 200, label = '', ...rest } = {}) {
-  return confirmDialog({ ...rest, input: { value, placeholder, maxlength, label } });
+export function promptDialog({ value = '', placeholder = '', maxlength = 200, label = '', allowEmpty = false, type = 'text', ...rest } = {}) {
+  return confirmDialog({ ...rest, input: { value, placeholder, maxlength, label, allowEmpty, type } });
 }

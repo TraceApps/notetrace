@@ -1258,6 +1258,10 @@
                 <button class="icon-btn" on:mousedown|preventDefault on:click={() => fmtMode = true} aria-label={$_('notes.formatting')} title={$_('notes.formatting')}>
                   <span class="material-symbols-rounded">text_format</span>
                 </button>
+                <button class="icon-btn" class:on={formats.todo} aria-pressed={!!formats.todo} on:mousedown|preventDefault on:click={() => bodyRef?.format('todo')}
+                  aria-label={$_('notes.fmt_checkboxes')} title={$_('notes.fmt_checkboxes')}>
+                  <span class="material-symbols-rounded">check_box</span>
+                </button>
               {/if}
               {#if canRecord}
                 <button class="icon-btn" data-record on:mousedown|preventDefault on:click={openRecorder} aria-label={$_('voice.record')} title={$_('voice.record')}>

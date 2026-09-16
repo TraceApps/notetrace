@@ -20,12 +20,12 @@
     open = false;
     current = null;
     confirmRequest.set(null);
-    if (req?.input) req.resolve?.(result ? (text.trim() || null) : null);
+    if (req?.input) req.resolve?.(result ? (text.trim() || (req.input.allowEmpty ? '' : null)) : null);
     else req?.resolve?.(result);
   }
 
   function onKey(e) {
-    if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); if (text.trim()) finish(true); }
+    if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); if (text.trim() || current?.input?.allowEmpty) finish(true); }
   }
 </script>
 
@@ -41,7 +41,7 @@
     on:cancel={() => finish(false)}
   >
     {#if current.input}
-      <input bind:this={inputEl} class="input dialog-input" type="text" bind:value={text}
+      <input bind:this={inputEl} class="input dialog-input" type="text" inputmode={current.input.type === 'url' ? 'url' : undefined} autocapitalize={current.input.type === 'url' ? 'none' : undefined} bind:value={text}
         placeholder={current.input.placeholder} maxlength={current.input.maxlength}
         aria-label={current.input.label || current.title} on:keydown={onKey} />
     {/if}
