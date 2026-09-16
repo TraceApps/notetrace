@@ -748,7 +748,9 @@
     "exporting":            "Exporting…",
     "export_share_title":   "NoteTrace Markdown Export",
     "exported_toast":       "Exported {count, plural, one {# note} other {# notes}}",
-    "export_failed":        "Export failed"
+    "export_failed":        "Export failed",
+    "import_sub": "Bring notes in from Google Keep, Evernote, Memos, Markdown, or Blinko.",
+    "export_sub": "Every note as Markdown files in a zip, with images and files."
   },
   "sharing": {
     "title":             "Shared With",
@@ -1273,7 +1275,22 @@
     "import_json":              "Import JSON",
     "danger_zone":              "Danger Zone",
     "clear_all_data":           "Clear All Data",
-    "clear_all_settings":       "Clear All Settings"
+    "clear_all_settings":       "Clear All Settings",
+    "full_backup_sub": "Full server backup (database and uploads), with optional scheduled runs. Admin only.",
+    "full_backup_sub_local": "On-device backup zip saved to Documents/notetrace-backups. Manual or scheduled.",
+    "full_backup_desc_local": "A complete snapshot of everything: notes, settings, and every image and file. Saved on this phone, ready to share or restore.",
+    "portable_json_sub": "A single JSON file of your notes and settings, without images or files.",
+    "danger_zone_sub": "Irreversible actions. Delete every note or reset every setting to its default.",
+    "working": "Working…",
+    "create": "Create Backup",
+    "upload_restore": "Upload & Restore",
+    "share": "Share",
+    "restore": "Restore",
+    "delete": "Delete",
+    "delete_title": "Delete backup",
+    "restore_title": "Restore this backup?",
+    "restore_message": "Everything on this device is replaced with the backup's notes, settings, and files.",
+    "empty_local": "No backups yet. Tap Create Backup to make one."
   },
   "settings_email_ct": {
     "toast": {
@@ -1529,7 +1546,13 @@
     "note_reminders_desc":         "Get a notification when a note's reminder time comes due.",
     "tasks_due":                   "Tasks Due",
     "tasks_due_desc":              "Once a day, a notification listing checklist items due today and overdue.",
-    "tasks_due_time":              "Time"
+    "tasks_due_time":              "Time",
+    "device_notifications_sub": "Pop-ups on this device for reminders and tasks.",
+    "push_service_sub": "Send the same alerts through ntfy, Gotify, or Apprise, to any device.",
+    "reminders_sub": "What NoteTrace notifies you about.",
+    "push_configured": "Configured",
+    "show": "Show",
+    "hide": "Hide"
   },
   "time_picker_ct": {
     "hour":                      "Hour",

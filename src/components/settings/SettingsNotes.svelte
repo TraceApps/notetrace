@@ -1,4 +1,5 @@
 <script>
+  import Toggle from './Toggle.svelte';
   // Notes section: how notes behave (density, order, gestures, shortcuts,
   // link previews) and what Tasks gathers. Appearance keeps the app's look.
   import { _ } from 'svelte-i18n';
@@ -63,7 +64,7 @@
         <span class="setting-label">{$_('settings_page.notes.tasks_all')}</span>
         <div class="setting-desc">{$_('settings_page.notes.tasks_all_desc')}</div>
       </div>
-      <input aria-label={$_('settings_page.notes.tasks_all')} type="checkbox" class="toggle-cb" checked={$tasksAllChecklists} on:change={e => tasksAllChecklists.set(e.target.checked)} />
+      <Toggle label={$_('settings_page.notes.tasks_all')} checked={$tasksAllChecklists} on:change={e => tasksAllChecklists.set(e.detail)} />
     </div>
     {#if !hasKeyboard}
       <div class="setting-divider"></div>
@@ -72,7 +73,7 @@
           <span class="setting-label">{$_('settings_page.notes.swipe')}</span>
           <div class="setting-desc">{$_('settings_page.notes.swipe_desc')}</div>
         </div>
-        <input aria-label={$_('settings_page.notes.swipe')} type="checkbox" class="toggle-cb" checked={$swipeToArchive} on:change={e => swipeToArchive.set(e.target.checked)} />
+        <Toggle label={$_('settings_page.notes.swipe')} checked={$swipeToArchive} on:change={e => swipeToArchive.set(e.detail)} />
       </div>
     {/if}
     {#if hasKeyboard}
@@ -83,7 +84,7 @@
           <div class="setting-desc">{$_('settings_page.notes.shortcuts_desc')}</div>
         </div>
         <button class="btn btn-secondary" style="height:34px" on:click={() => shortcutsOpen = true}>{$_('settings_page.notes.shortcuts_view')}</button>
-        <input type="checkbox" class="toggle-cb" checked={$keyboardShortcuts} on:change={e => keyboardShortcuts.set(e.target.checked)} aria-label={$_('settings_page.notes.shortcuts')} />
+        <Toggle label={$_('settings_page.notes.shortcuts')} checked={$keyboardShortcuts} on:change={e => keyboardShortcuts.set(e.detail)} />
       </div>
     {/if}
     {#if linkPreviewsAvailable}
@@ -93,12 +94,12 @@
           <span class="setting-label">{$_('settings_page.notes.link_previews')}</span>
           <div class="setting-desc">{$_('settings_page.notes.link_previews_desc')}</div>
         </div>
-        <input aria-label={$_('settings_page.notes.link_previews')} type="checkbox" class="toggle-cb" checked={$linkPreviews} on:change={e => linkPreviews.set(e.target.checked)} />
+        <Toggle label={$_('settings_page.notes.link_previews')} checked={$linkPreviews} on:change={e => linkPreviews.set(e.detail)} />
       </div>
     {/if}
   </div>
 
-  <p class="sub-label">{$_('templates.title')}</p>
+  <p class="settings-group-heading">{$_('templates.title')}</p>
   <div class="card settings-card">
     <p class="setting-desc templates-note">{$_('templates.desc')}</p>
     {#each templates as t (t.id)}

@@ -1,4 +1,5 @@
 <script>
+  import Toggle from './Toggle.svelte';
   // App lock: require fingerprint, face, or the device PIN to open NoteTrace
   // on this device. Android only; stored per device.
   import { onMount } from 'svelte';
@@ -13,8 +14,11 @@
     status = await getStatus();
   });
 
+  // The switch follows the setting, and snaps back if the unlock check fails.
+  let lockOn = false;
+  $: lockOn = $appLockEnabled;
   async function onToggle(e) {
-    const next = e.target.checked;
+    const next = e.detail;
     if (!next) { appLockEnabled.set(false); return; }
     // Confirm the unlock works before turning the lock on.
     const { authenticateUnlock } = await import('../../lib/biometric.js');
@@ -23,7 +27,7 @@
     setAuthenticating(false);
     if (ok) appLockEnabled.set(true);
     else {
-      e.target.checked = false;
+      lockOn = false;
       showError($_('app_lock.confirm_failed'));
     }
   }
@@ -36,7 +40,7 @@
         <span class="setting-label">{$_('app_lock.enable')}</span>
         <span class="setting-desc">{$_('app_lock.enable_desc')}</span>
       </div>
-      <input aria-label={$_('app_lock.enable')} type="checkbox" class="toggle-cb" checked={$appLockEnabled} on:change={onToggle} />
+      <Toggle label={$_('app_lock.enable')} bind:checked={lockOn} on:change={onToggle} />
     </div>
     {#if $appLockEnabled}
       <div class="setting-divider"></div>

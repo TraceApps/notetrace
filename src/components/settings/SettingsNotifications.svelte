@@ -1,4 +1,6 @@
 <script>
+  import Toggle from './Toggle.svelte';
+  import ConnectionStatus from './ConnectionStatus.svelte';
   // SettingsNotifications — device + push-service reminders.
   //
   // Two delivery channels (NT parity):
@@ -62,6 +64,17 @@
   // Test push
   let testing = false;
   let testStatus = ''; // 'ok' | 'fail' | ''
+  let testError = '';
+  // The push service's status bar, as in NutriTrace: set up, testing, or failed.
+  $: pushConfigured = $notifPushService === 'ntfy' ? !!($ntfyUrl && $ntfyTopic)
+    : $notifPushService === 'gotify' ? !!($gotifyUrl && $gotifyToken)
+    : $notifPushService === 'apprise' ? !!$appriseUrl
+    : false;
+  $: pushStatus = testing ? 'testing' : testStatus === 'fail' ? 'fail' : (pushConfigured ? 'ok' : '');
+  $: pushProviderLabel = { ntfy: 'ntfy', gotify: 'Gotify', apprise: 'Apprise' }[$notifPushService] || '';
+  let lastProvider = null;
+  $: if ($notifPushService !== lastProvider) { lastProvider = $notifPushService; testStatus = ''; testError = ''; }
+  let showGotifyToken = false, showNtfyToken = false;
   async function sendTestPush() {
     testing = true;
     testStatus = '';
@@ -86,12 +99,12 @@
       }
       showSuccess($_('settings_notifications.toast.test_sent'));
       testStatus = 'ok';
+      testError = '';
     } catch (e) {
-      showError(e.message || $_('settings_notifications.toast.test_failed'));
+      testError = e.message || $_('settings_notifications.toast.test_failed');
       testStatus = 'fail';
     } finally {
       testing = false;
-      setTimeout(() => { testStatus = ''; }, 5000);
     }
   }
 
@@ -113,16 +126,16 @@
   }
 </script>
 
-<div class="notif-body">
-  <p class="sub-label">{$_('settings_notifications.device_notifications')}</p>
+<div class="section-body">
+  <p class="settings-group-heading">{$_('settings_notifications.device_notifications')}</p>
+  <p class="settings-group-sub">{$_('settings_notifications.device_notifications_sub')}</p>
   <div class="card settings-card">
     <div class="setting-row">
       <div>
         <span class="setting-label">{$_('settings_notifications.enable_on_device')}</span>
         <span class="setting-desc">{isNative ? $_('settings_notifications.enable_on_device_desc_native') : $_('settings_notifications.enable_on_device_desc_web')}</span>
       </div>
-      <input aria-label={$_('settings_notifications.enable_on_device')} type="checkbox" class="toggle-cb" checked={$notifLocalEnabled}
-        on:change={e => notifLocalEnabled.set(e.target.checked)} />
+      <Toggle label={$_('settings_notifications.enable_on_device')} checked={$notifLocalEnabled} on:change={e => notifLocalEnabled.set(e.detail)} />
     </div>
     {#if isNative && !exactAlarms}
       <div class="setting-divider"></div>
@@ -152,8 +165,21 @@
     {/if}
   </div>
 
-  <p class="sub-label">{$_('settings_notifications.push_service')}</p>
+  <p class="settings-group-heading">{$_('settings_notifications.push_service')}</p>
+  <p class="settings-group-sub">{$_('settings_notifications.push_service_sub')}</p>
   <div class="card settings-card">
+    {#if $notifPushService !== 'none'}
+      <ConnectionStatus
+        status={pushStatus}
+        okLabel={$_('settings_notifications.push_configured')}
+        connectedAs={pushProviderLabel}
+        error={testStatus === 'fail' ? testError : ''}
+        onRetest={sendTestPush}
+        retestDisabled={testing || !pushConfigured}
+        retestLabel={$_('settings_notifications.send_test')}
+        testingLabel={$_('settings_notifications.sending')}
+      />
+    {/if}
     <div class="setting-row">
       <div>
         <span class="setting-label">{$_('settings_notifications.service')}</span>
@@ -171,69 +197,68 @@
     </div>
 
     {#if $notifPushService === 'apprise'}
-      <div class="setting-divider"></div>
-      <div class="form-block">
-        <label class="form-label" for="settings-notifications-field-1">{$_('settings_notifications.apprise_url')}</label>
-        <input id="settings-notifications-field-1" class="input" type="url" placeholder="https://apprise.example.com"
+      <div class="form-group" style="padding:10px 16px 4px">
+        <label class="form-label" for="notif-apprise-url">{$_('settings_notifications.apprise_url')}</label>
+        <input id="notif-apprise-url" class="input" type="url" placeholder="https://apprise.example.com"
           value={$appriseUrl} on:change={e => appriseUrl.set(e.target.value)} />
-        <label class="form-label" for="settings-notifications-field-2">{$_('settings_notifications.apprise_tag')}</label>
-        <input id="settings-notifications-field-2" class="input" type="text" placeholder={$_('settings_notifications.apprise_tag_placeholder')}
+      </div>
+      <div class="form-group" style="padding:8px 16px 14px">
+        <label class="form-label" for="notif-apprise-tag">{$_('settings_notifications.apprise_tag')}</label>
+        <input id="notif-apprise-tag" class="input" type="text" placeholder={$_('settings_notifications.apprise_tag_placeholder')}
           value={$appriseTag} on:change={e => appriseTag.set(e.target.value)} />
       </div>
     {:else if $notifPushService === 'gotify'}
-      <div class="setting-divider"></div>
-      <div class="form-block">
-        <label class="form-label" for="settings-notifications-field-3">{$_('settings_notifications.gotify_url')}</label>
-        <input id="settings-notifications-field-3" class="input" type="url" placeholder="https://gotify.example.com"
+      <div class="form-group" style="padding:10px 16px 4px">
+        <label class="form-label" for="notif-gotify-url">{$_('settings_notifications.gotify_url')}</label>
+        <input id="notif-gotify-url" class="input" type="url" placeholder="https://gotify.example.com"
           value={$gotifyUrl} on:change={e => gotifyUrl.set(e.target.value)} />
-        <label class="form-label" for="settings-notifications-field-4">{$_('settings_notifications.app_token')}</label>
-        <input id="settings-notifications-field-4" class="input" type="text"
-          value={$gotifyToken} on:change={e => gotifyToken.set(e.target.value)} />
+      </div>
+      <div class="form-group" style="padding:8px 16px 14px">
+        <label class="form-label" for="notif-gotify-token">{$_('settings_notifications.app_token')}</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="notif-gotify-token" class="input" style="flex:1" type={showGotifyToken ? 'text' : 'password'} autocomplete="off"
+            value={$gotifyToken} on:change={e => gotifyToken.set(e.target.value)} />
+          <button type="button" class="btn-icon" on:click={() => showGotifyToken = !showGotifyToken}
+            title={showGotifyToken ? $_('settings_notifications.hide') : $_('settings_notifications.show')} aria-label={showGotifyToken ? $_('settings_notifications.hide') : $_('settings_notifications.show')}>
+            <span class="material-symbols-rounded">{showGotifyToken ? 'visibility_off' : 'visibility'}</span>
+          </button>
+        </div>
       </div>
     {:else if $notifPushService === 'ntfy'}
-      <div class="setting-divider"></div>
-      <div class="form-block">
-        <label class="form-label" for="settings-notifications-field-5">{$_('settings_notifications.ntfy_server')}</label>
-        <input id="settings-notifications-field-5" class="input" type="url" placeholder="https://ntfy.sh"
+      <div class="form-group" style="padding:10px 16px 4px">
+        <label class="form-label" for="notif-ntfy-url">{$_('settings_notifications.ntfy_server')}</label>
+        <input id="notif-ntfy-url" class="input" type="url" placeholder="https://ntfy.sh"
           value={$ntfyUrl} on:change={e => ntfyUrl.set(e.target.value)} />
-        <label class="form-label" for="settings-notifications-field-6">{$_('settings_notifications.topic')}</label>
-        <input id="settings-notifications-field-6" class="input" type="text" placeholder="notetrace-myhome"
+      </div>
+      <div class="form-group" style="padding:8px 16px 4px">
+        <label class="form-label" for="notif-ntfy-topic">{$_('settings_notifications.topic')}</label>
+        <input id="notif-ntfy-topic" class="input" type="text" placeholder="notetrace-myhome"
           value={$ntfyTopic} on:change={e => ntfyTopic.set(e.target.value)} />
-        <label class="form-label" for="settings-notifications-field-7">{$_('settings_notifications.ntfy_token')}</label>
-        <input id="settings-notifications-field-7" class="input" type="text"
-          value={$ntfyToken} on:change={e => ntfyToken.set(e.target.value)} />
+      </div>
+      <div class="form-group" style="padding:8px 16px 14px">
+        <label class="form-label" for="notif-ntfy-token">{$_('settings_notifications.ntfy_token')}</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="notif-ntfy-token" class="input" style="flex:1" type={showNtfyToken ? 'text' : 'password'} autocomplete="off"
+            value={$ntfyToken} on:change={e => ntfyToken.set(e.target.value)} />
+          <button type="button" class="btn-icon" on:click={() => showNtfyToken = !showNtfyToken}
+            title={showNtfyToken ? $_('settings_notifications.hide') : $_('settings_notifications.show')} aria-label={showNtfyToken ? $_('settings_notifications.hide') : $_('settings_notifications.show')}>
+            <span class="material-symbols-rounded">{showNtfyToken ? 'visibility_off' : 'visibility'}</span>
+          </button>
+        </div>
       </div>
     {/if}
 
-    {#if $notifPushService !== 'none'}
-      <div class="setting-divider"></div>
-      <div class="setting-row">
-        <div>
-          <span class="setting-label">{$_('settings_notifications.send_test')}</span>
-          <span class="setting-desc">{$_('settings_notifications.send_test_desc')}</span>
-        </div>
-        <button class="btn btn-primary" on:click={sendTestPush} disabled={testing}>
-          {#if testStatus === 'ok'}
-            <span class="material-symbols-rounded">check</span> {$_('settings_notifications.test_sent_short')}
-          {:else if testStatus === 'fail'}
-            <span class="material-symbols-rounded">error</span> {$_('settings_notifications.test_failed_short')}
-          {:else}
-            {testing ? $_('settings_notifications.sending') : $_('settings_notifications.send_test')}
-          {/if}
-        </button>
-      </div>
-    {/if}
   </div>
 
-  <p class="sub-label">{$_('settings_notifications.reminders')}</p>
+  <p class="settings-group-heading">{$_('settings_notifications.reminders')}</p>
+  <p class="settings-group-sub">{$_('settings_notifications.reminders_sub')}</p>
   <div class="card settings-card">
     <div class="setting-row">
       <div>
         <span class="setting-label">{$_('settings_notifications.note_reminders')}</span>
         <span class="setting-desc">{$_('settings_notifications.note_reminders_desc')}</span>
       </div>
-      <input aria-label={$_('settings_notifications.note_reminders')} type="checkbox" class="toggle-cb" checked={notifNoteReminders}
-        on:change={e => { notifNoteReminders = e.target.checked; toggleReminder('notifNoteReminders', e.target.checked); }} />
+      <Toggle label={$_('settings_notifications.note_reminders')} checked={notifNoteReminders} on:change={e => { notifNoteReminders = e.detail; toggleReminder('notifNoteReminders', e.detail); }} />
     </div>
     <div class="setting-divider"></div>
     <div class="setting-row">
@@ -241,10 +266,10 @@
         <span class="setting-label">{$_('settings_notifications.tasks_due')}</span>
         <span class="setting-desc">{$_('settings_notifications.tasks_due_desc')}</span>
       </div>
-      <input aria-label={$_('settings_notifications.tasks_due')} type="checkbox" class="toggle-cb" checked={notifTasksDue}
-        on:change={e => { notifTasksDue = e.target.checked; toggleReminder('notifTasksDue', e.target.checked); window.dispatchEvent(new CustomEvent('note:tasks-digest-changed')); }} />
+      <Toggle label={$_('settings_notifications.tasks_due')} checked={notifTasksDue} on:change={e => { notifTasksDue = e.detail; toggleReminder('notifTasksDue', e.detail); window.dispatchEvent(new CustomEvent('note:tasks-digest-changed')); }} />
     </div>
     {#if notifTasksDue}
+      <div class="setting-divider"></div>
       <div class="setting-row">
         <span class="setting-label">{$_('settings_notifications.tasks_due_time')}</span>
         <input aria-label={$_('settings_notifications.tasks_due_time')} class="input time-input" type="time" value={tasksDigestTime}
@@ -255,19 +280,9 @@
 </div>
 
 <style>
-  .notif-body { display: flex; flex-direction: column; gap: 10px; }
   /* Two classes, so the shared .input width: 100% can't stretch the clock and
      squeeze the label into a column of letters. */
   .input.time-input { width: 130px; flex: 0 0 auto; }
-  .sub-label {
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--text-3);
-    padding: 4px 2px 2px;
-    margin: 0;
-  }
   .card.settings-card {
     background: var(--surface-1);
     border: 1px solid var(--border);
@@ -284,7 +299,6 @@
   .setting-label { font-size: 14px; color: var(--text-1); display: block; font-weight: 500; }
   .setting-desc { font-size: 12px; color: var(--text-3); margin-top: 4px; line-height: 1.4; display: block; }
   .setting-divider { height: 1px; background: var(--border); margin: 0 16px; }
-  .form-block { padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
   .form-label {
     font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
     text-transform: uppercase; color: var(--text-3);

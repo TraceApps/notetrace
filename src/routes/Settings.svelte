@@ -150,7 +150,7 @@
     appearance:    { titleKey: 'settings.appearance.section',        icon: 'contrast' },
     notes:         { titleKey: 'settings.notes.section',             icon: 'sticky_note_2' },
     regional:      { titleKey: 'settings.regional.section',          icon: 'public' },
-    ai:            { titleKey: 'settings.ai.section',                icon: 'bolt' },
+    ai:            { titleKey: 'settings.ai.section',                icon: 'smart_toy' },
     cooktrace:     { titleKey: 'cooktrace.section',                  icon: 'skillet' },
     notifications: { titleKey: 'settings.notifications.section',     icon: 'notifications' },
     email:         { titleKey: 'settings.email.section',             icon: 'mail' },
@@ -442,14 +442,14 @@
     <span>{$_('settings.notifications.section')}</span>
     <span class="material-symbols-rounded chevron">expand_more</span>
   </button>
-  <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'importexport')} class:active={currentSection === 'importexport'} aria-current={currentSection === 'importexport' ? 'page' : undefined} on:click={() => toggleSection('importexport')}>
-    <span class="material-symbols-rounded si">swap_vert</span>
-    <span>{$_('import_export.section')}</span>
-    <span class="material-symbols-rounded chevron">expand_more</span>
-  </button>
   <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'backup')} class:active={currentSection === 'backup'} aria-current={currentSection === 'backup' ? 'page' : undefined} on:click={() => toggleSection('backup')}>
     <span class="material-symbols-rounded si">backup</span>
     <span>{$_('settings.backup.section')}</span>
+    <span class="material-symbols-rounded chevron">expand_more</span>
+  </button>
+  <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'importexport')} class:active={currentSection === 'importexport'} aria-current={currentSection === 'importexport' ? 'page' : undefined} on:click={() => toggleSection('importexport')}>
+    <span class="material-symbols-rounded si">import_export</span>
+    <span>{$_('import_export.section')}</span>
     <span class="material-symbols-rounded chevron">expand_more</span>
   </button>
   <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'updates')} class:active={currentSection === 'updates'} aria-current={currentSection === 'updates' ? 'page' : undefined} on:click={() => toggleSection('updates')}>
@@ -476,6 +476,15 @@
         <span>{$_('settings.authentication.section')}</span>
         <span class="material-symbols-rounded chevron">expand_more</span>
       </button>
+    {/if}
+    {#if !$userMgmtActive || $currentUser?.role === 'admin'}
+      <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'email')} class:active={currentSection === 'email'} aria-current={currentSection === 'email' ? 'page' : undefined} on:click={() => toggleSection('email')}>
+        <span class="material-symbols-rounded si">mail</span>
+        <span>{$_('settings.email.section')}</span>
+        <span class="material-symbols-rounded chevron">expand_more</span>
+      </button>
+    {/if}
+    {#if $userMgmtActive && $currentUser?.role === 'admin'}
       <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'apitokens')} class:active={currentSection === 'apitokens'} aria-current={currentSection === 'apitokens' ? 'page' : undefined} on:click={() => toggleSection('apitokens')}>
         <span class="material-symbols-rounded si">key</span>
         <span>{$_('settings.apitokens.section')}</span>
@@ -484,13 +493,6 @@
       <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'webhooks')} class:active={currentSection === 'webhooks'} aria-current={currentSection === 'webhooks' ? 'page' : undefined} on:click={() => toggleSection('webhooks')}>
         <span class="material-symbols-rounded si">webhook</span>
         <span>{$_('settings.webhooks.section')}</span>
-        <span class="material-symbols-rounded chevron">expand_more</span>
-      </button>
-    {/if}
-    {#if !$userMgmtActive || $currentUser?.role === 'admin'}
-      <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'email')} class:active={currentSection === 'email'} aria-current={currentSection === 'email' ? 'page' : undefined} on:click={() => toggleSection('email')}>
-        <span class="material-symbols-rounded si">mail</span>
-        <span>{$_('settings.email.section')}</span>
         <span class="material-symbols-rounded chevron">expand_more</span>
       </button>
     {/if}
@@ -954,6 +956,25 @@
   /* Shared section-body wrapper — every extracted section renders
      into a `.section-body` (see NT). :global so descendants inherit. */
   :global(.section-body) { padding: 12px var(--page-px); display: flex; flex-direction: column; gap: 10px; }
+
+  /* Caption above a group of cards, with an optional one-line explanation under
+     it (same as NutriTrace). */
+  :global(.settings-group-heading) {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-3);
+    margin: 20px 4px 4px;
+  }
+  :global(.settings-group-heading:first-child) { margin-top: 4px; }
+  :global(.settings-group-sub) {
+    font-size: 12px;
+    color: var(--text-3);
+    line-height: 1.4;
+    margin: 0 4px 10px;
+    max-width: 640px;
+  }
 
   /* Shared card + row primitives — every extracted section renders
      into a `.card.settings-card` containing `.setting-row`s. Style

@@ -165,7 +165,6 @@
       showError(e?.message || "Couldn't reach the server to load backups");
     }
   }
-  export function loadLocalBackups() { /* parity stub */ }
 
   onMount(async () => {
     await loadFullBackups();
@@ -397,41 +396,114 @@
   function importBackup() {
     if (importJsonInput) importJsonInput.click();
   }
-  // ── Local-mode ZIP backup ─────────────────────────────────────────
-  // Drops a full .zip (database.json + uploads/) into the Cache dir
-  // and hands it to @capacitor/share so the user picks where it goes.
+  // ── Local full backup (Android local mode) ─────────────────────
+  // Same card as NutriTrace: Create Backup saves a .zip to
+  // Documents/notetrace-backups (where the scheduler writes too), and the
+  // list below shares, restores, or deletes them.
+  const LOCAL_BACKUP_DIR = 'notetrace-backups';
+  let localBackups = [];
+  let localZipStatus = '';
+
+  export async function loadLocalBackups() {
+    if (!(isNative && !serverEnabled)) return;
+    try {
+      const { Filesystem, Directory } = await import('@capacitor/filesystem');
+      await Filesystem.mkdir({ path: LOCAL_BACKUP_DIR, directory: Directory.Documents, recursive: true }).catch(() => {});
+      const list = await Filesystem.readdir({ path: LOCAL_BACKUP_DIR, directory: Directory.Documents });
+      localBackups = (list.files || [])
+        .filter(f => f.name && f.name.endsWith('.zip'))
+        .map(f => ({ filename: f.name, size: f.size || 0, createdAt: f.mtime ? new Date(f.mtime).toISOString() : new Date().toISOString() }))
+        .sort((x, y) => y.createdAt.localeCompare(x.createdAt));
+    } catch (e) {
+      console.warn('[backup] list failed:', e.message);
+      localBackups = [];
+    }
+  }
+
   async function exportLocalZipBackup() {
     if (localBackupBusy) return;
     localBackupBusy = true;
+    localZipStatus = $_('backup_page.working');
     try {
       const { exportLocalZip } = await import('../../lib/local-backup.js');
       const blob = await exportLocalZip();
-      const fileName = `notetrace-backup-${new Date().toISOString().slice(0,10)}.zip`;
-      const { shareBlob } = await import('../../lib/share-file.js');
-      const res = await shareBlob(blob, fileName, 'NoteTrace Backup');
-      if (res.downloaded) showSuccess($_('backup_page.toast.backup_saved'));
+      const filename = `notetrace-backup-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.zip`;
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      let binary = '';
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      const { Filesystem, Directory } = await import('@capacitor/filesystem');
+      await Filesystem.mkdir({ path: LOCAL_BACKUP_DIR, directory: Directory.Documents, recursive: true }).catch(() => {});
+      await Filesystem.writeFile({ path: `${LOCAL_BACKUP_DIR}/${filename}`, data: btoa(binary), directory: Directory.Documents });
+      showSuccess($_('backup_page.toast.backup_saved'));
+      await loadLocalBackups();
     } catch (e) {
       showError(e.message || 'Backup failed');
     } finally {
+      localZipStatus = '';
       localBackupBusy = false;
     }
   }
   function importLocalZipBackup() {
     if (importZipInput) importZipInput.click();
   }
-  async function onImportZipFile(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (importZipInput) importZipInput.value = '';
+  async function _restoreLocalBlob(blob) {
+    localBackupBusy = true;
+    localZipStatus = $_('backup_page.working');
     try {
       const { importLocalZip } = await import('../../lib/local-backup.js');
-      await importLocalZip(file);
+      await importLocalZip(blob);
       showSuccess($_('backup_page.toast.restored_reloading'));
       setTimeout(() => window.location.reload(), 400);
     } catch (e) {
       showError(e.message || 'Restore failed');
+    } finally {
+      localZipStatus = '';
+      localBackupBusy = false;
     }
   }
+  async function onImportZipFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (importZipInput) importZipInput.value = '';
+    if (!await confirmDialog({ title: $_('backup_page.restore_title'), message: $_('backup_page.restore_message'), confirmText: $_('backup_page.restore'), dangerous: true })) return;
+    await _restoreLocalBlob(file);
+  }
+  async function restoreLocalBackup(filename) {
+    if (localBackupBusy) return;
+    if (!await confirmDialog({ title: $_('backup_page.restore_title'), message: $_('backup_page.restore_message'), confirmText: $_('backup_page.restore'), dangerous: true })) return;
+    try {
+      const { Filesystem, Directory } = await import('@capacitor/filesystem');
+      const res = await Filesystem.readFile({ path: `${LOCAL_BACKUP_DIR}/${filename}`, directory: Directory.Documents });
+      const blob = typeof res.data === 'string'
+        ? new Blob([Uint8Array.from(atob(res.data), c => c.charCodeAt(0))], { type: 'application/zip' })
+        : res.data;
+      await _restoreLocalBlob(blob);
+    } catch (e) {
+      showError(e.message || 'Restore failed');
+    }
+  }
+  async function deleteLocalBackup(filename) {
+    if (!await confirmDialog({ title: $_('backup_page.delete_title'), message: filename, confirmText: $_('backup_page.delete'), dangerous: true })) return;
+    try {
+      const { Filesystem, Directory } = await import('@capacitor/filesystem');
+      await Filesystem.deleteFile({ path: `${LOCAL_BACKUP_DIR}/${filename}`, directory: Directory.Documents });
+      showSuccess($_('backup_page.toast.deleted'));
+      await loadLocalBackups();
+    } catch (e) {
+      showError(e.message || 'Delete failed');
+    }
+  }
+  async function shareLocalBackup(filename) {
+    try {
+      const { Filesystem, Directory } = await import('@capacitor/filesystem');
+      const { uri } = await Filesystem.getUri({ path: `${LOCAL_BACKUP_DIR}/${filename}`, directory: Directory.Documents });
+      const { Share } = await import('@capacitor/share');
+      await Share.share({ title: 'NoteTrace Backup', files: [uri] });
+    } catch (e) {
+      if (!/cancel/i.test(e?.message || '')) showError(e.message || 'Share failed');
+    }
+  }
+  onMount(loadLocalBackups);
 
   async function onImportJsonFile(e) {
     const file = e.target.files?.[0];
@@ -464,10 +536,11 @@
   }
 </script>
 
-<div class="backup-body">
+<div class="section-body">
   <!-- ── FULL BACKUP ───────────────────────────────────────────────── -->
   {#if showServerSection}
-    <p class="sub-label">{$_('backup_page.full_backup')}</p>
+    <p class="settings-group-heading">{$_('backup_page.full_backup')}</p>
+    <p class="settings-group-sub">{$_('backup_page.full_backup_sub')}</p>
     <div class="card settings-card">
       <div style="padding:12px 16px 4px">
         <p class="setting-desc" style="margin:0 0 12px">
@@ -606,7 +679,7 @@
       {:else}
         <div class="setting-divider"></div>
         <p style="padding:12px 16px;font-size:13px;color:var(--text-3);margin:0">
-          No backups yet — click Create Backup to get started.
+          No backups yet. Click Create Backup to get started.
         </p>
       {/if}
     </div>
@@ -618,101 +691,137 @@
        + every image file zipped into one archive, shared via the
        Android share sheet. -->
   {#if isNative && !serverEnabled}
-    <p class="sub-label">Full Backup (Local)</p>
+    <p class="settings-group-heading">{$_('backup_page.full_backup')}</p>
+    <p class="settings-group-sub">{$_('backup_page.full_backup_sub_local')}</p>
     <div class="card settings-card">
-      <!-- Auto Backup (local mode). JS-side tick fires while the app is
-           open; saves to Documents/notetrace-backups/. Retention only
-           touches auto- prefixed files so manual exports are preserved.
-           Mirrors NutriTrace's local-mode scheduled backup for TraceApps
-           parity. -->
-      {#if localScheduleCfg}
-        <div class="auto-bk" style="padding:14px 16px 4px">
-          <div class="auto-bk-head">
-            <span class="auto-bk-title">{$_('backup_page.auto_backup')}</span>
-          </div>
-          <div class="auto-bk-fields">
-            <label class="auto-bk-field">
-              <span class="auto-bk-label">{$_('backup_page.schedule')}</span>
-              <select class="select sel-sm"
-                value={localScheduleCfg.schedule}
-                on:change={(e) => saveLocalSchedule({ schedule: e.target.value })}>
-                <option value="off">Off</option>
-                <option value="daily">{$_('backup_page.daily')}</option>
-                <option value="weekly">{$_('backup_page.weekly')}</option>
-                <option value="monthly">{$_('backup_page.monthly')}</option>
-              </select>
-            </label>
+      <div style="padding:12px 16px 4px">
+        <p class="setting-desc" style="margin:0 0 12px">{$_('backup_page.full_backup_desc_local')}</p>
+        {#if localScheduleCfg}
+          <div class="auto-bk">
+            <div class="auto-bk-head">
+              <span class="auto-bk-title">{$_('backup_page.auto_backup')}</span>
+            </div>
+            <div class="auto-bk-fields">
+              <label class="auto-bk-field">
+                <span class="auto-bk-label">{$_('backup_page.schedule')}</span>
+                <select class="select sel-sm"
+                  value={localScheduleCfg.schedule}
+                  on:change={(e) => saveLocalSchedule({ schedule: e.target.value })}>
+                  <option value="off">Off</option>
+                  <option value="daily">{$_('backup_page.daily')}</option>
+                  <option value="weekly">{$_('backup_page.weekly')}</option>
+                  <option value="monthly">{$_('backup_page.monthly')}</option>
+                </select>
+              </label>
+              {#if localScheduleCfg.schedule !== 'off'}
+                <label class="auto-bk-field">
+                  <span class="auto-bk-label">{$_('backup_page.time')}</span>
+                  <TimePicker value={localScheduleCfg.time}
+                    on:change={(e) => saveLocalSchedule({ time: e.detail })} />
+                </label>
+                <label class="auto-bk-field">
+                  <span class="auto-bk-label">{$_('backup_page.keep_last')}</span>
+                  <input class="input" type="number" min="1" max="99"
+                    value={localScheduleCfg.retention}
+                    on:change={(e) => saveLocalSchedule({ retention: e.target.value })} />
+                </label>
+              {/if}
+            </div>
             {#if localScheduleCfg.schedule !== 'off'}
-              <label class="auto-bk-field">
-                <span class="auto-bk-label">{$_('backup_page.time')}</span>
-                <TimePicker value={localScheduleCfg.time}
-                  on:change={(e) => saveLocalSchedule({ time: e.detail })} />
-              </label>
-              <label class="auto-bk-field">
-                <span class="auto-bk-label">{$_('backup_page.keep_last')}</span>
-                <input class="input" type="number" min="1" max="99"
-                  value={localScheduleCfg.retention}
-                  on:change={(e) => saveLocalSchedule({ retention: e.target.value })} />
-              </label>
+              <div class="auto-bk-status">
+                {#if localScheduleCfg.lastAutoError}
+                  <div class="auto-bk-status-row error">
+                    <span class="material-symbols-rounded" style="font-size:16px">error</span>
+                    <span>Last auto-backup failed: {localScheduleCfg.lastAutoError}</span>
+                  </div>
+                {/if}
+                {#if localScheduleCfg.lastAutoRun}
+                  <div class="auto-bk-status-row">
+                    <span class="material-symbols-rounded" style="font-size:16px">check_circle</span>
+                    <span>Last auto-backup: {_formatRelative(localScheduleCfg.lastAutoRun)}</span>
+                  </div>
+                {/if}
+                {#if _nextDueLabel(localScheduleCfg)}
+                  <div class="auto-bk-status-row">
+                    <span class="material-symbols-rounded" style="font-size:16px">schedule</span>
+                    <span>Next: {_nextDueLabel(localScheduleCfg)} (fires when app is open)</span>
+                  </div>
+                {/if}
+                <div class="auto-bk-status-row subtle">
+                  Keeps the {localScheduleCfg.retention} newest auto-backup{localScheduleCfg.retention === 1 ? '' : 's'}; manual exports are never pruned.
+                </div>
+              </div>
             {/if}
           </div>
-          {#if localScheduleCfg.schedule !== 'off'}
-            <div class="auto-bk-status">
-              {#if localScheduleCfg.lastAutoError}
-                <div class="auto-bk-status-row error">
-                  <span class="material-symbols-rounded" style="font-size:16px">error</span>
-                  <span>Last auto-backup failed: {localScheduleCfg.lastAutoError}</span>
-                </div>
-              {/if}
-              {#if localScheduleCfg.lastAutoRun}
-                <div class="auto-bk-status-row">
-                  <span class="material-symbols-rounded" style="font-size:16px">check_circle</span>
-                  <span>Last auto-backup: {_formatRelative(localScheduleCfg.lastAutoRun)}</span>
-                </div>
-              {/if}
-              {#if _nextDueLabel(localScheduleCfg)}
-                <div class="auto-bk-status-row">
-                  <span class="material-symbols-rounded" style="font-size:16px">schedule</span>
-                  <span>Next: {_nextDueLabel(localScheduleCfg)} (fires when app is open)</span>
-                </div>
-              {/if}
-              <div class="auto-bk-status-row subtle">
-                Keeps the {localScheduleCfg.retention} newest auto-backup{localScheduleCfg.retention === 1 ? '' : 's'}; manual exports are never pruned.
-              </div>
+          <div class="setting-divider" style="margin:0 -16px 12px"></div>
+        {/if}
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
+          <button class="btn btn-primary" style="height:36px;font-size:13px" on:click={exportLocalZipBackup} disabled={localBackupBusy}>
+            {#if localBackupBusy}
+              <span class="material-symbols-rounded spin" style="font-size:16px">autorenew</span> {$_('backup_page.working')}
+            {:else}
+              <span class="material-symbols-rounded" style="font-size:16px">add_circle</span> {$_('backup_page.create')}
+            {/if}
+          </button>
+          <button class="btn btn-secondary" style="height:36px;font-size:13px" on:click={importLocalZipBackup} disabled={localBackupBusy}>
+            <span class="material-symbols-rounded" style="font-size:16px">upload</span> {$_('backup_page.upload_restore')}
+          </button>
+        </div>
+        {#if localZipStatus}
+          <div class="restore-progress" transition:slide={{ duration: 160 }}>
+            <div class="restore-progress-label">
+              <span class="material-symbols-rounded spin" style="font-size:15px;flex-shrink:0">autorenew</span>
+              {localZipStatus}
             </div>
-          {/if}
+          </div>
+        {/if}
+        <input bind:this={importZipInput} type="file" accept=".zip,application/zip" on:change={onImportZipFile} style="display:none" />
+      </div>
+
+      {#if localBackups.length > 0}
+        <div class="setting-divider"></div>
+        <div class="backup-table-header">
+          <span>{$_('backup_page.col_name')}</span>
+          <span>{$_('backup_page.col_created')}</span>
+          <span>{$_('backup_page.col_size')}</span>
+          <span></span>
         </div>
         <div class="setting-divider"></div>
+        {#each localBackups as bk, i (bk.filename)}
+          {#if i > 0}<div class="setting-divider"></div>{/if}
+          <div class="backup-row">
+            <span class="backup-name">{bk.filename}</span>
+            <span class="backup-col-date">{new Date(bk.createdAt).toLocaleDateString()}</span>
+            <span class="backup-col-size">{fmtBytes(bk.size)}</span>
+            <div class="backup-actions">
+              <button class="btn btn-secondary backup-action-btn" on:click={() => shareLocalBackup(bk.filename)}>
+                <span class="material-symbols-rounded" style="font-size:15px">share</span> {$_('backup_page.share')}
+              </button>
+              <button class="btn btn-secondary backup-action-btn" on:click={() => restoreLocalBackup(bk.filename)} disabled={localBackupBusy}>
+                <span class="material-symbols-rounded" style="font-size:15px">restore</span> {$_('backup_page.restore')}
+              </button>
+              <button class="btn-icon" style="color:var(--danger);padding:0 4px" on:click={() => deleteLocalBackup(bk.filename)} title={$_('backup_page.delete_title')} aria-label={$_('backup_page.delete_title')}>
+                <span class="material-symbols-rounded" style="font-size:20px">delete</span>
+              </button>
+            </div>
+          </div>
+        {/each}
+      {:else}
+        <div class="setting-divider"></div>
+        <p style="padding:12px 16px;font-size:13px;color:var(--text-3);margin:0">{$_('backup_page.empty_local')}</p>
       {/if}
-      <button class="setting-row setting-action" on:click={exportLocalZipBackup} disabled={localBackupBusy}>
-        <span class="material-symbols-rounded si" style="color:var(--accent)">{localBackupBusy ? 'progress_activity' : 'archive'}</span>
-        <div>
-          <span class="setting-label">{localBackupBusy ? 'Preparing…' : 'Export Backup ZIP'}</span>
-          <div class="setting-desc">A single .zip file with every note, settings, and every uploaded image. Saved via the Android share sheet — pick Drive, Files, email, etc.</div>
-        </div>
-        <span class="material-symbols-rounded text-3" style="font-size:18px;flex-shrink:0">chevron_right</span>
-      </button>
-      <div class="setting-divider"></div>
-      <button class="setting-row setting-action" on:click={importLocalZipBackup}>
-        <span class="material-symbols-rounded si" style="color:var(--accent)">unarchive</span>
-        <div>
-          <span class="setting-label">{$_('backup_page.restore_from_zip')}</span>
-          <div class="setting-desc">Restores from a previously exported .zip. Replaces every table with the snapshot's data and re-writes images to the app's storage.</div>
-        </div>
-        <span class="material-symbols-rounded text-3" style="font-size:18px;flex-shrink:0">chevron_right</span>
-      </button>
-      <input bind:this={importZipInput} type="file" accept=".zip,application/zip" on:change={onImportZipFile} style="display:none" />
     </div>
   {/if}
 
   <!-- ── PORTABLE JSON EXPORT ─────────────────────────────────────── -->
-  <p class="sub-label">{$_('backup_page.portable_json')}</p>
+  <p class="settings-group-heading">{$_('backup_page.portable_json')}</p>
+  <p class="settings-group-sub">{$_('backup_page.portable_json_sub')}</p>
   <div class="card settings-card">
     <button class="setting-row setting-action" on:click={exportBackup}>
       <span class="material-symbols-rounded si" style="color:var(--accent)">download</span>
       <div>
         <span class="setting-label">{$_('backup_page.export_json')}</span>
-        <div class="setting-desc">Lighter format — JSON only, no images. Useful for sharing data between accounts or quick text-based exports.</div>
+        <div class="setting-desc">Lighter format: JSON only, no images. Useful for sharing data between accounts or quick text-based exports.</div>
       </div>
       <span class="material-symbols-rounded text-3" style="font-size:18px;flex-shrink:0">chevron_right</span>
     </button>
@@ -721,7 +830,7 @@
       <span class="material-symbols-rounded si" style="color:var(--accent)">upload</span>
       <div>
         <span class="setting-label">{$_('backup_page.import_json')}</span>
-        <div class="setting-desc">Restores from a previously exported JSON file. Merges with existing data — does not erase what's already here.</div>
+        <div class="setting-desc">Restores from a previously exported JSON file. Merges with existing data and does not erase what's already here.</div>
       </div>
       <span class="material-symbols-rounded text-3" style="font-size:18px;flex-shrink:0">chevron_right</span>
     </button>
@@ -729,7 +838,8 @@
   </div>
 
   <!-- ── DANGER ZONE ─────────────────────────────────────────────────── -->
-  <p class="sub-label danger-zone-label">{$_('backup_page.danger_zone')}</p>
+  <p class="settings-group-heading danger-zone-label">{$_('backup_page.danger_zone')}</p>
+  <p class="settings-group-sub">{$_('backup_page.danger_zone_sub')}</p>
   <div class="card settings-card danger-zone-card">
     <button class="setting-row setting-action" on:click={_confirmClearAllData}>
       <span class="material-symbols-rounded si" style="color:var(--danger);background:color-mix(in srgb,var(--danger) 14%,transparent)">delete_forever</span>

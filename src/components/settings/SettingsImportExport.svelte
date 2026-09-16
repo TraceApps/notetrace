@@ -1,4 +1,5 @@
 <script>
+  import Toggle from './Toggle.svelte';
   // Import from Google Keep (Takeout) or Markdown files, and export every
   // note as Markdown. Works on the web, Android with a server, and local mode.
   import { _ } from 'svelte-i18n';
@@ -107,8 +108,9 @@
   }
 </script>
 
-<div class="ie-body">
-  <p class="sub-label">{$_('import_export.import')}</p>
+<div class="section-body">
+  <p class="settings-group-heading">{$_('import_export.import')}</p>
+  <p class="settings-group-sub">{$_('import_export.import_sub')}</p>
   <div class="card settings-card">
     <div class="setting-row">
       <div>
@@ -126,7 +128,7 @@
       <div>
         <span class="setting-label">{$_('import_export.include_trashed')}</span>
       </div>
-      <input aria-label={$_('import_export.include_trashed')} type="checkbox" class="toggle-cb" bind:checked={includeTrashed} disabled={!!busy} />
+      <Toggle label={$_('import_export.include_trashed')} bind:checked={includeTrashed} disabled={!!busy} />
     </div>
     <div class="setting-divider"></div>
     <div class="setting-row">
@@ -145,7 +147,7 @@
       <div>
         <span class="setting-label">{$_('import_export.label_notebook')}</span>
       </div>
-      <input aria-label={$_('import_export.label_notebook')} type="checkbox" class="toggle-cb" bind:checked={labelNotebook} disabled={!!busy} />
+      <Toggle label={$_('import_export.label_notebook')} bind:checked={labelNotebook} disabled={!!busy} />
     </div>
     <div class="setting-divider"></div>
     <div class="setting-row">
@@ -181,7 +183,7 @@
       <div>
         <span class="setting-label">{$_('import_export.tags_to_labels')}</span>
       </div>
-      <input aria-label={$_('import_export.tags_to_labels')} type="checkbox" class="toggle-cb" bind:checked={tagsToLabels} disabled={!!busy} />
+      <Toggle label={$_('import_export.tags_to_labels')} bind:checked={tagsToLabels} disabled={!!busy} />
     </div>
     <div class="setting-divider"></div>
     <div class="setting-row">
@@ -219,7 +221,8 @@
     {/if}
   </div>
 
-  <p class="sub-label">{$_('import_export.export')}</p>
+  <p class="settings-group-heading">{$_('import_export.export')}</p>
+  <p class="settings-group-sub">{$_('import_export.export_sub')}</p>
   <div class="card settings-card">
     <div class="setting-row">
       <div>
@@ -239,11 +242,6 @@
 </div>
 
 <style>
-  .ie-body { display: flex; flex-direction: column; gap: 10px; }
-  .sub-label {
-    font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
-    color: var(--text-3); padding: 4px 2px 2px; margin: 0;
-  }
   .card.settings-card {
     background: var(--surface-1); border: 1px solid var(--border);
     border-radius: var(--radius-lg); overflow: hidden;

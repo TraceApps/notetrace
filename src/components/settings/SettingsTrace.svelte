@@ -1,4 +1,5 @@
 <script>
+  import Toggle from './Toggle.svelte';
   import { _ } from 'svelte-i18n';
   import { aiEnabled, aiProvider, aiApiKey, aiModel, aiBaseUrl, aiAssistantName, aiKeyVerified, smartLogEnabled, autoTranscribe, autoSummarizeLong, autoReadImages, aiTranscribeModel, envLocks as envLocksStore } from '../../stores/settings.js';
   import { AI_PROVIDERS, AI_DEFAULT_MODELS, AI_MODELS, AI_MODEL_LABELS, AI_MODEL_CUSTOM, callAI, callAIProxy } from '../../lib/aiChat.js';
@@ -56,16 +57,16 @@
   // the toast tells them why and aiKeyVerified stays off. This
   // collapses the previous "Save then click Test separately" flow
   // into one action, and removes the dedicated Test row entirely.
+  // Saved when the field is left, as in NutriTrace; unchanged values don't re-test.
   async function saveAiKey() {
+    if (aiApiKeyDraft === ($aiApiKey || '')) return;
     aiApiKey.set(aiApiKeyDraft);
-    aiKeySaved = true;
-    setTimeout(() => aiKeySaved = false, 2000);
     await testConnection({ silentOk: false });
   }
   async function saveAiBaseUrl() {
-    aiBaseUrl.set(aiBaseUrlDraft.trim());
-    aiBaseUrlSaved = true;
-    setTimeout(() => aiBaseUrlSaved = false, 2000);
+    const next = aiBaseUrlDraft.trim();
+    if (next === ($aiBaseUrl || '')) return;
+    aiBaseUrl.set(next);
     await testConnection({ silentOk: false });
   }
 
@@ -208,7 +209,7 @@
         ? $_('settings_trace_ct.enable_desc_locked')
         : $_('settings_trace_ct.enable_desc')}</span>
     </div>
-    <input aria-label={$_('settings_trace_ct.enable_assistant')} type="checkbox" class="toggle-cb" checked={_displayedAiEnabled} on:change={e => { if (!envLocks.ai) aiEnabled.set(e.target.checked); }} disabled={envLocks.ai} />
+    <Toggle label={$_('settings_trace_ct.enable_assistant')} checked={_displayedAiEnabled} disabled={envLocks.ai} on:change={e => { if (!envLocks.ai) aiEnabled.set(e.detail); }} />
   </div>
 
   {#if _displayedAiEnabled}
@@ -239,10 +240,9 @@
         <div class="key-row">
           <input class="input" type="url" bind:value={aiBaseUrlDraft}
             placeholder="https://api.example.com/v1"
-            on:input={_invalidate} />
-          <button class="btn btn-primary save-btn" on:click={saveAiBaseUrl}>
-            {#if aiBaseUrlSaved}<span class="material-symbols-rounded">check</span>{:else}Save{/if}
-          </button>
+            aria-label={$_('settings_trace_ct.base_url')}
+            on:input={_invalidate} on:blur={saveAiBaseUrl}
+            on:keydown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
         </div>
       </div>
     {/if}
@@ -296,19 +296,18 @@
           <input aria-label="API Key" class="input" type="text"
             bind:value={aiApiKeyDraft}
             placeholder="sk-…"
-            on:input={_invalidate} />
+            on:input={_invalidate} on:blur={saveAiKey}
+            on:keydown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
         {:else}
-          <input class="input" type="password"
+          <input aria-label="API Key" class="input" type="password"
             bind:value={aiApiKeyDraft}
             placeholder="sk-…"
-            on:input={_invalidate} />
+            on:input={_invalidate} on:blur={saveAiKey}
+            on:keydown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
         {/if}
         <button class="key-toggle" on:click={() => showKey = !showKey}
           aria-label={showKey ? 'Hide' : 'Show'}>
           <span class="material-symbols-rounded">{showKey ? 'visibility_off' : 'visibility'}</span>
-        </button>
-        <button class="btn btn-primary save-btn" on:click={saveAiKey}>
-          {#if aiKeySaved}<span class="material-symbols-rounded">check</span>{:else}Save{/if}
         </button>
       </div>
     </div>
@@ -333,9 +332,7 @@
           Hold the Trace button, speak a thought, and let Trace clean it up into a short note.
         </span>
       </div>
-      <input aria-label={$_('settings_trace_ct.smart_log')} type="checkbox" class="toggle-cb"
-        checked={$smartLogEnabled}
-        on:change={e => smartLogEnabled.set(e.target.checked)} />
+      <Toggle label={$_('settings_trace_ct.smart_log')} checked={$smartLogEnabled} on:change={e => smartLogEnabled.set(e.detail)} />
     </div>
 
     <!-- Voice notes and images -->
@@ -345,7 +342,7 @@
         <span class="setting-label">{$_('trace_extract.auto_transcribe')}</span>
         <span class="setting-desc">{$_('trace_extract.auto_transcribe_desc')}</span>
       </div>
-      <input aria-label={$_('trace_extract.auto_transcribe')} type="checkbox" class="toggle-cb" checked={$autoTranscribe} on:change={e => autoTranscribe.set(e.target.checked)} />
+      <Toggle label={$_('trace_extract.auto_transcribe')} checked={$autoTranscribe} on:change={e => autoTranscribe.set(e.detail)} />
     </div>
     {#if $autoTranscribe}
       <div class="setting-row">
@@ -353,7 +350,7 @@
           <span class="setting-label">{$_('trace_extract.auto_summarize')}</span>
           <span class="setting-desc">{$_('trace_extract.auto_summarize_desc')}</span>
         </div>
-        <input aria-label={$_('trace_extract.auto_summarize')} type="checkbox" class="toggle-cb" checked={$autoSummarizeLong} on:change={e => autoSummarizeLong.set(e.target.checked)} />
+        <Toggle label={$_('trace_extract.auto_summarize')} checked={$autoSummarizeLong} on:change={e => autoSummarizeLong.set(e.detail)} />
       </div>
     {/if}
     {#if $aiProvider === 'custom' || $aiProvider === 'openai'}
@@ -373,7 +370,7 @@
         <span class="setting-label">{$_('trace_extract.auto_read_images')}</span>
         <span class="setting-desc">{$_('trace_extract.auto_read_images_desc')}</span>
       </div>
-      <input aria-label={$_('trace_extract.auto_read_images')} type="checkbox" class="toggle-cb" checked={$autoReadImages} on:change={e => autoReadImages.set(e.target.checked)} />
+      <Toggle label={$_('trace_extract.auto_read_images')} checked={$autoReadImages} on:change={e => autoReadImages.set(e.detail)} />
     </div>
 
     <!-- Status row — Save runs the test on each click, so this is a
@@ -424,16 +421,6 @@
   .key-row > * { height: 40px; box-sizing: border-box; }
   .key-row .input { flex: 1; font-family: monospace; }
   .model-input { width: 200px; max-width: 45%; }
-  .save-btn {
-    font-size: 13px;
-    white-space: nowrap;
-    padding: 0 14px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-  }
-  .save-btn .material-symbols-rounded { font-size: 16px; }
   .key-toggle {
     background: var(--surface-2); border: 1px solid var(--border);
     border-radius: var(--radius-sm); width: 40px;

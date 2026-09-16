@@ -1,4 +1,5 @@
 <script>
+  import Toggle from './Toggle.svelte';
   import { viewport, sizeClass } from '../../stores/window-size.js';
   // Appearance section — extracted from the Settings.svelte monolith.
   // Renders theme, accent, navigation style, persistent sidebar (gated
@@ -113,7 +114,7 @@
           <span class="setting-label">{$_('settings_page.appearance.persistent_sidebar')}</span>
           <div class="setting-desc">Sidebar stays open and shifts page content instead of overlaying it.</div>
         </div>
-        <input aria-label={$_('settings_page.appearance.persistent_sidebar')} type="checkbox" class="toggle-cb" checked={$sidebarPersistent} on:change={e => sidebarPersistent.set(e.target.checked)} />
+        <Toggle label={$_('settings_page.appearance.persistent_sidebar')} checked={$sidebarPersistent} on:change={e => sidebarPersistent.set(e.detail)} />
       </div>
     {/if}
     <div class="setting-divider"></div>
@@ -122,7 +123,7 @@
         <span class="setting-label">Force Mobile Layout</span>
         <div class="setting-desc">Keep the mobile single-column layout even on wide screens.</div>
       </div>
-      <input aria-label="Force Mobile Layout" type="checkbox" class="toggle-cb" checked={$forceMobileLayout} on:change={e => forceMobileLayout.set(e.target.checked)} />
+      <Toggle label="Force Mobile Layout" checked={$forceMobileLayout} on:change={e => forceMobileLayout.set(e.detail)} />
     </div>
     {#if START_PAGE_OPTS.length > 1}
     <div class="setting-divider"></div>
@@ -138,7 +139,7 @@
     <div class="setting-divider"></div>
     <div class="setting-row">
       <span class="setting-label">{$_('settings_page.appearance.reduce_motion')}</span>
-      <input aria-label={$_('settings_page.appearance.reduce_motion')} type="checkbox" class="toggle-cb" checked={$disableAnimations} on:change={e => disableAnimations.set(e.target.checked)} />
+      <Toggle label={$_('settings_page.appearance.reduce_motion')} checked={$disableAnimations} on:change={e => disableAnimations.set(e.detail)} />
     </div>
     <div class="setting-divider"></div>
     <div class="setting-row">
@@ -199,7 +200,6 @@
      styles (which cover .settings-card + .setting-row + .setting-label
      etc.) but need the widget affordances too. Scoped so they don't
      override sibling sections. */
-  .sub-label { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); padding: 14px 2px 6px; margin: 0; }
   .select-wrap { position: relative; display: inline-block; }
   .select-wrap::after {
     content: '';
