@@ -24,7 +24,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 export function markdownToHtml(md) {
   if (!String(md || '').trim()) return '';
   const editor = new Editor({
-    extensions: [StarterKit.configure({ underline: false, heading: { levels: [1, 2, 3] } }), TaskList, TaskItem.configure({ nested: true }), Highlight, Markdown, NoteLink],
+    extensions: [StarterKit.configure({ heading: { levels: [1, 2, 3] } }), TaskList, TaskItem.configure({ nested: true }), Highlight, Markdown, NoteLink],
     content: md,
     contentType: 'markdown',
   });

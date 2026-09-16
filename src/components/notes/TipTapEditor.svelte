@@ -147,7 +147,6 @@
       editable,
       extensions: [
         StarterKit.configure({
-          underline: false,
           heading: { levels: [1, 2, 3] },
           link: { openOnClick: false, autolink: true, defaultProtocol: 'https' },
         }),
@@ -218,6 +217,7 @@
       bold: editor.isActive('bold'),
       italic: editor.isActive('italic'),
       strike: editor.isActive('strike'),
+      underline: editor.isActive('underline'),
       h: editor.isActive('heading'),
       bullet: editor.isActive('bulletList'),
       ordered: editor.isActive('orderedList'),
@@ -245,6 +245,7 @@
     { key: 'h', icon: 'title', label: 'notes.fmt_heading', fn: c => c.toggleHeading({ level: 2 }) },
     { key: 'bold', icon: 'format_bold', label: 'notes.fmt_bold', fn: c => c.toggleBold() },
     { key: 'italic', icon: 'format_italic', label: 'notes.fmt_italic', fn: c => c.toggleItalic() },
+    { key: 'underline', icon: 'format_underlined', label: 'notes.fmt_underline', fn: c => c.toggleUnderline() },
     { key: 'strike', icon: 'strikethrough_s', label: 'notes.fmt_strike', fn: c => c.toggleStrike() },
     { key: 'highlight', icon: 'ink_highlighter', label: 'notes.fmt_highlight', fn: c => c.toggleHighlight() },
     { key: 'todo', icon: 'check_box', label: 'notes.fmt_checkboxes', fn: c => c.toggleTaskList() },
@@ -318,6 +319,7 @@
   .tiptap-host :global(.tiptap-body h2) { font-family: var(--font-note-title); font-weight: 600; font-size: 1.3em; line-height: 1.25; }
   .tiptap-host :global(.tiptap-body h3) { font-weight: 600; font-size: 1.05em; }
   .tiptap-host :global(.tiptap-body strong) { color: var(--text-1); font-weight: 600; }
+  .tiptap-host :global(.tiptap-body u) { text-decoration-thickness: 0.08em; text-underline-offset: 0.15em; }
   .tiptap-host :global(.tiptap-body ul),
   .tiptap-host :global(.tiptap-body ol) { padding-left: 1.4em; }
   .tiptap-host :global(.tiptap-body li + li) { margin-top: 0.2em; }

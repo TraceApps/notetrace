@@ -8,4 +8,5 @@ test('checkboxes in a text note show as boxes on the card', () => {
 
 test('highlighted text shows without its marks', () => {
   assert.equal(markdownToPreview('Pack the ==good== snacks'), 'Pack the good snacks');
+  assert.equal(markdownToPreview('A ++firm++ date'), 'A firm date');
 });

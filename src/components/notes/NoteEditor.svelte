@@ -929,6 +929,8 @@
   let panelW = 0;
   $: compactBar = narrow || (!inline && panelW > 0 && panelW < 560);
   $: tightBar = inline && barW < 600;
+  // The desktop editor's own bar (not the phone bar or the list pane's): what it shows stays out of the More menu.
+  $: fullBar = !inline && !compactBar;
   /** Save anything pending, for switching notes in the side pane. */
   export async function flush() { await flushAll(); }
   /** The note's id once it exists (a new note gets one on its first save). */
@@ -1336,15 +1338,6 @@
                 <span class="material-symbols-rounded">{kind === 'text' ? 'checklist' : 'notes'}</span>
               </button>
             {/if}
-            <button class="icon-btn" on:click={archive}
-              title={archived ? $_('notes.unarchive') : $_('notes.archive')} aria-label={archived ? $_('notes.unarchive') : $_('notes.archive')}>
-              <span class="material-symbols-rounded">{archived ? 'unarchive' : 'archive'}</span>
-            </button>
-            {#if isOwner}
-              <button class="icon-btn" on:click={trash} title={$_('notes.move_to_trash')} aria-label={$_('notes.move_to_trash')}>
-                <span class="material-symbols-rounded">delete</span>
-              </button>
-            {/if}
             <button class="icon-btn" on:click={openMore} title={$_('notes.more_options')} aria-label={$_('notes.more_options')} aria-haspopup="menu">
               <span class="material-symbols-rounded">more_vert</span>
             </button>
@@ -1408,7 +1401,7 @@
 </Popover>
 <Popover bind:open={moreOpen} anchor={moreAnchor} label={$_('notes.more_options')}>
   <div class="sheet-menu">
-    {#if canShowInTasks}
+    {#if canShowInTasks && !fullBar}
       <button class="sheet-item" role="menuitemcheckbox" aria-checked={inTasks} on:click={() => { toggleInTasks(); moreOpen = false; }}>
         <span class="material-symbols-rounded" class:fill={inTasks}>task_alt</span>{$_('tasks.show_in_tasks')}
         {#if inTasks}<span class="material-symbols-rounded sheet-check">check</span>{/if}
@@ -1449,22 +1442,22 @@
           <span class="material-symbols-rounded">{kind === 'text' ? 'checklist' : 'notes'}</span>{kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}
         </button>
       {/if}
-    {:else}
+    {:else if !fullBar}
     <button class="sheet-item" on:click={() => fromSheet(openLabels, moreAnchor)}>
       <span class="material-symbols-rounded">label</span>{$_('notes.labels')}
     </button>
     {/if}
-    {#if $sharingAvailable && !inline}
+    {#if $sharingAvailable && !inline && !fullBar}
       <button class="sheet-item" on:click={() => fromSheet(openShare, moreAnchor)}>
         <span class="material-symbols-rounded">person_add</span>{$_('sharing.share')}
       </button>
     {/if}
-    {#if $traceReady && kind === 'text' && !contentLocked && body.trim()}
+    {#if $traceReady && kind === 'text' && !contentLocked && body.trim() && !fullBar}
       <button class="sheet-item" on:click={() => fromSheet(openTrace, moreAnchor)}>
         <span class="material-symbols-rounded">auto_awesome</span>{$_('trace_actions.title')}
       </button>
     {/if}
-    {#if $cooktraceLink?.connected && kind === 'checklist'}
+    {#if $cooktraceLink?.connected && kind === 'checklist' && !fullBar}
       <button class="sheet-item" on:click={() => fromSheet(openCooktrace, moreAnchor)}>
         <span class="material-symbols-rounded">add_shopping_cart</span>{$_('cooktrace.send')}
       </button>
@@ -1644,9 +1637,9 @@
     backdrop-filter: blur(24px) saturate(180%);
     -webkit-backdrop-filter: blur(24px) saturate(180%);
   }
-  .bar-actions { display: flex; flex-wrap: wrap; gap: 2px; }
+  .bar-actions { display: flex; flex-wrap: nowrap; gap: 2px; min-width: 0; }
   .spacer { flex: 1; }
-  .edited { font-size: 12px; color: var(--text-3); white-space: nowrap; }
+  .edited { font-size: 12px; color: var(--text-3); white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .compact-bar .edited { display: none; }
   .kb-open .editor-bar { padding-bottom: 6px; }
   .phone-bar { display: flex; align-items: center; gap: 2px; width: 100%; min-width: 0; }

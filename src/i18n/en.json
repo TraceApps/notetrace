@@ -507,6 +507,7 @@
     "fmt_bold":                "Bold",
     "fmt_italic":              "Italic",
     "fmt_strike":              "Strikethrough",
+    "fmt_underline": "Underline",
     "fmt_highlight": "Highlight",
     "fmt_checkboxes": "Checkboxes",
     "fmt_bullets":             "Bulleted List",
