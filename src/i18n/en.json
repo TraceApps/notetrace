@@ -272,7 +272,12 @@
     "reminders": "Reminders",
     "shared":    "Shared",
     "links":     "Links",
-    "clear":     "Clear Filters"
+    "clear":     "Clear Filters",
+    "clear_group": "Clear",
+    "type":      "Type",
+    "color":     "Color",
+    "label":     "Label",
+    "more":      "{first} +{n}"
   },
   "sidebar": {
     "collapse":        "Collapse Sidebar",

@@ -50,6 +50,9 @@
   import { itemAfterPatch } from '../../server/lib/task-rules.js';
   import { todayStr } from '../lib/due-dates.js';
   import { NOTE_COLORS, colorDot } from '../lib/note-colors.js';
+  import { cubicOut } from 'svelte/easing';
+  import { disableAnimations } from '../stores/settings.js';
+  import FilterMenu from '../components/notes/FilterMenu.svelte';
   import { printNote } from '../lib/note-print.js';
   import { cleanTemplates, noteFromTemplate } from '../lib/note-templates.js';
   import { noteTemplates, dateFormat } from '../stores/settings.js';
@@ -163,6 +166,30 @@
   $: view, labelId, (filters = emptyFilters());
   $: filterLabels = $labels.filter(l => l.id !== labelId);
   function flip(group, value) { filters = toggleFilter(filters, group, value); }
+
+  // One menu per filter group (Type, Color, Label), all opened from the same kind of pill.
+  let filterGroup = null, filterAnchor = null;
+  function openFilter(group, e) { filterAnchor = e.currentTarget.getBoundingClientRect(); filterGroup = group; }
+  $: filterMenuOpen = filterGroup != null;
+  function onFilterMenu(open) { if (!open) filterGroup = null; }
+  $: typeOptions = FILTER_TYPES
+    .filter(t => !(view === 'reminders' && t.key === 'reminders') && !(view === 'shared' && t.key === 'shared'))
+    .map(t => ({ value: t.key, label: $_(t.label), icon: t.icon }));
+  $: colorOptions = NOTE_COLORS.filter(c => c.value).map(c => ({ value: c.value, label: $_(`notes.color_${c.value}`), dot: c.dot }));
+  $: labelOptions = filterLabels.map(l => ({ value: l.id, label: l.name, dot: colorDot(l.color) }));
+  $: filterGroups = [
+    { key: 'types', title: $_('filters.type'), icon: 'category', options: typeOptions, layout: 'list' },
+    { key: 'colors', title: $_('filters.color'), icon: 'palette', options: colorOptions, layout: 'swatches' },
+    ...(labelOptions.length ? [{ key: 'labels', title: $_('filters.label'), icon: 'label', options: labelOptions, layout: 'list' }] : []),
+  ];
+  $: activeGroup = filterGroups.find(g => g.key === filterGroup) || null;
+  // What a pill says once something is picked: the first choice, and how many more.
+  function pillText(group, picked) {
+    if (!picked.length) return group.title;
+    const first = group.options.find(o => o.value === picked[0])?.label || group.title;
+    return picked.length > 1 ? $_('filters.more', { values: { first, n: picked.length - 1 } }) : first;
+  }
+  $: motion = $disableAnimations ? 0 : 1;
 
   $: pinned = view === 'notes' ? filtered.filter(n => n.pinned) : [];
   $: byNextReminder = view === 'reminders'
@@ -413,7 +440,7 @@
   // screens use the Take a note bar. Kept in step with the media query in the styles.
   const PHONE_CAPTURE = '(max-width: 600px), (pointer: coarse) and (max-height: 500px)';
   $: phoneCapture = typeof window !== 'undefined' && ($viewport, !!window.matchMedia?.(PHONE_CAPTURE).matches);
-  $: if (typeof document !== 'undefined') document.documentElement.style.setProperty('--page-fab-space', canCapture && phoneCapture ? '76px' : '0px');
+  $: if (typeof document !== 'undefined') document.documentElement.style.setProperty('--page-fab-space', canCapture && phoneCapture && !searchOpen ? '76px' : '0px');
   onDestroy(() => document.documentElement.style.setProperty('--page-fab-space', '0px'));
   // Holding the + button on a phone starts a voice note instead of a text note.
   let fabHeld = false;
@@ -880,48 +907,48 @@
     {/if}
   </header>
 
-  {#if searchOpen && !query && recents.length}
-    <div class="recent-bar" transition:slide={{ duration: 160 }}>
-      <span class="recent-label">{$_('notes.recent_searches')}</span>
-      {#each recents as r (r)}
-        <button type="button" class="fchip" on:mousedown|preventDefault on:click={() => useRecent(r)}>
-          <span class="material-symbols-rounded">history</span>{r}
-        </button>
-      {/each}
-      <button type="button" class="fchip fclear" on:mousedown|preventDefault on:click={clearRecents}>{$_('notes.clear_recent')}</button>
-    </div>
-  {/if}
   {#if showFilters}
-    <div class="filter-bar" role="group" aria-label={$_('filters.title')} transition:slide={{ duration: 180 }}>
-      {#each FILTER_TYPES as t (t.key)}
-        {#if !(view === 'reminders' && t.key === 'reminders') && !(view === 'shared' && t.key === 'shared')}
-          <button type="button" class="fchip" class:on={filters.types.includes(t.key)} aria-pressed={filters.types.includes(t.key)}
-            on:mousedown|preventDefault on:click={() => flip('types', t.key)}>
-            <span class="material-symbols-rounded">{t.icon}</span>{$_(t.label)}
-          </button>
-        {/if}
-      {/each}
-      <span class="fsep" aria-hidden="true"></span>
-      {#each NOTE_COLORS.filter(c => c.value) as c (c.value)}
-        <button type="button" class="fchip fcolor" class:on={filters.colors.includes(c.value)} aria-pressed={filters.colors.includes(c.value)}
-          title={$_(`notes.color_${c.value}`)} aria-label={$_(`notes.color_${c.value}`)}
-          on:mousedown|preventDefault on:click={() => flip('colors', c.value)}>
-          <span class="fdot" style="background:{c.dot}"></span>
-        </button>
-      {/each}
-      {#if filterLabels.length}
-        <span class="fsep" aria-hidden="true"></span>
-        {#each filterLabels as l (l.id)}
-          <button type="button" class="fchip" class:on={filters.labels.includes(l.id)} aria-pressed={filters.labels.includes(l.id)}
-            on:mousedown|preventDefault on:click={() => flip('labels', l.id)}>
-            <span class="fdot small" style="background:{colorDot(l.color)}"></span>{l.name}
+    <div class="search-tools" transition:slide={{ duration: 200 * motion }}>
+      <div class="filter-bar" role="group" aria-label={$_('filters.title')}>
+        {#each filterGroups as g, i (g.key)}
+          {@const picked = filters[g.key]}
+          <button type="button" class="fpill" class:on={picked.length > 0} aria-haspopup="dialog" aria-expanded={filterGroup === g.key}
+            on:mousedown|preventDefault on:click={(e) => openFilter(g.key, e)}
+            in:fly|global={{ y: -8, duration: 220 * motion, delay: (60 + i * 45) * motion, easing: cubicOut }}>
+            {#if g.key === 'colors' && picked.length}
+              <span class="fpill-dots" aria-hidden="true">
+                {#each picked.slice(0, 3) as c (c)}<span class="fdot" style="background:{colorOptions.find(o => o.value === c)?.dot}"></span>{/each}
+              </span>
+            {:else}
+              <span class="material-symbols-rounded">{g.key === 'types' && picked.length === 1 ? (typeOptions.find(o => o.value === picked[0])?.icon || g.icon) : g.icon}</span>
+            {/if}
+            <span class="fpill-text">{pillText(g, picked)}</span>
+            <span class="material-symbols-rounded fpill-caret" aria-hidden="true">expand_more</span>
           </button>
         {/each}
-      {/if}
-      {#if filtering}
-        <button type="button" class="fchip fclear" on:mousedown|preventDefault on:click={() => filters = emptyFilters()}>
-          <span class="material-symbols-rounded">filter_alt_off</span>{$_('filters.clear')}
-        </button>
+        {#if filtering}
+          <button type="button" class="fpill fpill-clear" on:mousedown|preventDefault on:click={() => filters = emptyFilters()}
+            title={$_('filters.clear')} aria-label={$_('filters.clear')}
+            in:fade|global={{ duration: 140 * motion }}>
+            <span class="material-symbols-rounded">filter_alt_off</span>
+          </button>
+        {/if}
+      </div>
+      {#if !query && recents.length}
+        <div class="recent-bar" transition:slide={{ duration: 160 * motion }}>
+          <span class="recent-label">{$_('notes.recent_searches')}</span>
+          <div class="recent-scroll">
+            {#each recents as r, i (r)}
+              <button type="button" class="recent-chip" on:mousedown|preventDefault on:click={() => useRecent(r)}
+                in:fade|global={{ duration: 180 * motion, delay: (140 + i * 30) * motion }}>
+                <span class="material-symbols-rounded">history</span>{r}
+              </button>
+            {/each}
+          </div>
+          <button type="button" class="recent-clear" on:mousedown|preventDefault on:click={clearRecents} aria-label={$_('notes.clear_recent')} title={$_('notes.clear_recent')}>
+            <span class="material-symbols-rounded">close</span>
+          </button>
+        </div>
       {/if}
     </div>
   {/if}
@@ -1115,7 +1142,7 @@
   {#if canCapture}
     <!-- On body: the page wrapper has will-change, which would otherwise hold a
          fixed button inside the scroll and carry it away with the notes. -->
-    <button class="fab" use:portal class:hidden-fab={selecting || fabMenu} on:click={onFabClick} on:pointerdown={() => fabHeld = false} aria-label={$_('notes.new_note')}
+    <button class="fab" use:portal class:hidden-fab={selecting || fabMenu || searchOpen} on:click={onFabClick} on:pointerdown={() => fabHeld = false} aria-label={$_('notes.new_note')}
       aria-haspopup="menu" aria-expanded={fabMenu}
       title={canRecordVoice ? $_('notes.hold_for_voice') : undefined}
       use:longpress on:longpress={() => { if (canRecordVoice) { fabHeld = true; navigator.vibrate?.(20); newVoiceNote(); } }}>
@@ -1280,6 +1307,14 @@
   </div>
 </Popover>
 <ActionSheet bind:open={menuOpen} title={menuNote?.title || ''} actions={menuActions} on:select={onMenuSelect} />
+<Popover open={filterMenuOpen} anchor={filterAnchor} label={activeGroup?.title} on:close={() => onFilterMenu(false)}>
+  {#if activeGroup}
+    <FilterMenu title={activeGroup.title} options={activeGroup.options} selected={filters[activeGroup.key]} layout={activeGroup.layout}
+      on:toggle={(e) => flip(activeGroup.key, e.detail)}
+      on:clear={() => filters = { ...filters, [activeGroup.key]: [] }}
+      on:done={() => onFilterMenu(false)} />
+  {/if}
+</Popover>
 <ActionSheet bind:open={templatePickerOpen} title={$_('templates.new_from')} actions={templateActions} on:select={onTemplatePick} />
 
 <style>
@@ -1438,49 +1473,70 @@
   .notes-page { --notes-max: 1680px; }
   .empty-trash { height: 38px; }
 
-  .recent-bar {
-    display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px;
-    max-width: min(var(--notes-max), 980px); margin: 10px auto 0; width: 100%;
+  .search-tools {
+    display: flex; flex-direction: column; gap: 10px;
+    max-width: min(var(--notes-max), 980px); margin: 12px auto 0; width: 100%;
     padding: 0 var(--page-px);
   }
-  .recent-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); margin-right: 2px; }
-  .recent-bar .fchip .material-symbols-rounded { font-size: 15px; color: var(--text-3); }
-  @media (max-width: 600px) {
-    .recent-bar { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; }
-    .recent-bar::-webkit-scrollbar { display: none; }
-    .recent-bar .fchip { flex-shrink: 0; }
-  }
-  .filter-bar {
-    display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 6px;
-    max-width: min(var(--notes-max), 980px); margin: 10px auto 0; width: 100%;
-    padding: 0 var(--page-px);
-  }
-  .fchip {
-    height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px 0 10px;
+  .filter-bar { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; }
+  .fpill {
+    height: 36px; min-width: 0; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px 0 12px;
     border-radius: var(--radius-full);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-strong);
     background: var(--surface-1);
-    color: var(--text-2); font-size: 13px; font-weight: 500;
-    transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast), transform 120ms ease;
+    color: var(--text-1); font-size: 14px; font-weight: 500;
+    transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast), transform 120ms ease, box-shadow var(--dur-fast);
   }
-  .fchip .material-symbols-rounded { font-size: 17px; }
-  .fchip:hover { border-color: var(--border-strong); color: var(--text-1); }
-  .fchip:active { transform: scale(0.96); }
-  .fchip.on {
+  .fpill .material-symbols-rounded { font-size: 18px; color: var(--text-2); }
+  .fpill:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border-strong)); }
+  .fpill:active { transform: scale(0.96); }
+  .fpill[aria-expanded="true"] { box-shadow: 0 0 0 3px var(--accent-dim); }
+  .fpill.on {
     background: var(--accent-dim); color: var(--accent);
     border-color: color-mix(in srgb, var(--accent) 45%, transparent);
   }
-  .fchip.fcolor { width: 32px; padding: 0; justify-content: center; }
-  .fchip.fcolor.on { box-shadow: 0 0 0 2px var(--accent); }
-  .fdot { width: 14px; height: 14px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15); }
-  .fdot.small { width: 8px; height: 8px; box-shadow: none; }
-  .fclear { color: var(--text-3); border-style: dashed; }
-  .fsep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
-  @media (max-width: 600px) {
-    .filter-bar { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
-    .filter-bar::-webkit-scrollbar { display: none; }
-    .fchip { flex-shrink: 0; }
+  .fpill.on .material-symbols-rounded { color: var(--accent); }
+  .fpill-text { min-width: 0; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fpill-caret { font-size: 18px !important; margin-left: -2px; transition: transform 180ms ease; }
+  .fpill[aria-expanded="true"] .fpill-caret { transform: rotate(180deg); }
+  .fpill-clear { width: 36px; padding: 0; justify-content: center; border-style: dashed; }
+  .fpill-dots { display: inline-flex; }
+  .fpill-dots .fdot + .fdot { margin-left: -5px; }
+  .fdot { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 0 2px var(--accent-dim), inset 0 0 0 1px rgba(0,0,0,0.15); }
+
+  .recent-bar { display: flex; align-items: center; gap: 8px; min-width: 0; justify-content: center; }
+  .recent-label { flex-shrink: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
+  .recent-scroll { display: flex; gap: 6px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .recent-scroll::-webkit-scrollbar { display: none; }
+  .recent-chip {
+    flex-shrink: 0; height: 30px; display: inline-flex; align-items: center; gap: 5px; padding: 0 12px 0 9px;
+    border-radius: var(--radius-full); background: color-mix(in srgb, var(--text-1) 6%, transparent);
+    color: var(--text-2); font-size: 13px;
+    transition: background var(--dur-fast), color var(--dur-fast);
   }
+  .recent-chip:hover { background: color-mix(in srgb, var(--text-1) 11%, transparent); color: var(--text-1); }
+  .recent-chip .material-symbols-rounded { font-size: 15px; color: var(--text-3); }
+  .recent-clear { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
+  .recent-clear:hover { background: color-mix(in srgb, var(--text-1) 8%, transparent); color: var(--text-1); }
+  .recent-clear .material-symbols-rounded { font-size: 17px; }
+  @media (max-width: 600px) {
+    .filter-bar { justify-content: flex-start; flex-wrap: nowrap; }
+    .fpill { flex: 0 1 auto; }
+    .fpill-text { max-width: 96px; }
+    .recent-bar { justify-content: flex-start; }
+    /* Fades at the edge say there's more to scroll. */
+    .recent-scroll { mask-image: linear-gradient(90deg, #000 85%, transparent); -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); padding-right: 16px; }
+  }
+  :global(.pop-panel.sheet) :global(.fm) { width: 100%; }
+  /* Choice chips (the list layout's Group By). */
+  .fchip {
+    height: 32px; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px;
+    border-radius: var(--radius-full); border: 1px solid var(--border);
+    background: var(--surface-1); color: var(--text-2); font-size: 13px; font-weight: 500;
+    transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+  }
+  .fchip:hover { border-color: var(--border-strong); color: var(--text-1); }
+  .fchip.on { background: var(--accent-dim); color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 
   .notes-body {
     display: flex; flex-direction: column; gap: 24px;
