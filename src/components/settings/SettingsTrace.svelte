@@ -440,22 +440,6 @@
     font-size: 13px; color: var(--text-3);
   }
   .env-lock-banner .material-symbols-rounded { font-size: 17px; }
-  .select-wrap { position: relative; display: inline-block; }
-  .select-wrap::after {
-    content: ''; position: absolute; right: 10px; top: 50%;
-    transform: translateY(-25%) rotate(45deg);
-    width: 7px; height: 7px;
-    border-right: 2px solid var(--text-3); border-bottom: 2px solid var(--text-3);
-    pointer-events: none;
-  }
-  .select {
-    background: var(--surface-2); border: 1px solid var(--border);
-    border-radius: var(--radius-sm); padding: 7px 28px 7px 10px;
-    color: var(--text-1); font-size: 13px; width: 100%;
-    appearance: none; -webkit-appearance: none; cursor: pointer;
-  }
-  .select:focus { outline: 2px solid var(--accent-dim); border-color: var(--accent); }
-  .sel-sm { height: 36px; font-size: 13px; }
 
   /* expand-left: anchor the native dropdown to the right edge so it
      opens leftward instead of rightward. Useful when the select sits
