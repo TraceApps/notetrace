@@ -108,7 +108,7 @@
   </div>
 </Sheet>
 
-<Popover bind:open={colorOpen} anchor={colorAnchor}>
+<Popover bind:open={colorOpen} anchor={colorAnchor} label={$_('labels.color_title')}>
   {#if colorFor}
     <LabelStylePicker color={colorFor.color} icon={colorFor.icon}
       on:color={(e) => setStyle({ color: e.detail })} on:icon={(e) => setStyle({ icon: e.detail })} />

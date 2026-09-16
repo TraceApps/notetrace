@@ -91,8 +91,9 @@
       {/if}
 
       <div class="form-group">
-        <label class="form-label">{$_('reset_password.new_password')}</label>
-        <input class="input" type="password" autocomplete="new-password"
+        <label class="form-label" for="reset-password-field-1">{$_('reset_password.new_password')}</label>
+        <!-- svelte-ignore a11y_autofocus (the one thing this page is for) -->
+        <input id="reset-password-field-1" class="input" type="password" autocomplete="new-password"
           passwordrules="minlength: 8; required: upper; required: lower; required: digit; required: special;"
           bind:value={password} placeholder={$_('reset_password.password_placeholder')} autofocus />
         {#if password}
@@ -103,8 +104,8 @@
         {/if}
       </div>
       <div class="form-group">
-        <label class="form-label">{$_('reset_password.confirm_password')}</label>
-        <input class="input" type="password" autocomplete="new-password"
+        <label class="form-label" for="reset-password-field-2">{$_('reset_password.confirm_password')}</label>
+        <input id="reset-password-field-2" class="input" type="password" autocomplete="new-password"
           passwordrules="minlength: 8; required: upper; required: lower; required: digit; required: special;"
           bind:value={confirm}
           on:keydown={e => e.key === 'Enter' && submit()} />

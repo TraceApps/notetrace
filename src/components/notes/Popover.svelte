@@ -6,10 +6,13 @@
   import { onMount, onDestroy, createEventDispatcher, tick } from 'svelte';
   import { fade, fly } from 'svelte/transition';
   import { portal } from '../../lib/portal.js';
+  import { dialogFocus } from '../../lib/dialog-focus.js';
 
   export let open = false;
   /** DOMRect of the trigger, or {x, y} for a press point. */
   export let anchor = null;
+  /** Its name for screen readers, like the button that opened it. */
+  export let label = '';
 
   const dispatch = createEventDispatcher();
   let panel;
@@ -44,7 +47,7 @@
   <!-- svelte-ignore a11y-no-static-element-interactions -->
   <div use:portal class="pop-backdrop" class:narrow on:click|self={close} transition:fade={{ duration: 120 }}>
     <div class="pop-panel" class:sheet={narrow} bind:this={panel} {style}
-      role="dialog" aria-modal="true"
+      role="dialog" aria-modal="true" aria-label={label || undefined} tabindex="-1" use:dialogFocus
       in:fly={{ y: narrow ? 40 : 6, duration: 160 }}>
       <slot {close} />
     </div>

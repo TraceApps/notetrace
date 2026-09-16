@@ -717,14 +717,14 @@
        the old one. Gives every list → detail → editor hop a touch of
        polish without per-route choreography. Respects the user's
        reduce-motion / disable-animations preference. -->
-  <div
+  <main
     class="page-transition"
     class:has-topbar={showNav}
     in:fly={{ y: 8, duration: $disableAnimations ? 0 : 200, easing: cubicOut }}
     out:fade={{ duration: $disableAnimations ? 0 : 120 }}
   >
     <Router {routes} />
-  </div>
+  </main>
 {/key}
 
 {#if hasBottomNav}

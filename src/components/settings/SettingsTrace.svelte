@@ -208,7 +208,7 @@
         ? $_('settings_trace_ct.enable_desc_locked')
         : $_('settings_trace_ct.enable_desc')}</span>
     </div>
-    <input type="checkbox" class="toggle-cb" checked={_displayedAiEnabled} on:change={e => { if (!envLocks.ai) aiEnabled.set(e.target.checked); }} disabled={envLocks.ai} />
+    <input aria-label={$_('settings_trace_ct.enable_assistant')} type="checkbox" class="toggle-cb" checked={_displayedAiEnabled} on:change={e => { if (!envLocks.ai) aiEnabled.set(e.target.checked); }} disabled={envLocks.ai} />
   </div>
 
   {#if _displayedAiEnabled}
@@ -217,7 +217,7 @@
       <span class="setting-label">{$_('settings_trace_ct.provider')}</span>
       {#if envLocks.ai}
         <div class="select-wrap expand-left" style="width:220px">
-          <select class="select sel-sm" value={lockedProvider} disabled>
+          <select aria-label={$_('settings_trace_ct.provider')} class="select sel-sm" value={lockedProvider} disabled>
             <option value={lockedProvider}>{providerLabel(envLocks.ai_provider)}</option>
           </select>
         </div>
@@ -252,7 +252,7 @@
       <span class="setting-label">{$_('settings_trace_ct.model')}</span>
       {#if envLocks.ai}
         <div class="select-wrap" style="width:220px">
-          <select class="select sel-sm" value="locked" disabled>
+          <select aria-label={$_('settings_trace_ct.model')} class="select sel-sm" value="locked" disabled>
             <option value="locked">{envLocks.ai_model ? _modelLabel(envLocks.ai_model) : $_('settings_trace_ct.server_default')}</option>
           </select>
         </div>
@@ -272,7 +272,7 @@
       <div class="setting-divider"></div>
       <div class="setting-row">
         <span class="setting-label">{$_('settings_trace_ct.custom_model_id')}</span>
-        <input class="input" type="text" style="width:220px"
+        <input aria-label={$_('settings_trace_ct.custom_model_id')} class="input" type="text" style="width:220px"
           placeholder={$aiProvider === 'gemini' ? 'gemini-3.5-flash' : $aiProvider === 'claude' ? 'claude-sonnet-5' : 'gpt-4o'}
           bind:value={aiCustomModelVal} on:input={_syncModelFromSelect} />
       </div>
@@ -293,7 +293,7 @@
       <span class="setting-label">API Key</span>
       <div class="key-row">
         {#if showKey}
-          <input class="input" type="text"
+          <input aria-label="API Key" class="input" type="text"
             bind:value={aiApiKeyDraft}
             placeholder="sk-…"
             on:input={_invalidate} />
@@ -317,7 +317,7 @@
     <div class="setting-divider"></div>
     <div class="setting-row stack">
       <span class="setting-label">{$_('settings_trace_ct.assistant_name')}</span>
-      <input class="input" type="text" value={$aiAssistantName} placeholder={$_('settings_trace_ct.assistant_name_ph')}
+      <input aria-label={$_('settings_trace_ct.assistant_name')} class="input" type="text" value={$aiAssistantName} placeholder={$_('settings_trace_ct.assistant_name_ph')}
         on:change={e => aiAssistantName.set(e.target.value || 'Trace')} />
     </div>
 
@@ -333,7 +333,7 @@
           Hold the Trace button, speak a thought, and let Trace clean it up into a short note.
         </span>
       </div>
-      <input type="checkbox" class="toggle-cb"
+      <input aria-label={$_('settings_trace_ct.smart_log')} type="checkbox" class="toggle-cb"
         checked={$smartLogEnabled}
         on:change={e => smartLogEnabled.set(e.target.checked)} />
     </div>
@@ -345,7 +345,7 @@
         <span class="setting-label">{$_('trace_extract.auto_transcribe')}</span>
         <span class="setting-desc">{$_('trace_extract.auto_transcribe_desc')}</span>
       </div>
-      <input type="checkbox" class="toggle-cb" checked={$autoTranscribe} on:change={e => autoTranscribe.set(e.target.checked)} />
+      <input aria-label={$_('trace_extract.auto_transcribe')} type="checkbox" class="toggle-cb" checked={$autoTranscribe} on:change={e => autoTranscribe.set(e.target.checked)} />
     </div>
     {#if $autoTranscribe}
       <div class="setting-row">
@@ -353,7 +353,7 @@
           <span class="setting-label">{$_('trace_extract.auto_summarize')}</span>
           <span class="setting-desc">{$_('trace_extract.auto_summarize_desc')}</span>
         </div>
-        <input type="checkbox" class="toggle-cb" checked={$autoSummarizeLong} on:change={e => autoSummarizeLong.set(e.target.checked)} />
+        <input aria-label={$_('trace_extract.auto_summarize')} type="checkbox" class="toggle-cb" checked={$autoSummarizeLong} on:change={e => autoSummarizeLong.set(e.target.checked)} />
       </div>
     {/if}
     {#if $aiProvider === 'custom' || $aiProvider === 'openai'}
@@ -362,7 +362,7 @@
           <span class="setting-label">{$_('trace_extract.transcribe_model')}</span>
           <span class="setting-desc">{$_('trace_extract.transcribe_model_desc')}</span>
         </div>
-        <input class="input model-input" type="text" spellcheck="false" autocapitalize="none"
+        <input aria-label={$_('trace_extract.transcribe_model')} class="input model-input" type="text" spellcheck="false" autocapitalize="none"
           placeholder={$aiProvider === 'openai' ? 'gpt-4o-mini-transcribe' : 'whisper-1'}
           value={$aiTranscribeModel} on:change={e => aiTranscribeModel.set(e.target.value.trim())} />
       </div>
@@ -373,7 +373,7 @@
         <span class="setting-label">{$_('trace_extract.auto_read_images')}</span>
         <span class="setting-desc">{$_('trace_extract.auto_read_images_desc')}</span>
       </div>
-      <input type="checkbox" class="toggle-cb" checked={$autoReadImages} on:change={e => autoReadImages.set(e.target.checked)} />
+      <input aria-label={$_('trace_extract.auto_read_images')} type="checkbox" class="toggle-cb" checked={$autoReadImages} on:change={e => autoReadImages.set(e.target.checked)} />
     </div>
 
     <!-- Status row — Save runs the test on each click, so this is a

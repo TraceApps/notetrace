@@ -233,11 +233,11 @@
       {:else}
         <div class="create-form" transition:slide={{ duration: 160 }}>
           <div class="form-group">
-            <label class="form-label">{$_('settings_api_tokens_ct.form.name')}</label>
-            <input class="input" type="text" placeholder={$_('settings_api_tokens_ct.form.name_ph')} bind:value={newName} />
+            <label class="form-label" for="settings-api-tokens-field-1">{$_('settings_api_tokens_ct.form.name')}</label>
+            <input id="settings-api-tokens-field-1" class="input" type="text" placeholder={$_('settings_api_tokens_ct.form.name_ph')} bind:value={newName} />
           </div>
           <div class="form-group">
-            <label class="form-label">{$_('settings_api_tokens_ct.form.scopes')}</label>
+            <span class="form-label">{$_('settings_api_tokens_ct.form.scopes')}</span>
             {#if mcpState.enabled || mcpState.write || mcpState.destroy}
               <div class="mcp-status">
                 MCP on this server:
@@ -261,8 +261,8 @@
             </div>
           </div>
           <div class="form-group">
-            <label class="form-label">{$_('settings_api_tokens_ct.form.expires_label')}</label>
-            <input class="input" type="number" min="1" placeholder={$_('settings_api_tokens_ct.form.expires_ph')} bind:value={newExpiresDays} />
+            <label class="form-label" for="settings-api-tokens-field-2">{$_('settings_api_tokens_ct.form.expires_label')}</label>
+            <input id="settings-api-tokens-field-2" class="input" type="number" min="1" placeholder={$_('settings_api_tokens_ct.form.expires_ph')} bind:value={newExpiresDays} />
           </div>
           <div style="display:flex;gap:8px;margin-top:8px">
             <button class="btn btn-ghost" style="flex:1" on:click={() => { showCreateForm = false; newName = ''; }}>{$_('settings_api_tokens_ct.form.cancel')}</button>

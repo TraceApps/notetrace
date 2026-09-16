@@ -126,7 +126,7 @@
       <div>
         <span class="setting-label">{$_('import_export.include_trashed')}</span>
       </div>
-      <input type="checkbox" class="toggle-cb" bind:checked={includeTrashed} disabled={!!busy} />
+      <input aria-label={$_('import_export.include_trashed')} type="checkbox" class="toggle-cb" bind:checked={includeTrashed} disabled={!!busy} />
     </div>
     <div class="setting-divider"></div>
     <div class="setting-row">
@@ -145,7 +145,7 @@
       <div>
         <span class="setting-label">{$_('import_export.label_notebook')}</span>
       </div>
-      <input type="checkbox" class="toggle-cb" bind:checked={labelNotebook} disabled={!!busy} />
+      <input aria-label={$_('import_export.label_notebook')} type="checkbox" class="toggle-cb" bind:checked={labelNotebook} disabled={!!busy} />
     </div>
     <div class="setting-divider"></div>
     <div class="setting-row">
@@ -181,7 +181,7 @@
       <div>
         <span class="setting-label">{$_('import_export.tags_to_labels')}</span>
       </div>
-      <input type="checkbox" class="toggle-cb" bind:checked={tagsToLabels} disabled={!!busy} />
+      <input aria-label={$_('import_export.tags_to_labels')} type="checkbox" class="toggle-cb" bind:checked={tagsToLabels} disabled={!!busy} />
     </div>
     <div class="setting-divider"></div>
     <div class="setting-row">

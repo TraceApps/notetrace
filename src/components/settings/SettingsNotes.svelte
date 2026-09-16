@@ -38,7 +38,7 @@
         <div class="setting-desc">{$_('settings_page.notes.density_desc')}</div>
       </div>
       <div class="select-wrap" style="width:160px">
-        <select class="select sel-sm" value={$cardDensity} on:change={e => cardDensity.set(e.target.value)}>
+        <select aria-label={$_('settings_page.notes.density')} class="select sel-sm" value={$cardDensity} on:change={e => cardDensity.set(e.target.value)}>
           <option value="comfortable">{$_('settings_page.notes.density_comfortable')}</option>
           <option value="compact">{$_('settings_page.notes.density_compact')}</option>
         </select>
@@ -51,7 +51,7 @@
         <div class="setting-desc">{$_('settings_page.notes.note_order_desc')}</div>
       </div>
       <div class="select-wrap" style="width:160px">
-        <select class="select sel-sm" value={$noteSort} on:change={e => noteSort.set(e.target.value)}>
+        <select aria-label={$_('settings_page.notes.note_order')} class="select sel-sm" value={$noteSort} on:change={e => noteSort.set(e.target.value)}>
           <option value="edited">{$_('settings_page.notes.note_order_edited')}</option>
           <option value="custom">{$_('settings_page.notes.note_order_custom')}</option>
         </select>
@@ -63,7 +63,7 @@
         <span class="setting-label">{$_('settings_page.notes.tasks_all')}</span>
         <div class="setting-desc">{$_('settings_page.notes.tasks_all_desc')}</div>
       </div>
-      <input type="checkbox" class="toggle-cb" checked={$tasksAllChecklists} on:change={e => tasksAllChecklists.set(e.target.checked)} />
+      <input aria-label={$_('settings_page.notes.tasks_all')} type="checkbox" class="toggle-cb" checked={$tasksAllChecklists} on:change={e => tasksAllChecklists.set(e.target.checked)} />
     </div>
     {#if !hasKeyboard}
       <div class="setting-divider"></div>
@@ -72,7 +72,7 @@
           <span class="setting-label">{$_('settings_page.notes.swipe')}</span>
           <div class="setting-desc">{$_('settings_page.notes.swipe_desc')}</div>
         </div>
-        <input type="checkbox" class="toggle-cb" checked={$swipeToArchive} on:change={e => swipeToArchive.set(e.target.checked)} />
+        <input aria-label={$_('settings_page.notes.swipe')} type="checkbox" class="toggle-cb" checked={$swipeToArchive} on:change={e => swipeToArchive.set(e.target.checked)} />
       </div>
     {/if}
     {#if hasKeyboard}
@@ -93,7 +93,7 @@
           <span class="setting-label">{$_('settings_page.notes.link_previews')}</span>
           <div class="setting-desc">{$_('settings_page.notes.link_previews_desc')}</div>
         </div>
-        <input type="checkbox" class="toggle-cb" checked={$linkPreviews} on:change={e => linkPreviews.set(e.target.checked)} />
+        <input aria-label={$_('settings_page.notes.link_previews')} type="checkbox" class="toggle-cb" checked={$linkPreviews} on:change={e => linkPreviews.set(e.target.checked)} />
       </div>
     {/if}
   </div>

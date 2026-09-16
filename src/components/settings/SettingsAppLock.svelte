@@ -36,7 +36,7 @@
         <span class="setting-label">{$_('app_lock.enable')}</span>
         <span class="setting-desc">{$_('app_lock.enable_desc')}</span>
       </div>
-      <input type="checkbox" class="toggle-cb" checked={$appLockEnabled} on:change={onToggle} />
+      <input aria-label={$_('app_lock.enable')} type="checkbox" class="toggle-cb" checked={$appLockEnabled} on:change={onToggle} />
     </div>
     {#if $appLockEnabled}
       <div class="setting-divider"></div>
@@ -45,7 +45,7 @@
           <span class="setting-label">{$_('app_lock.timeout')}</span>
           <span class="setting-desc">{$_('app_lock.timeout_desc')}</span>
         </div>
-        <select class="select sel-sm" value={String($appLockTimeoutMin)} on:change={(e) => appLockTimeoutMin.set(Number(e.target.value))}>
+        <select aria-label={$_('app_lock.timeout')} class="select sel-sm" value={String($appLockTimeoutMin)} on:change={(e) => appLockTimeoutMin.set(Number(e.target.value))}>
           <option value="0">{$_('app_lock.timeout_now')}</option>
           <option value="1">{$_('app_lock.timeout_1')}</option>
           <option value="5">{$_('app_lock.timeout_5')}</option>

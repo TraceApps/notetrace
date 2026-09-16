@@ -121,7 +121,7 @@
         <span class="setting-label">{$_('settings_notifications.enable_on_device')}</span>
         <span class="setting-desc">{isNative ? $_('settings_notifications.enable_on_device_desc_native') : $_('settings_notifications.enable_on_device_desc_web')}</span>
       </div>
-      <input type="checkbox" class="toggle-cb" checked={$notifLocalEnabled}
+      <input aria-label={$_('settings_notifications.enable_on_device')} type="checkbox" class="toggle-cb" checked={$notifLocalEnabled}
         on:change={e => notifLocalEnabled.set(e.target.checked)} />
     </div>
     {#if isNative && !exactAlarms}
@@ -160,7 +160,7 @@
         <span class="setting-desc">{$_('settings_notifications.service_desc')}</span>
       </div>
       <div class="select-wrap">
-        <select class="select sel-sm" value={$notifPushService}
+        <select aria-label={$_('settings_notifications.service')} class="select sel-sm" value={$notifPushService}
           on:change={e => notifPushService.set(e.target.value)}>
           <option value="none">{$_('settings_notifications.svc_none')}</option>
           <option value="apprise">{$_('settings_notifications.svc_apprise')}</option>
@@ -173,34 +173,34 @@
     {#if $notifPushService === 'apprise'}
       <div class="setting-divider"></div>
       <div class="form-block">
-        <label class="form-label">{$_('settings_notifications.apprise_url')}</label>
-        <input class="input" type="url" placeholder="https://apprise.example.com"
+        <label class="form-label" for="settings-notifications-field-1">{$_('settings_notifications.apprise_url')}</label>
+        <input id="settings-notifications-field-1" class="input" type="url" placeholder="https://apprise.example.com"
           value={$appriseUrl} on:change={e => appriseUrl.set(e.target.value)} />
-        <label class="form-label">{$_('settings_notifications.apprise_tag')}</label>
-        <input class="input" type="text" placeholder={$_('settings_notifications.apprise_tag_placeholder')}
+        <label class="form-label" for="settings-notifications-field-2">{$_('settings_notifications.apprise_tag')}</label>
+        <input id="settings-notifications-field-2" class="input" type="text" placeholder={$_('settings_notifications.apprise_tag_placeholder')}
           value={$appriseTag} on:change={e => appriseTag.set(e.target.value)} />
       </div>
     {:else if $notifPushService === 'gotify'}
       <div class="setting-divider"></div>
       <div class="form-block">
-        <label class="form-label">{$_('settings_notifications.gotify_url')}</label>
-        <input class="input" type="url" placeholder="https://gotify.example.com"
+        <label class="form-label" for="settings-notifications-field-3">{$_('settings_notifications.gotify_url')}</label>
+        <input id="settings-notifications-field-3" class="input" type="url" placeholder="https://gotify.example.com"
           value={$gotifyUrl} on:change={e => gotifyUrl.set(e.target.value)} />
-        <label class="form-label">{$_('settings_notifications.app_token')}</label>
-        <input class="input" type="text"
+        <label class="form-label" for="settings-notifications-field-4">{$_('settings_notifications.app_token')}</label>
+        <input id="settings-notifications-field-4" class="input" type="text"
           value={$gotifyToken} on:change={e => gotifyToken.set(e.target.value)} />
       </div>
     {:else if $notifPushService === 'ntfy'}
       <div class="setting-divider"></div>
       <div class="form-block">
-        <label class="form-label">{$_('settings_notifications.ntfy_server')}</label>
-        <input class="input" type="url" placeholder="https://ntfy.sh"
+        <label class="form-label" for="settings-notifications-field-5">{$_('settings_notifications.ntfy_server')}</label>
+        <input id="settings-notifications-field-5" class="input" type="url" placeholder="https://ntfy.sh"
           value={$ntfyUrl} on:change={e => ntfyUrl.set(e.target.value)} />
-        <label class="form-label">{$_('settings_notifications.topic')}</label>
-        <input class="input" type="text" placeholder="notetrace-myhome"
+        <label class="form-label" for="settings-notifications-field-6">{$_('settings_notifications.topic')}</label>
+        <input id="settings-notifications-field-6" class="input" type="text" placeholder="notetrace-myhome"
           value={$ntfyTopic} on:change={e => ntfyTopic.set(e.target.value)} />
-        <label class="form-label">{$_('settings_notifications.ntfy_token')}</label>
-        <input class="input" type="text"
+        <label class="form-label" for="settings-notifications-field-7">{$_('settings_notifications.ntfy_token')}</label>
+        <input id="settings-notifications-field-7" class="input" type="text"
           value={$ntfyToken} on:change={e => ntfyToken.set(e.target.value)} />
       </div>
     {/if}
@@ -232,7 +232,7 @@
         <span class="setting-label">{$_('settings_notifications.note_reminders')}</span>
         <span class="setting-desc">{$_('settings_notifications.note_reminders_desc')}</span>
       </div>
-      <input type="checkbox" class="toggle-cb" checked={notifNoteReminders}
+      <input aria-label={$_('settings_notifications.note_reminders')} type="checkbox" class="toggle-cb" checked={notifNoteReminders}
         on:change={e => { notifNoteReminders = e.target.checked; toggleReminder('notifNoteReminders', e.target.checked); }} />
     </div>
     <div class="setting-divider"></div>
@@ -241,13 +241,13 @@
         <span class="setting-label">{$_('settings_notifications.tasks_due')}</span>
         <span class="setting-desc">{$_('settings_notifications.tasks_due_desc')}</span>
       </div>
-      <input type="checkbox" class="toggle-cb" checked={notifTasksDue}
+      <input aria-label={$_('settings_notifications.tasks_due')} type="checkbox" class="toggle-cb" checked={notifTasksDue}
         on:change={e => { notifTasksDue = e.target.checked; toggleReminder('notifTasksDue', e.target.checked); window.dispatchEvent(new CustomEvent('note:tasks-digest-changed')); }} />
     </div>
     {#if notifTasksDue}
       <div class="setting-row">
         <span class="setting-label">{$_('settings_notifications.tasks_due_time')}</span>
-        <input class="input time-input" type="time" value={tasksDigestTime}
+        <input aria-label={$_('settings_notifications.tasks_due_time')} class="input time-input" type="time" value={tasksDigestTime}
           on:change={e => { tasksDigestTime = e.target.value || '09:00'; setS('tasksDigestTime', tasksDigestTime); window.dispatchEvent(new CustomEvent('note:tasks-digest-changed')); }} />
       </div>
     {/if}

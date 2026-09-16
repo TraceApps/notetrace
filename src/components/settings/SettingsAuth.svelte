@@ -426,7 +426,7 @@
           <div class="oidc-form" transition:slide={{ duration: 180 }}>
             {#if !oidcEditing.id}
               <div class="form-group">
-                <label class="form-label">{$_('settings_auth_extra.provider_type')}</label>
+                <span class="form-label">{$_('settings_auth_extra.provider_type')}</span>
                 <div class="oidc-preset-grid">
                   {#each PROVIDER_PRESETS as preset (preset.id)}
                     <button
@@ -454,23 +454,23 @@
               </div>
             {/if}
             <div class="form-group">
-              <label class="form-label">{$_('settings_auth_extra.display_name')}</label>
-              <input class="input" bind:value={oidcEditing.display_name} placeholder={oidcPreset.defaults.display_name || 'Authentik / Pocket ID / Google'} />
+              <label class="form-label" for="settings-auth-field-1">{$_('settings_auth_extra.display_name')}</label>
+              <input id="settings-auth-field-1" class="input" bind:value={oidcEditing.display_name} placeholder={oidcPreset.defaults.display_name || 'Authentik / Pocket ID / Google'} />
             </div>
             <div class="form-group">
-              <label class="form-label">Issuer URL *</label>
-              <input class="input" bind:value={oidcEditing.issuer_url} placeholder={oidcPreset.issuer_hint} autocomplete="url" />
+              <label class="form-label" for="settings-auth-field-2">Issuer URL *</label>
+              <input id="settings-auth-field-2" class="input" bind:value={oidcEditing.issuer_url} placeholder={oidcPreset.issuer_hint} autocomplete="url" />
             </div>
             <div class="form-group">
-              <label class="form-label">Client ID *</label>
-              <input class="input" bind:value={oidcEditing.client_id} autocomplete="off" />
+              <label class="form-label" for="settings-auth-field-3">Client ID *</label>
+              <input id="settings-auth-field-3" class="input" bind:value={oidcEditing.client_id} autocomplete="off" />
             </div>
             <div class="form-group">
-              <label class="form-label">Client Secret {oidcEditing.id ? '(leave blank to keep existing)' : '*'}</label>
-              <input class="input" type="password" bind:value={oidcEditing.client_secret} autocomplete="off" />
+              <label class="form-label" for="settings-auth-field-4">Client Secret {oidcEditing.id ? '(leave blank to keep existing)' : '*'}</label>
+              <input id="settings-auth-field-4" class="input" type="password" bind:value={oidcEditing.client_secret} autocomplete="off" />
             </div>
             <div class="form-group">
-              <label class="form-label">Redirect URIs *</label>
+              <span class="form-label">Redirect URIs *</span>
               {#each oidcEditing.redirect_uris as uri, i}
                 <div style="display:flex;gap:6px;margin-bottom:4px">
                   <input class="input" style="flex:1" bind:value={oidcEditing.redirect_uris[i]} placeholder="https://notetrace.app/api/auth/oidc/callback/{oidcEditing.id || ':providerId'}" />
@@ -483,12 +483,12 @@
               <div class="text-3 text-sm" style="margin-top:4px">Must match exactly what your IdP has configured. The path is <code>/api/auth/oidc/callback/&lt;provider-id&gt;</code> under your NoteTrace base URL.</div>
             </div>
             <div class="form-group">
-              <label class="form-label">{$_('settings_auth_extra.scope')}</label>
-              <input class="input" bind:value={oidcEditing.scope} />
+              <label class="form-label" for="settings-auth-field-5">{$_('settings_auth_extra.scope')}</label>
+              <input id="settings-auth-field-5" class="input" bind:value={oidcEditing.scope} />
             </div>
             <div class="form-group">
-              <label class="form-label">{$_('settings_auth_extra.token_endpoint_auth_method')}</label>
-              <select class="select" bind:value={oidcEditing.token_endpoint_auth_method}>
+              <label class="form-label" for="settings-auth-field-6">{$_('settings_auth_extra.token_endpoint_auth_method')}</label>
+              <select id="settings-auth-field-6" class="select" bind:value={oidcEditing.token_endpoint_auth_method}>
                 <option value="client_secret_post">client_secret_post (default)</option>
                 <option value="client_secret_basic">client_secret_basic</option>
                 <option value="none">none (PKCE-only public client)</option>
@@ -517,21 +517,21 @@
             </div>
             {#if !oidcPreset.hides?.includes('admin_group_claim')}
               <div class="form-group">
-                <label class="form-label">Admin Group Claim (Optional)</label>
-                <input class="input" bind:value={oidcEditing.admin_group_claim} placeholder="groups" />
+                <label class="form-label" for="settings-auth-field-7">Admin Group Claim (Optional)</label>
+                <input id="settings-auth-field-7" class="input" bind:value={oidcEditing.admin_group_claim} placeholder="groups" />
                 <div class="text-3 text-sm">Name of the claim that lists user groups. Common: <code>groups</code>.</div>
               </div>
             {/if}
             {#if !oidcPreset.hides?.includes('admin_group_value')}
               <div class="form-group">
-                <label class="form-label">Admin Group Value (Optional)</label>
-                <input class="input" bind:value={oidcEditing.admin_group_value} placeholder={$_('settings_auth_extra.admin_group_value_ph')} />
+                <label class="form-label" for="settings-auth-field-8">Admin Group Value (Optional)</label>
+                <input id="settings-auth-field-8" class="input" bind:value={oidcEditing.admin_group_value} placeholder={$_('settings_auth_extra.admin_group_value_ph')} />
                 <div class="text-3 text-sm">If a user's groups claim contains this value, they're set to admin on each login.</div>
               </div>
             {/if}
             <div class="form-group">
-              <label class="form-label">Logo URL (Optional)</label>
-              <input class="input" bind:value={oidcEditing.logo_url} placeholder="https://…/authentik.png" />
+              <label class="form-label" for="settings-auth-field-9">Logo URL (Optional)</label>
+              <input id="settings-auth-field-9" class="input" bind:value={oidcEditing.logo_url} placeholder="https://…/authentik.png" />
             </div>
             <div style="display:flex;gap:8px;margin-top:8px">
               <button class="btn btn-ghost" style="flex:1" on:click={cancelProviderEdit}>{$_('settings_auth_extra.cancel')}</button>

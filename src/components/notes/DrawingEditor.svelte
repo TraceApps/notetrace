@@ -18,6 +18,7 @@
   import { fade } from 'svelte/transition';
   import { _ } from 'svelte-i18n';
   import { portal } from '../../lib/portal.js';
+  import { dialogFocus } from '../../lib/dialog-focus.js';
   import { onBack } from '../../lib/back-stack.js';
   import { emptyDrawing, parseDrawing, strokesBounds, strokeHit, strokesInLasso, moveStroke, MAX_BOARD_HEIGHT } from '../../../server/lib/drawing-meta.js';
   import { PALETTE, HIGHLIGHTS, SIZES, SHEET, INK, drawSheet, drawStroke, inkFor } from '../../lib/drawing-render.js';
@@ -113,13 +114,17 @@
     if (!stage || !canvas) return;
     const r = stage.getBoundingClientRect();
     const first = !vw;
+    const prevW = vw;
     vw = r.width; vh = r.height;
     dpr = Math.min(3, window.devicePixelRatio || 1);
     canvas.width = Math.round(vw * dpr);
     canvas.height = Math.round(vh * dpr);
     canvas.style.width = `${vw}px`;
     canvas.style.height = `${vh}px`;
-    if (first) fit(); else { fitScale = Math.max(0.05, Math.min(3, (vw - 24) / doc.w)); clampView(); baseDirty = true; redraw(); }
+    // Still at the fitted zoom (not zoomed or panned by hand): fit the new size, so
+    // unfolding a phone or turning it gives a sheet as wide as the screen again.
+    const atFit = Math.abs(scale - fitScale) < 0.001 && Math.abs(ox - (prevW - doc.w * scale) / 2) < 1;
+    if (first || atFit) fit(); else { fitScale = Math.max(0.05, Math.min(3, (vw - 24) / doc.w)); clampView(); baseDirty = true; redraw(); }
   }
 
   // ── Painting ─────────────────────────────────────────────────────
@@ -417,7 +422,7 @@
   $: drawTool = DRAW_TOOLS.includes(tool);
 </script>
 
-<div class="dw" use:portal role="dialog" aria-modal="true" aria-label={$_('drawing.title')} transition:fade={{ duration: 140 }}>
+<div class="dw" use:portal role="dialog" aria-modal="true" tabindex="-1" use:dialogFocus aria-label={$_('drawing.title')} transition:fade={{ duration: 140 }}>
   <header class="dw-bar">
     <button class="dw-btn" on:click={done} aria-label={$_('drawing.close')} title={$_('drawing.close')} disabled={busy}>
       <span class="material-symbols-rounded">arrow_back</span>

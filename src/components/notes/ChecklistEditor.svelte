@@ -193,6 +193,7 @@
         <button type="button" class="check" aria-label={$_('notes.check_item')} on:click={() => toggle(item)}></button>
         <textarea
           class="item-text"
+          aria-label={$_('notes.list_item')}
           rows="1"
           bind:this={inputs[item.uuid]}
           bind:value={item.text}
@@ -225,7 +226,7 @@
   {#if editable}
     <div class="item add-row">
       <span class="material-symbols-rounded add-icon">add</span>
-      <input class="item-text" placeholder={$_('notes.list_item')} bind:value={newText}
+      <input class="item-text" aria-label={$_('notes.list_item')} placeholder={$_('notes.list_item')} bind:value={newText}
         on:keydown={onNewKeydown} on:blur={addFromNewRow} />
     </div>
   {/if}
@@ -255,7 +256,7 @@
   {/if}
 </div>
 
-<Popover bind:open={dueOpen} anchor={dueAnchor}>
+<Popover bind:open={dueOpen} anchor={dueAnchor} label={$_('due.title')}>
   {#if dueOpen}<DuePicker value={dueFor?.due_date || null} repeat={dueFor?.due_repeat || null} repeats
     on:select={(e) => setDue(e.detail)} on:repeat={(e) => setRepeat(e.detail)} />{/if}
 </Popover>

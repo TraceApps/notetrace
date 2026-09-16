@@ -98,18 +98,19 @@
       {/if}
 
       <div class="form-group">
-        <label class="form-label">{$_('accept_invite.username_label')}</label>
-        <input class="input" type="text" autocomplete="username"
+        <label class="form-label" for="accept-invite-field-1">{$_('accept_invite.username_label')}</label>
+        <!-- svelte-ignore a11y_autofocus (the one thing this page is for) -->
+        <input id="accept-invite-field-1" class="input" type="text" autocomplete="username"
           bind:value={username} placeholder={$_('accept_invite.username_placeholder')} autofocus />
       </div>
       <div class="form-group">
-        <label class="form-label">{$_('accept_invite.full_name_label')}</label>
-        <input class="input" type="text" autocomplete="name"
+        <label class="form-label" for="accept-invite-field-2">{$_('accept_invite.full_name_label')}</label>
+        <input id="accept-invite-field-2" class="input" type="text" autocomplete="name"
           bind:value={fullName} placeholder={$_('accept_invite.full_name_placeholder')} />
       </div>
       <div class="form-group">
-        <label class="form-label">{$_('accept_invite.password_label')}</label>
-        <input class="input" type="password" autocomplete="new-password"
+        <label class="form-label" for="accept-invite-field-3">{$_('accept_invite.password_label')}</label>
+        <input id="accept-invite-field-3" class="input" type="password" autocomplete="new-password"
           passwordrules="minlength: 8; required: upper; required: lower; required: digit; required: special;"
           bind:value={password} placeholder={$_('reset_password.password_placeholder')} />
         {#if password}
@@ -120,8 +121,8 @@
         {/if}
       </div>
       <div class="form-group">
-        <label class="form-label">{$_('accept_invite.confirm_label')}</label>
-        <input class="input" type="password" autocomplete="new-password"
+        <label class="form-label" for="accept-invite-field-4">{$_('accept_invite.confirm_label')}</label>
+        <input id="accept-invite-field-4" class="input" type="password" autocomplete="new-password"
           passwordrules="minlength: 8; required: upper; required: lower; required: digit; required: special;"
           bind:value={confirm} on:keydown={e => e.key === 'Enter' && submit()} />
         {#if confirm && password !== confirm}

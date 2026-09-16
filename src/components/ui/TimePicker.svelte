@@ -1,4 +1,5 @@
 <script>
+  import { dialogFocus } from '../../lib/dialog-focus.js';
   import { _ } from 'svelte-i18n';
   import { createEventDispatcher } from 'svelte';
   import { portal } from '../../lib/portal.js';
@@ -74,9 +75,12 @@
 </button>
 
 {#if open}
-  <div use:portal class="tp-backdrop" role="dialog" aria-modal="true"
-    on:click|self={() => open = false} on:keydown={() => {}}>
-    <div class="tp-sheet" on:click|stopPropagation on:keydown={() => {}}>
+  <div use:portal class="tp-backdrop" role="presentation"
+    on:click|self={() => open = false}>
+    <!-- svelte-ignore a11y_click_events_have_key_events (keys: dialogFocus) -->
+    <div class="tp-sheet" role="dialog" aria-modal="true" aria-label={label || undefined} tabindex="-1"
+      use:dialogFocus={{ onEscape: () => { open = false; } }}
+      on:click|stopPropagation>
       <div class="tp-handle"></div>
 
       <!-- Preview -->

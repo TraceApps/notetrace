@@ -689,36 +689,36 @@
     </div>
 
     <div class="cp-slider-group">
-      <label class="form-label">Hue</label>
+      <label class="form-label" for="settings-field-1">Hue</label>
       <div class="cp-slider-wrap">
-        <input type="range" class="cp-slider cp-hue" min="0" max="360"
+        <input id="settings-field-1" type="range" class="cp-slider cp-hue" min="0" max="360"
           bind:value={cpHue} on:input={cpUpdateFromSliders} />
       </div>
     </div>
 
     <div class="cp-slider-group">
-      <label class="form-label">{$_('settings_page.custom_color.saturation')}</label>
+      <label class="form-label" for="settings-field-2">{$_('settings_page.custom_color.saturation')}</label>
       <div class="cp-slider-wrap">
-        <input type="range" class="cp-slider cp-sat" min="0" max="100"
+        <input id="settings-field-2" type="range" class="cp-slider cp-sat" min="0" max="100"
           bind:value={cpSat} on:input={cpUpdateFromSliders}
           style="--cp-sat-lo:hsl({cpHue},0%,{cpLgt}%);--cp-sat-hi:hsl({cpHue},100%,{cpLgt}%)" />
       </div>
     </div>
 
     <div class="cp-slider-group">
-      <label class="form-label">{$_('settings_page.custom_color.lightness')}</label>
+      <label class="form-label" for="settings-field-3">{$_('settings_page.custom_color.lightness')}</label>
       <div class="cp-slider-wrap">
-        <input type="range" class="cp-slider cp-lgt" min="0" max="100"
+        <input id="settings-field-3" type="range" class="cp-slider cp-lgt" min="0" max="100"
           bind:value={cpLgt} on:input={cpUpdateFromSliders}
           style="--cp-lgt-lo:hsl({cpHue},{cpSat}%,0%);--cp-lgt-mid:hsl({cpHue},{cpSat}%,50%);--cp-lgt-hi:hsl({cpHue},{cpSat}%,100%)" />
       </div>
     </div>
 
     <div class="cp-slider-group">
-      <label class="form-label">RGB</label>
+      <label class="form-label" for="settings-field-4">RGB</label>
       <div class="cp-rgb-row">
         <div class="cp-rgb-field">
-          <input class="input cp-rgb-input" type="number" min="0" max="255" bind:value={cpR} on:input={cpUpdateFromRgb} />
+          <input id="settings-field-4" class="input cp-rgb-input" type="number" min="0" max="255" bind:value={cpR} on:input={cpUpdateFromRgb} />
           <span class="cp-rgb-label">R</span>
         </div>
         <div class="cp-rgb-field">
@@ -733,10 +733,10 @@
     </div>
 
     <div class="cp-slider-group">
-      <label class="form-label">{$_('settings_page.custom_color.hex_code')}</label>
+      <label class="form-label" for="settings-field-5">{$_('settings_page.custom_color.hex_code')}</label>
       <div class="cp-hex-row">
         <span class="cp-hex-dot" style="background:{/^#[0-9a-fA-F]{6}$/.test(customHexInput) ? customHexInput : '#ccc'}"></span>
-        <input class="input" type="text" placeholder="#rrggbb" maxlength="7"
+        <input id="settings-field-5" class="input" type="text" placeholder="#rrggbb" maxlength="7"
           style="font-family:monospace;letter-spacing:0.05em;flex:1"
           bind:value={customHexInput}
           on:input={cpUpdateFromHex}
@@ -904,6 +904,9 @@
     font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
     color: var(--accent); background: var(--accent-dim);
     padding: 2px 8px; border-radius: var(--radius-full, 999px);
+  }
+  :global([data-theme="light"]) .profile-hero-role {
+    color: color-mix(in srgb, var(--accent) 70%, #000);
   }
   .profile-hero-sub { font-size: 13px; color: var(--text-3); }
   .profile-hero-chev { color: var(--text-3); flex-shrink: 0; }

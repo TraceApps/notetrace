@@ -163,7 +163,7 @@
   function onKey(e) { if (e.key === 'Enter') login(); }
 </script>
 
-<div class="login-page">
+<main class="login-page">
   <div class="login-card card">
     <div class="login-logo">
       <img src={iconUrl('/icons/logo.png')} alt="NoteTrace" class="logo-img" />
@@ -192,15 +192,16 @@
 
       {#if passwordLoginEnabled}
         <div class="form-group">
-          <label class="form-label">{$_('login.username')}</label>
-          <input class="input" type="text" autocomplete="username"
+          <label class="form-label" for="login-field-1">{$_('login.username')}</label>
+          <!-- svelte-ignore a11y_autofocus (the one thing this page is for) -->
+          <input id="login-field-1" class="input" type="text" autocomplete="username"
             bind:value={username} on:keydown={onKey}
             placeholder={$_('login.username_placeholder')} autofocus />
         </div>
 
         <div class="form-group">
-          <label class="form-label">{$_('login.password')}</label>
-          <input class="input" type="password" autocomplete="current-password"
+          <label class="form-label" for="login-field-2">{$_('login.password')}</label>
+          <input id="login-field-2" class="input" type="password" autocomplete="current-password"
             bind:value={password} on:keydown={onKey}
             placeholder={$_('login.password_placeholder')} />
         </div>
@@ -248,7 +249,7 @@
       </div>
     {/if}
   </div>
-</div>
+</main>
 
 <style>
   .login-page {

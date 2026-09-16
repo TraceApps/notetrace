@@ -51,8 +51,9 @@
       </p>
 
       <div class="form-group">
-        <label class="form-label">{$_('forgot_password.email_label')}</label>
-        <input class="input" type="email" autocomplete="email"
+        <label class="form-label" for="forgot-password-field-1">{$_('forgot_password.email_label')}</label>
+        <!-- svelte-ignore a11y_autofocus (the one thing this page is for) -->
+        <input id="forgot-password-field-1" class="input" type="email" autocomplete="email"
           bind:value={email}
           on:keydown={e => e.key === 'Enter' && submit()}
           placeholder="you@example.com" autofocus />

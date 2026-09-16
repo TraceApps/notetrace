@@ -46,6 +46,7 @@
   import { growOnScroll } from '../lib/grow-on-scroll.js';
   import { searchTerms } from '../lib/highlight.js';
   import { portal } from '../lib/portal.js';
+  import { dialogFocus } from '../lib/dialog-focus.js';
   import { itemAfterPatch } from '../../server/lib/task-rules.js';
   import { todayStr } from '../lib/due-dates.js';
   import { NOTE_COLORS, colorDot } from '../lib/note-colors.js';
@@ -849,6 +850,7 @@
 <div class="page-shell notes-page" class:workspace-page={splitPane && !loading}>
   <header class="page-header notes-header" class:searching={searchOpen} class:banner-gradient={$bannerStyle === 'gradient'} class:banner-animated={$bannerStyle === 'animated'}>
     {#if searchOpen}
+      <h1 class="sr-only">{heading}</h1>
       <div class="header-search" role="search" in:fade={{ duration: 140 }}>
         <span class="material-symbols-rounded">search</span>
         <input type="search" bind:this={searchEl} placeholder={$_('notes.search_in', { values: { view: heading } })} bind:value={query} on:input={onSearch}
@@ -1129,8 +1131,8 @@
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
   <div class="fab-scrim" on:click={() => fabMenu = false} transition:fade|global={{ duration: 150 }}></div>
-  <div class="fab-menu" role="menu" tabindex="-1" aria-label={$_('notes.new_note')}
-    on:keydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); fabMenu = false; } }}>
+  <div class="fab-menu" role="group" aria-label={$_('notes.new_note')} use:dialogFocus={{ onEscape: () => { fabMenu = false; } }}
+    >
     {#each [
       ...(templates.length ? [['template', 'note_stack', 'templates.menu', openTemplatePicker]] : []),
       ['image', 'add_photo_alternate', 'notes.menu_image', () => captureImageInput.click()],
@@ -1139,7 +1141,7 @@
       ['list', 'checklist', 'notes.menu_list', () => newNote('checklist')],
       ['text', 'edit_note', 'notes.menu_text', () => newNote('text')],
     ] as [key, icon, label, action], i (key)}
-      <button class="fab-item" role="menuitem" on:click={() => fromFabMenu(action)}
+      <button class="fab-item" on:click={() => fromFabMenu(action)}
         in:fly|global={{ y: 12, duration: 180, delay: Math.max(0, (templates.length ? 5 : 4) - i) * 30 }} out:fade|global={{ duration: 100 }}>
         <span class="fab-item-label">{$_(label)}</span>
         <span class="material-symbols-rounded fab-item-icon">{icon}</span>
@@ -1162,14 +1164,14 @@
   {/key}
 {/if}
 
-<Popover bind:open={colorOpen} anchor={colorAnchor}>
+<Popover bind:open={colorOpen} anchor={colorAnchor} label={$_('notes.color')}>
   <ColorPalette value={colorTarget?.color} on:select={(e) => setColor(e.detail)} />
 </Popover>
-<Popover bind:open={reminderOpen} anchor={reminderAnchor}>
+<Popover bind:open={reminderOpen} anchor={reminderAnchor} label={$_('reminders.remind_me')}>
   <ReminderPicker reminderAt={reminderTarget?.reminder_at} repeat={reminderTarget?.reminder_rrule} tz={reminderTarget?.reminder_tz}
     on:set={(e) => setReminder(e.detail)} on:clear={clearReminder} />
 </Popover>
-<Popover bind:open={labelOpen} anchor={labelAnchor}>
+<Popover bind:open={labelOpen} anchor={labelAnchor} label={$_('notes.labels')}>
   <LabelPicker selected={labelTarget?.labels || []} on:change={(e) => setLabels(e.detail)} />
 </Popover>
 {#if selecting}
@@ -1228,17 +1230,17 @@
     </button>
   </div>
 {/if}
-<Popover bind:open={bulkColorOpen} anchor={bulkColorAnchor}>
+<Popover bind:open={bulkColorOpen} anchor={bulkColorAnchor} label={$_('notes.color')}>
   <ColorPalette value={null} on:select={(e) => bulkColor(e.detail)} />
 </Popover>
-<Popover bind:open={bulkLabelOpen} anchor={bulkLabelAnchor}>
+<Popover bind:open={bulkLabelOpen} anchor={bulkLabelAnchor} label={$_('notes.labels')}>
   <LabelPicker selected={sharedLabels} on:change={(e) => bulkLabels(e.detail)} />
 </Popover>
-<Popover bind:open={bulkReminderOpen} anchor={bulkReminderAnchor}>
+<Popover bind:open={bulkReminderOpen} anchor={bulkReminderAnchor} label={$_('reminders.remind_me')}>
   <ReminderPicker reminderAt={null} repeat={null} tz={null} on:set={(e) => bulkReminder(e.detail)} on:clear={bulkClearReminder} />
 </Popover>
 <ShortcutsHelp bind:open={helpOpen} />
-<Popover bind:open={viewOpen} anchor={viewAnchor}>
+<Popover bind:open={viewOpen} anchor={viewAnchor} label={$_('list.layout')}>
   <div class="view-menu" role="menu">
     <p class="vm-title">{$_('list.layout')}</p>
     {#each [['grid', 'grid_view', 'timeline.show_grid', 'list.grid_desc'], ['list', 'view_list', 'timeline.show_list', 'list.list_desc'], ['timeline', 'view_timeline', 'timeline.show_timeline', 'list.timeline_desc']] as [value, icon, label, desc]}
@@ -1259,7 +1261,7 @@
     {/if}
   </div>
 </Popover>
-<Popover bind:open={newOpen} anchor={newAnchor}>
+<Popover bind:open={newOpen} anchor={newAnchor} label={$_('notes.new_note')}>
   <div class="view-menu new-menu" role="menu">
     <button class="vm-row" role="menuitem" on:click={() => { newOpen = false; newNote('text'); }}>
       <span class="material-symbols-rounded">edit_note</span><span class="vm-text"><strong>{$_('notes.new_note')}</strong></span>

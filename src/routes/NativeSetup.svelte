@@ -184,8 +184,8 @@
     {:else if step === 'server-url'}
       <div class="setup-form">
         <div class="form-group">
-          <label class="form-label">{$_('native_setup_ct.server_url')}</label>
-          <input
+          <label class="form-label" for="native-setup-field-1">{$_('native_setup_ct.server_url')}</label>
+          <input id="native-setup-field-1"
             class="input"
             type="url"
             placeholder="https://notetrace.example.com"
@@ -247,8 +247,8 @@
         {/if}
         {#if passwordLoginEnabled}
           <div class="form-group">
-            <label class="form-label">{$_('native_setup_ct.username')}</label>
-            <input
+            <label class="form-label" for="native-setup-field-2">{$_('native_setup_ct.username')}</label>
+            <input id="native-setup-field-2"
               class="input"
               type="text"
               placeholder={$_('native_setup_ct.username_ph')}
@@ -258,7 +258,7 @@
             />
           </div>
           <div class="form-group">
-            <label class="form-label">{$_('native_setup_ct.password')}</label>
+            <span class="form-label">{$_('native_setup_ct.password')}</span>
             <div style="position:relative">
               {#if showPw}
                 <input class="input" type="text" placeholder={$_('native_setup_ct.password_ph')} bind:value={password} style="padding-right:40px" />

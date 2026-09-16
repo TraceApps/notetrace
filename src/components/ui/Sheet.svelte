@@ -4,6 +4,7 @@
   import { createEventDispatcher } from 'svelte';
   import { _ } from 'svelte-i18n';
   import { portal } from '../../lib/portal.js';
+  import { dialogFocus } from '../../lib/dialog-focus.js';
 
   export let open   = false;
   export let title  = '';
@@ -43,6 +44,8 @@
       role="dialog"
       aria-modal="true"
       aria-label={title}
+      tabindex="-1"
+      use:dialogFocus={{ onEscape: close }}
     >
       <!-- Handle bar -->
       <div class="sheet-handle"></div>

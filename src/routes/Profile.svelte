@@ -339,28 +339,28 @@
       <div class="editor-card-title">{$_('profile.personal_info')}</div>
 
       <div class="form-group">
-        <label class="form-label">{$_('profile.full_name')}</label>
-        <input class="input" type="text" placeholder={$_('profile.full_name_placeholder')} bind:value={full_name} />
+        <label class="form-label" for="profile-field-1">{$_('profile.full_name')}</label>
+        <input id="profile-field-1" class="input" type="text" placeholder={$_('profile.full_name_placeholder')} bind:value={full_name} />
       </div>
       {#if !_isLocal}
       <div class="form-group">
-        <label class="form-label">{$_('forgot_password.email_label')}</label>
-        <input class="input" type="email" autocomplete="email"
+        <label class="form-label" for="profile-field-2">{$_('forgot_password.email_label')}</label>
+        <input id="profile-field-2" class="input" type="email" autocomplete="email"
           placeholder={$_('profile.email_placeholder')} bind:value={email} />
       </div>
       {/if}
       <div class="form-group">
-        <label class="form-label">{$_('profile.nickname')}</label>
-        <input class="input" type="text" placeholder={$_('profile.nickname_placeholder')} bind:value={nickname} />
+        <label class="form-label" for="profile-field-3">{$_('profile.nickname')}</label>
+        <input id="profile-field-3" class="input" type="text" placeholder={$_('profile.nickname_placeholder')} bind:value={nickname} />
       </div>
       <div class="form-group">
-        <label class="form-label">{$_('profile.birthday')}</label>
+        <span class="form-label">{$_('profile.birthday')}</span>
         <DateInput bind:value={birthday} max={localDateStr()} />
       </div>
       <div class="form-group">
-        <label class="form-label">{$_('profile.gender')}</label>
+        <label class="form-label" for="profile-field-4">{$_('profile.gender')}</label>
         <div class="select-wrap">
-          <select class="select" bind:value={gender}>
+          <select id="profile-field-4" class="select" bind:value={gender}>
             <option value="">{$_('profile.gender_unset')}</option>
             {#each GENDERS as g}<option value={g}>{g}</option>{/each}
           </select>
@@ -425,13 +425,13 @@
       {:else}
         {#if hasPassword}
           <div class="form-group">
-            <label class="form-label">{$_('profile.current_password')}</label>
-            <input class="input" type="password" bind:value={cur_password} />
+            <label class="form-label" for="profile-field-5">{$_('profile.current_password')}</label>
+            <input id="profile-field-5" class="input" type="password" bind:value={cur_password} />
           </div>
         {/if}
         <div class="form-group">
-          <label class="form-label">{$_('reset_password.new_password')}</label>
-          <input class="input" type="password" autocomplete="new-password" passwordrules="minlength: 8; required: upper; required: lower; required: digit; required: special;" bind:value={new_password} placeholder={$_('reset_password.password_placeholder')} />
+          <label class="form-label" for="profile-field-6">{$_('reset_password.new_password')}</label>
+          <input id="profile-field-6" class="input" type="password" autocomplete="new-password" passwordrules="minlength: 8; required: upper; required: lower; required: digit; required: special;" bind:value={new_password} placeholder={$_('reset_password.password_placeholder')} />
           {#if new_password}
             <div class="pw-strength" class:s-0={pwScore.score === 0} class:s-1={pwScore.score === 1} class:s-2={pwScore.score === 2} class:s-3={pwScore.score === 3} class:s-4={pwScore.score === 4}>
               <div class="pw-bar"><div class="pw-fill" style:width={`${(pwScore.score / 4) * 100}%`}></div></div>
@@ -440,8 +440,8 @@
           {/if}
         </div>
         <div class="form-group">
-          <label class="form-label">{$_('profile.confirm_new_password')}</label>
-          <input class="input" type="password" autocomplete="new-password" passwordrules="minlength: 8; required: upper; required: lower; required: digit; required: special;" bind:value={new_password2} />
+          <label class="form-label" for="profile-field-7">{$_('profile.confirm_new_password')}</label>
+          <input id="profile-field-7" class="input" type="password" autocomplete="new-password" passwordrules="minlength: 8; required: upper; required: lower; required: digit; required: special;" bind:value={new_password2} />
           {#if new_password2 && new_password !== new_password2}
             <p class="pw-mismatch">{$_('reset_password.errors.mismatch')}</p>
           {/if}

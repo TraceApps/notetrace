@@ -269,7 +269,8 @@ export const sidebarPersistent = createSettingStore('sidebarPersistent', true);
 export const sidebarRail = createSettingStore('sidebarRail', false);
 export const sidebarRailMedium = createSettingStore('sidebarRailMedium', true);
 export const sidebarLabelsCollapsed = createSettingStore('sidebarLabelsCollapsed', false);
-export const disableAnimations = createSettingStore('disableAnimations', false);
+// Off unless the device asks for reduced motion; the setting overrides it either way.
+export const disableAnimations = createSettingStore('disableAnimations', typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
 export const biometricLoginEnabled = createSettingStore('biometricLoginEnabled', false);
 export const appLockEnabled    = createSettingStore('appLockEnabled',    false);
 export const notesLayout       = createSettingStore('notesLayout',       'grid');

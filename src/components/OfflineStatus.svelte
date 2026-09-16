@@ -36,8 +36,8 @@
 </script>
 
 {#if state}
-  <div class="offline-host" use:portal>
-    <button class="offline-pill" class:bad={state === 'offline' || state === 'failed'} role="status" aria-live="polite"
+  <div class="offline-host" use:portal role="status" aria-live="polite">
+    <button class="offline-pill" class:bad={state === 'offline' || state === 'failed'}
       title={state === 'waiting' || state === 'failed' ? $_('offline.retry') : text}
       disabled={state !== 'waiting' && state !== 'failed'}
       on:click={() => flushOutbox()}

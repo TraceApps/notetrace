@@ -541,7 +541,7 @@
             <span class="setting-label">{$_('settings.users.invite_user')}</span>
             <div class="setting-desc" style="margin-top:2px">{$_('settings.users.invite_user_explainer')}</div>
           </div>
-          <input class="input" type="email" autocomplete="email" autocapitalize="off"
+          <input aria-label={$_('settings.users.invite_user')} class="input" type="email" autocomplete="email" autocapitalize="off"
             class:invalid={_inviteEmailTrimmed && !_inviteEmailValid}
             bind:value={inviteEmail} placeholder={$_('settings.users.email_optional')} />
           {#if _inviteEmailTrimmed && !_inviteEmailValid}
@@ -659,7 +659,7 @@
           </div>
           <div style="display:flex;align-items:center;gap:8px">
             <div class="select-wrap" style="width:130px">
-              <select class="select sel-sm" bind:value={sessionHours}>
+              <select aria-label={$_('settings_users_ct.session_duration')} class="select sel-sm" bind:value={sessionHours}>
                 <option value="0">{$_('settings_users_ct.session_never')}</option>
                 <option value="8">8 hours</option>
                 <option value="24">1 day</option>

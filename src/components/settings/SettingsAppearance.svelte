@@ -65,7 +65,7 @@
     <div class="setting-row">
       <span class="setting-label">{$_('settings_page.appearance.theme')}</span>
       <div class="select-wrap" style="width:160px">
-        <select class="select sel-sm" value={$appearance} on:change={e => applyAppearance(e.target.value)}>
+        <select aria-label={$_('settings_page.appearance.theme')} class="select sel-sm" value={$appearance} on:change={e => applyAppearance(e.target.value)}>
           {#each APPEARANCE_OPTS as o}<option value={o.value}>{o.label}</option>{/each}
         </select>
       </div>
@@ -101,7 +101,7 @@
         {#if $navStyle === 'auto'}<div class="setting-desc">Fits the screen: tab bar on a phone, icons beside the page on an unfolded foldable or small tablet, and the full sidebar on larger screens.</div>{/if}
       </div>
       <div class="select-wrap" style="width:160px">
-        <select class="select sel-sm" value={$navStyle} on:change={e => navStyle.set(e.target.value)}>
+        <select aria-label={$_('settings_page.appearance.navigation_style')} class="select sel-sm" value={$navStyle} on:change={e => navStyle.set(e.target.value)}>
           {#each NAV_STYLE_OPTS as o}<option value={o.value}>{o.label}</option>{/each}
         </select>
       </div>
@@ -113,7 +113,7 @@
           <span class="setting-label">{$_('settings_page.appearance.persistent_sidebar')}</span>
           <div class="setting-desc">Sidebar stays open and shifts page content instead of overlaying it.</div>
         </div>
-        <input type="checkbox" class="toggle-cb" checked={$sidebarPersistent} on:change={e => sidebarPersistent.set(e.target.checked)} />
+        <input aria-label={$_('settings_page.appearance.persistent_sidebar')} type="checkbox" class="toggle-cb" checked={$sidebarPersistent} on:change={e => sidebarPersistent.set(e.target.checked)} />
       </div>
     {/if}
     <div class="setting-divider"></div>
@@ -122,14 +122,14 @@
         <span class="setting-label">Force Mobile Layout</span>
         <div class="setting-desc">Keep the mobile single-column layout even on wide screens.</div>
       </div>
-      <input type="checkbox" class="toggle-cb" checked={$forceMobileLayout} on:change={e => forceMobileLayout.set(e.target.checked)} />
+      <input aria-label="Force Mobile Layout" type="checkbox" class="toggle-cb" checked={$forceMobileLayout} on:change={e => forceMobileLayout.set(e.target.checked)} />
     </div>
     {#if START_PAGE_OPTS.length > 1}
     <div class="setting-divider"></div>
     <div class="setting-row">
       <span class="setting-label">{$_('settings_page.appearance.start_page')}</span>
       <div class="select-wrap" style="width:160px">
-        <select class="select sel-sm" value={$startPage} on:change={e => startPage.set(e.target.value)}>
+        <select aria-label={$_('settings_page.appearance.start_page')} class="select sel-sm" value={$startPage} on:change={e => startPage.set(e.target.value)}>
           {#each START_PAGE_OPTS as o}<option value={o.value}>{o.label}</option>{/each}
         </select>
       </div>
@@ -138,7 +138,7 @@
     <div class="setting-divider"></div>
     <div class="setting-row">
       <span class="setting-label">{$_('settings_page.appearance.reduce_motion')}</span>
-      <input type="checkbox" class="toggle-cb" checked={$disableAnimations} on:change={e => disableAnimations.set(e.target.checked)} />
+      <input aria-label={$_('settings_page.appearance.reduce_motion')} type="checkbox" class="toggle-cb" checked={$disableAnimations} on:change={e => disableAnimations.set(e.target.checked)} />
     </div>
     <div class="setting-divider"></div>
     <div class="setting-row">
@@ -147,7 +147,7 @@
         <div class="setting-desc">Header style at the top of every page. Animated is a compact accent-gradient bar with a chosen motion style; Gradient is the same bar, static; Off is a plain glass header.</div>
       </div>
       <div class="select-wrap" style="width:130px">
-        <select class="select sel-sm" value={$bannerStyle} on:change={e => bannerStyle.set(e.currentTarget.value)}>
+        <select aria-label={$_('settings_page.appearance.page_banners')} class="select sel-sm" value={$bannerStyle} on:change={e => bannerStyle.set(e.currentTarget.value)}>
           <option value="animated">{$_('settings_page.appearance.banner_animated')}</option>
           <option value="gradient">{$_('settings_page.appearance.banner_gradient')}</option>
           <option value="off">Off</option>
@@ -161,7 +161,7 @@
           <div class="setting-desc">Shimmer is a soft white sweep, Drift is a slow hue rotation, Pulse is a gentle breathing, Aurora is a soft accent-tinted cloud-of-light. All honour Reduce Motion.</div>
         </div>
         <div class="select-wrap" style="width:130px">
-          <select class="select sel-sm" value={$bannerAnimation} on:change={e => bannerAnimation.set(e.currentTarget.value)}>
+          <select aria-label={$_('settings_page.appearance.animation_style')} class="select sel-sm" value={$bannerAnimation} on:change={e => bannerAnimation.set(e.currentTarget.value)}>
             <option value="shimmer">{$_('settings_page.appearance.anim_shimmer')}</option>
             <option value="drift">{$_('settings_page.appearance.anim_drift')}</option>
             <option value="pulse">{$_('settings_page.appearance.anim_pulse')}</option>

@@ -45,7 +45,7 @@
   }
 </script>
 
-<nav class="bottom-nav" role="navigation" aria-label="Main navigation">
+<nav class="bottom-nav" aria-label="Main navigation">
   <div
     class:hidden-pill={activeIdx < 0}
     class="nav-pill"

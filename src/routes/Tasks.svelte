@@ -527,16 +527,16 @@
   </div>
 </div>
 
-<Popover bind:open={dueOpen} anchor={dueAnchor}>
+<Popover bind:open={dueOpen} anchor={dueAnchor} label={$_('due.title')}>
   {#if dueOpen}<DuePicker value={dueFor?.due_date || null} repeat={dueFor?.due_repeat || null} repeats
     on:select={(e) => setDue(e.detail)} on:repeat={(e) => setRepeat(e.detail)} />{/if}
 </Popover>
-<Popover bind:open={quickDueOpen} anchor={quickDueAnchor}>
+<Popover bind:open={quickDueOpen} anchor={quickDueAnchor} label={$_('due.title')}>
   {#if quickDueOpen}<DuePicker value={newDue} repeat={newRepeat} repeats
     on:select={(e) => { newDue = e.detail; if (!e.detail) newRepeat = null; quickDueOpen = false; }}
     on:repeat={(e) => { newRepeat = e.detail; if (e.detail && !newDue) newDue = todayStr(); }} />{/if}
 </Popover>
-<Popover bind:open={listPickOpen} anchor={listPickAnchor}>
+<Popover bind:open={listPickOpen} anchor={listPickAnchor} label={$_('tasks.move_to_list')}>
   {#if listPickOpen}
     <div class="menu" role="menu">
       <p class="menu-title">{$_('tasks.add_to_list')}</p>
@@ -562,7 +562,7 @@
     </div>
   {/if}
 </Popover>
-<Popover bind:open={menuOpen} anchor={menuAnchor}>
+<Popover bind:open={menuOpen} anchor={menuAnchor} label={$_('notes.more_options')}>
   {#if menuOpen && menuFor}
     <div class="menu" role="menu">
       {#if menuMode === 'move'}

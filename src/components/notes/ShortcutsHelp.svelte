@@ -4,6 +4,7 @@
   import { cubicOut } from 'svelte/easing';
   import { _ } from 'svelte-i18n';
   import { portal } from '../../lib/portal.js';
+  import { dialogFocus } from '../../lib/dialog-focus.js';
   import { keyboardShortcuts } from '../../stores/settings.js';
 
   export let open = false;
@@ -63,7 +64,7 @@
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
   <div use:portal class="sh-backdrop" on:click={() => open = false} transition:fade={{ duration: 160 }}>
-    <div class="sh-panel" role="dialog" aria-modal="true" aria-labelledby="sh-title" on:click|stopPropagation
+    <div class="sh-panel" role="dialog" aria-modal="true" aria-labelledby="sh-title" tabindex="-1" use:dialogFocus on:click|stopPropagation
       in:scale={{ start: 0.94, duration: 220, easing: cubicOut }} out:scale={{ start: 0.96, duration: 140 }}>
       <header>
         <h2 id="sh-title">{$_('shortcuts.title')}</h2>

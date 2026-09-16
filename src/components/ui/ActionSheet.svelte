@@ -4,6 +4,7 @@
   import { createEventDispatcher } from 'svelte';
   import { _ } from 'svelte-i18n';
   import { portal } from '../../lib/portal.js';
+  import { dialogFocus } from '../../lib/dialog-focus.js';
 
   // actions: [{ label, icon?, value, danger? }]
   export let open    = false;
@@ -32,6 +33,11 @@
       in:fly={{ y: 60, duration: 260, easing: cubicOut }}
       out:fly={{ y: 60, duration: 180 }}
       on:click|stopPropagation
+      use:dialogFocus={{ onEscape: () => { open = false; dispatch('cancel'); } }}
+      tabindex="-1"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title || undefined}
     >
       <div class="as-handle"></div>
       {#if title}

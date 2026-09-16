@@ -16,6 +16,7 @@
    */
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
   import { _ } from 'svelte-i18n';
+  import { get } from 'svelte/store';
   import { Editor } from '@tiptap/core';
   import StarterKit from '@tiptap/starter-kit';
   import { Markdown } from '@tiptap/markdown';
@@ -151,7 +152,7 @@
       content: value || '',
       contentType: 'markdown',
       editorProps: {
-        attributes: { class: 'tiptap-body', spellcheck: 'true' },
+        attributes: { class: 'tiptap-body', spellcheck: 'true', role: 'textbox', 'aria-multiline': 'true', 'aria-label': get(_)('notes.body_placeholder') },
         handleKeyDown: (view, event) => {
           if (suggest && suggestions.length) {
             if (event.key === 'ArrowDown') { suggestIndex = (suggestIndex + 1) % suggestions.length; return true; }

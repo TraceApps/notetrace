@@ -266,11 +266,11 @@
           {:else}
             <div class="create-form" transition:slide={{ duration: 160 }}>
               <div class="form-group">
-                <label class="form-label">{$_('settings_webhooks.form.url')}</label>
-                <input class="input" type="url" placeholder={$_('settings_webhooks.form.url_ph')} bind:value={newUrl} />
+                <label class="form-label" for="settings-webhooks-field-1">{$_('settings_webhooks.form.url')}</label>
+                <input id="settings-webhooks-field-1" class="input" type="url" placeholder={$_('settings_webhooks.form.url_ph')} bind:value={newUrl} />
               </div>
               <div class="form-group">
-                <label class="form-label">{$_('settings_webhooks.form.events')}</label>
+                <span class="form-label">{$_('settings_webhooks.form.events')}</span>
                 <div class="event-grid">
                   {#each knownEvents as ev (ev)}
                     <label class="event-option">
@@ -286,8 +286,8 @@
                 </div>
               </div>
               <div class="form-group">
-                <label class="form-label">{$_('settings_webhooks.form.secret_label')}</label>
-                <input class="input" type="text" placeholder={$_('settings_webhooks.form.secret_ph')} bind:value={newSecret} />
+                <label class="form-label" for="settings-webhooks-field-2">{$_('settings_webhooks.form.secret_label')}</label>
+                <input id="settings-webhooks-field-2" class="input" type="text" placeholder={$_('settings_webhooks.form.secret_ph')} bind:value={newSecret} />
               </div>
               <div style="display:flex;gap:8px;margin-top:8px">
                 <button class="btn btn-ghost" style="flex:1" on:click={() => { showCreateForm = false; newUrl = ''; }}>{$_('settings_webhooks.form.cancel')}</button>

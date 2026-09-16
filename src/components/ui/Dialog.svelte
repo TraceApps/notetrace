@@ -3,6 +3,7 @@
   import { cubicOut } from 'svelte/easing';
   import { createEventDispatcher } from 'svelte';
   import { portal } from '../../lib/portal.js';
+  import { dialogFocus } from '../../lib/dialog-focus.js';
 
   export let open    = false;
   export let title   = '';
@@ -33,19 +34,22 @@
       in:scale={{ start: 0.88, duration: 220, easing: cubicOut }}
       out:scale={{ start: 0.88, duration: 160 }}
       on:click|stopPropagation
+      use:dialogFocus={{ onEscape: () => { open = false; dispatch('cancel'); } }}
+      tabindex="-1"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="dlg-title"
+      aria-describedby={message ? 'dlg-msg' : undefined}
     >
       {#if title}
         <h3 class="dialog-title" id="dlg-title">{title}</h3>
       {/if}
       {#if message}
-        <p class="dialog-msg">{message}</p>
+        <p class="dialog-msg" id="dlg-msg">{message}</p>
       {/if}
       <slot />
       <div class="dialog-actions">
-        <button class="btn btn-secondary" on:click={cancel}>{cancelText}</button>
+        <button class="btn btn-secondary" on:click={cancel} data-autofocus={dangerous ? '' : undefined}>{cancelText}</button>
         <button
           class="btn {dangerous ? 'btn-danger' : 'btn-primary'}"
           on:click={confirm}>{confirmText}</button>

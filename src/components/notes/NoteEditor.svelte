@@ -17,6 +17,7 @@
   import { cubicOut } from 'svelte/easing';
   import { _ } from 'svelte-i18n';
   import { portal } from '../../lib/portal.js';
+  import { dialogFocus } from '../../lib/dialog-focus.js';
   import { NoteApi } from '../../lib/api.js';
   import { labelsById, signalNotesChanged, signalCountsChanged, refreshLabels } from '../../stores/notes.js';
   import { noteColorStyle, colorDot } from '../../lib/note-colors.js';
@@ -1040,7 +1041,8 @@
 <div use:portal={!inline} class="editor-backdrop" class:inline on:click|self={() => { if (!inline) close(); }} transition:fade|global={{ duration: $disableAnimations || inline ? 0 : 160 }}>
   <div class="editor-panel" class:inline class:narrow class:compact-bar={compactBar} bind:clientWidth={panelW} class:kb-open={narrow && kb > 0} class:drag-over={dragOver} style="{noteColorStyle(color)} --kb:{narrow ? kb : 0}px"
     on:paste={onPaste} on:dragover={onDragOver} on:dragleave={() => dragOver = false} on:drop={onDrop}
-    role="dialog" aria-modal="true" aria-label={title || $_('notes.untitled')}
+    role={inline ? 'region' : 'dialog'} aria-modal={inline ? undefined : 'true'} aria-label={title || $_('notes.untitled')}
+    tabindex="-1" use:dialogFocus={{ disabled: inline, autofocus: false }}
     in:morph|global out:morph|global>
 
     {#if showHistory && noteId}
@@ -1109,7 +1111,7 @@
           </button>
         </div>
       {/if}
-      <header class="editor-top">
+      <div class="editor-top">
         {#if narrow}
           <button class="icon-btn" on:click={() => close()} aria-label={$_('common.back')}>
             <span class="material-symbols-rounded">arrow_back</span>
@@ -1132,7 +1134,7 @@
             <span class="material-symbols-rounded" class:fill={pinned}>keep</span>
           </button>
         {/if}
-      </header>
+      </div>
 
       <div class="editor-scroll">
         {#if imageAttachments.length || uploading}
@@ -1377,7 +1379,7 @@
     on:read={(e) => extractText(e.detail)} on:addtext={(e) => addTextToNote(e.detail)} on:close={() => viewerIndex = null} />
 {/if}
 
-<Popover bind:open={addOpen} anchor={addAnchor}>
+<Popover bind:open={addOpen} anchor={addAnchor} label={$_('notes.add_to_note')}>
   <div class="sheet-menu">
     <button class="sheet-item" on:click={() => fromSheet(() => imageInput.click(), addAnchor)}>
       <span class="material-symbols-rounded">add_photo_alternate</span>{$_('attachments.add_image')}
@@ -1401,7 +1403,7 @@
     </button>
   </div>
 </Popover>
-<Popover bind:open={moreOpen} anchor={moreAnchor}>
+<Popover bind:open={moreOpen} anchor={moreAnchor} label={$_('notes.more_options')}>
   <div class="sheet-menu">
     {#if canShowInTasks}
       <button class="sheet-item" role="menuitemcheckbox" aria-checked={inTasks} on:click={() => { toggleInTasks(); moreOpen = false; }}>
@@ -1487,19 +1489,19 @@
     {/if}
   </div>
 </Popover>
-<Popover bind:open={colorOpen} anchor={colorAnchor}>
+<Popover bind:open={colorOpen} anchor={colorAnchor} label={$_('notes.color')}>
   <ColorPalette value={color} on:select={(e) => { setColor(e.detail); colorOpen = false; }} />
 </Popover>
-<Popover bind:open={reminderOpen} anchor={reminderAnchor}>
+<Popover bind:open={reminderOpen} anchor={reminderAnchor} label={$_('reminders.remind_me')}>
   <ReminderPicker reminderAt={reminderAt} repeat={reminderRepeat} tz={reminderTz}
     on:set={(e) => setReminder(e.detail)} on:clear={clearReminder} />
 </Popover>
-<Popover bind:open={recordOpen} anchor={recordAnchor}>
+<Popover bind:open={recordOpen} anchor={recordAnchor} label={$_('voice.record')}>
   {#if recordOpen}
     <VoiceRecorder canAddFile={!contentLocked} on:done={onRecorded} on:cancel={onRecordCancel} on:file={openAudioPicker} />
   {/if}
 </Popover>
-<Popover bind:open={traceOpen} anchor={traceAnchor}>
+<Popover bind:open={traceOpen} anchor={traceAnchor} label={$_('trace_actions.title')}>
   {#if traceOpen}
     <TraceActions {title} {body}
       on:replace={(e) => applyTraceText(e.detail.markdown)}
@@ -1508,17 +1510,17 @@
       on:close={() => traceOpen = false} />
   {/if}
 </Popover>
-<Popover bind:open={cookOpen} anchor={cookAnchor}>
+<Popover bind:open={cookOpen} anchor={cookAnchor} label={$_('cooktrace.send')}>
   {#if cookOpen}
     <CooktraceSend {items} canCheck={!contentLocked} on:sent={(e) => onCooktraceSent(e.detail.uuids)} on:close={() => cookOpen = false} />
   {/if}
 </Popover>
-<Popover bind:open={shareOpen} anchor={shareAnchor}>
+<Popover bind:open={shareOpen} anchor={shareAnchor} label={$_('sharing.share')}>
   {#if shareOpen && noteId}
     <ShareDialog {noteId} on:changed={(e) => { shareCount = e.detail.count; touched = true; }} on:left={onLeft} />
   {/if}
 </Popover>
-<Popover bind:open={labelsOpen} anchor={labelsAnchor}>
+<Popover bind:open={labelsOpen} anchor={labelsAnchor} label={$_('notes.labels')}>
   <LabelPicker selected={noteLabels} on:change={(e) => setLabels(e.detail)} />
 </Popover>
 </div>
@@ -1619,7 +1621,7 @@
   .chip-share:disabled { cursor: default; }
   .chip-share .material-symbols-rounded { font-size: 17px; }
   .chip-sub { color: var(--text-3); font-weight: 400; }
-  .chip-x { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
+  .chip-x { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--text-2); }
   .chip-x:hover { background: color-mix(in srgb, var(--text-1) 10%, transparent); color: var(--text-1); }
   .chip-x .material-symbols-rounded { font-size: 15px; }
 

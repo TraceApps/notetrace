@@ -10,6 +10,7 @@
   import { fade } from 'svelte/transition';
   import { _ } from 'svelte-i18n';
   import { portal } from '../../lib/portal.js';
+  import { dialogFocus } from '../../lib/dialog-focus.js';
   import { onBack } from '../../lib/back-stack.js';
   import { isNative, resolveAssetUrl } from '../../lib/platform.js';
   import { fetchAttachmentBlob } from '../../lib/ai-extract.js';
@@ -129,7 +130,7 @@
   onDestroy(() => { window.removeEventListener('keydown', onKey, true); releaseBack(); cleanup(); });
 </script>
 
-<div use:portal class="fv" role="dialog" aria-modal="true" aria-label={current ? displayName(current) : $_('files.title')} transition:fade={{ duration: 150 }}>
+<div use:portal class="fv" role="dialog" aria-modal="true" tabindex="-1" use:dialogFocus aria-label={current ? displayName(current) : $_('files.title')} transition:fade={{ duration: 150 }}>
   {#if current}
     <header class="fv-bar">
       <span class="fv-icon material-symbols-rounded" aria-hidden="true">{fileIcon(current)}</span>

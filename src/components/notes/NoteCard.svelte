@@ -108,6 +108,9 @@
   }
 </script>
 
+<!-- A card holds its own buttons, so it is an article that opens on click, Enter, or Space
+     rather than a button (buttons inside buttons are unreachable to screen readers). -->
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_no_noninteractive_tabindex -->
 <div
   class="note-card"
   class:note-card-empty={empty}
@@ -115,19 +118,18 @@
   class:is-pinned={note.pinned && (view === 'notes' || view === 'reminders')}
   class:selected
   class:selecting
-  aria-pressed={selecting ? selected : undefined}
   style="{noteColorStyle(note.color)} --i:{Math.min(index, 18)}"
   on:pointermove={spotlight}
   data-note-id={note.id}
   tabindex="0"
-  role="button"
+  role="article"
   aria-label={note.title || $_('notes.untitled')}
   on:click={open}
   on:keydown={onKey}
   use:longpress
   on:longpress={() => dispatch('select', { note, range: false })}
 >
-  <button class="card-select" class:on={selected} on:click={selectToggle}
+  <button class="card-select" class:on={selected} on:click={selectToggle} aria-pressed={selected}
     title={selected ? $_('select.deselect') : $_('select.select')} aria-label={selected ? $_('select.deselect') : $_('select.select')}>
     <span class="material-symbols-rounded" class:fill={selected}>{selected ? 'check_circle' : 'radio_button_unchecked'}</span>
   </button>

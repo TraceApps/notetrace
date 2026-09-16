@@ -1,4 +1,5 @@
 <script>
+  import { dialogFocus } from '../../lib/dialog-focus.js';
   /**
    * SettingsEmail — SMTP form. Layout / verbiage / classes match
    * LiftTrace's SettingsEmail 1:1 so TraceApps SMTP settings read
@@ -204,28 +205,28 @@
     retestLabel="Send Test"
   />
   <div class="form-group">
-    <label class="form-label">{$_('settings_email_ct.smtp_host')}</label>
-    <input class="form-input" type="text" placeholder="e.g. smtp.example.com"
+    <label class="form-label" for="settings-email-field-1">{$_('settings_email_ct.smtp_host')}</label>
+    <input id="settings-email-field-1" class="form-input" type="text" placeholder="e.g. smtp.example.com"
       bind:value={smtpHost} disabled={envLocks.smtp} />
   </div>
   <div style="display:flex;gap:10px">
     <div class="form-group" style="flex:1">
-      <label class="form-label">{$_('settings_email_ct.port')}</label>
-      <input class="form-input" type="number" placeholder="587"
+      <label class="form-label" for="settings-email-field-2">{$_('settings_email_ct.port')}</label>
+      <input id="settings-email-field-2" class="form-input" type="number" placeholder="587"
         bind:value={smtpPort} disabled={envLocks.smtp} />
     </div>
     <div class="form-group" style="display:flex;flex-direction:column;gap:6px;justify-content:flex-end;padding-bottom:2px">
-      <label class="form-label">TLS</label>
-      <Toggle checked={smtpSecure} on:change={e => smtpSecure = e.detail} />
+      <span class="form-label">TLS</span>
+      <Toggle checked={smtpSecure} label="TLS" on:change={e => smtpSecure = e.detail} />
     </div>
   </div>
   <div class="form-group">
-    <label class="form-label">{$_('settings_email_ct.username')}</label>
-    <input class="form-input" type="text" autocomplete="off" placeholder={$_('settings_email_ct.username_ph')}
+    <label class="form-label" for="settings-email-field-3">{$_('settings_email_ct.username')}</label>
+    <input id="settings-email-field-3" class="form-input" type="text" autocomplete="off" placeholder={$_('settings_email_ct.username_ph')}
       bind:value={smtpUser} disabled={envLocks.smtp} />
   </div>
   <div class="form-group">
-    <label class="form-label">{$_('settings_email_ct.password')}</label>
+    <span class="form-label">{$_('settings_email_ct.password')}</span>
     <div style="display:flex;gap:8px;align-items:center">
       <!-- Single input masked via CSS text-security instead of a
            type-swap: on some Android WebView builds the swap left
@@ -259,8 +260,8 @@
     {/if}
   </div>
   <div class="form-group">
-    <label class="form-label">{$_('settings_email_ct.from_address')}</label>
-    <input class="form-input" type="email" placeholder="NoteTrace <noreply@example.com>"
+    <label class="form-label" for="settings-email-field-4">{$_('settings_email_ct.from_address')}</label>
+    <input id="settings-email-field-4" class="form-input" type="email" placeholder="NoteTrace <noreply@example.com>"
       bind:value={smtpFrom} disabled={envLocks.smtp} />
   </div>
   <div style="display:flex;align-items:center;gap:10px">
@@ -276,9 +277,11 @@
 </div>
 
 {#if showTestDialog}
-  <div class="test-dialog-overlay" on:click={closeTestDialog}
+  <div class="test-dialog-overlay" role="presentation" on:click={closeTestDialog}
     on:keydown={(e) => e.key === 'Escape' && closeTestDialog()}>
-    <div class="test-dialog" role="dialog" aria-labelledby="test-dialog-title"
+    <!-- svelte-ignore a11y_click_events_have_key_events (keys: dialogFocus) -->
+    <div class="test-dialog" role="dialog" aria-modal="true" aria-labelledby="test-dialog-title" tabindex="-1"
+      use:dialogFocus={{ onEscape: closeTestDialog, autofocus: false }}
       on:click|stopPropagation>
       <h3 id="test-dialog-title">{$_('settings_email_ct.send_test_email')}</h3>
       <p>Where should we send the test?</p>

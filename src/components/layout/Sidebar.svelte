@@ -203,6 +203,7 @@
   <!-- Panel -->
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+  <!-- svelte-ignore a11y_mouse_events_have_key_events (focusin and focusout do the same) -->
   <aside
     class="sidebar-panel"
     class:sidebar-persistent={persistent}
@@ -523,6 +524,8 @@
   .rail :global(.sidebar-label-item), .rail .rail-label { padding: 10px 0 !important; }
   .sidebar-panel :global(.sidebar-item:hover) { background: color-mix(in srgb, var(--text-1) 6%, transparent); color: var(--text-1); }
   .sidebar-panel :global(.sidebar-item.active) { color: var(--accent); }
+  /* On a light pill the accent itself is too faint to read (4:1); a deeper shade of it passes. */
+  :global([data-theme="light"]) .sidebar-panel :global(.sidebar-item.active) { color: color-mix(in srgb, var(--accent) 78%, #000); }
   .sidebar-panel :global(.sidebar-item.active:hover) { background: none; }
   .sidebar-panel :global(.sidebar-item:active) { transform: scale(0.98); }
   .sidebar-panel :global(.sidebar-item:focus-visible),

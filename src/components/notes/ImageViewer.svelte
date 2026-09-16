@@ -4,6 +4,7 @@
   import { fade } from 'svelte/transition';
   import { _ } from 'svelte-i18n';
   import { portal } from '../../lib/portal.js';
+  import { dialogFocus } from '../../lib/dialog-focus.js';
   import { onBack } from '../../lib/back-stack.js';
   import { resolveAssetUrl } from '../../lib/platform.js';
 
@@ -34,11 +35,12 @@
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<div use:portal class="viewer" role="dialog" aria-modal="true" aria-label={$_('attachments.image')}
+<div use:portal class="viewer" role="dialog" aria-modal="true" tabindex="-1" use:dialogFocus aria-label={$_('attachments.image')}
   in:fade={{ duration: 140 }} on:click|self={close}
   on:touchstart={(e) => { startX = e.touches[0].clientX; }}
   on:touchend={(e) => { if (startX == null) return; const dx = e.changedTouches[0].clientX - startX; startX = null; if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1); }}>
   {#if current}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_click_events_have_key_events -->
     <img src={resolveAssetUrl(current.url)} alt="" on:click|self={close} />
   {/if}
   <button class="v-btn v-close" on:click={close} aria-label={$_('common.close')}>

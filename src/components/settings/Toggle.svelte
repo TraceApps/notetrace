@@ -2,6 +2,8 @@
   import { createEventDispatcher } from 'svelte';
   export let checked = false;
   export let disabled = false;
+  /** What it switches, for screen readers, when no visible label is tied to it. */
+  export let label = '';
   const dispatch = createEventDispatcher();
 
   function toggle() {
@@ -18,6 +20,7 @@
   role="switch"
   aria-checked={checked}
   aria-disabled={disabled}
+  aria-label={label || undefined}
   on:click={toggle}
   type="button"
 >
