@@ -13,7 +13,7 @@
   import { _ } from 'svelte-i18n';
   import { bannerStyle } from '../stores/settings.js';
   import { NoteApi } from '../lib/api.js';
-  import { labels, labelsById, notesChanged, refreshLabels, signalNotesChanged } from '../stores/notes.js';
+  import { labels, labelsById, notesChanged, refreshLabels, signalNotesChanged, signalCountsChanged } from '../stores/notes.js';
   import { confirmDialog } from '../stores/confirmDialog.js';
   import { showError, showInfo } from '../stores/toast.js';
   import NoteGrid from '../components/notes/NoteGrid.svelte';
@@ -517,6 +517,7 @@
     replace({ ...note, items: note.items.map(i => i.uuid === item.uuid ? { ...i, checked: !i.checked } : i) });
     try {
       replace(await NoteApi.updateItem(note.id, item.uuid, { checked: !item.checked }));
+      signalCountsChanged();   // the Tasks badge, without reloading the list
     } catch (err) {
       replace(note);
       showError(err.message || $_('notes.save_failed'));

@@ -41,6 +41,12 @@ router.post('/import', wrap((req, res) => {
   res.json(Notes.importNotes(uid(req), list));
 }));
 
+// Counts for the sidebar, so a badge doesn't need the whole library.
+// ?today=YYYY-MM-DD is the caller's own date.
+router.get('/counts', wrap((req, res) => {
+  res.json(Notes.tasksDueCount(uid(req), req.query.today));
+}));
+
 // Link helpers. Registered before /:id routes.
 router.get('/titles', wrap((req, res) => { res.json(Notes.listNoteTitles(uid(req))); }));
 router.get('/by-title', wrap((req, res) => {

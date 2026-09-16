@@ -18,7 +18,7 @@
   import { _ } from 'svelte-i18n';
   import { portal } from '../../lib/portal.js';
   import { NoteApi } from '../../lib/api.js';
-  import { labelsById, signalNotesChanged, refreshLabels } from '../../stores/notes.js';
+  import { labelsById, signalNotesChanged, signalCountsChanged, refreshLabels } from '../../stores/notes.js';
   import { noteColorStyle, colorDot } from '../../lib/note-colors.js';
   import { isEmptyNote } from '../../lib/note-preview.js';
   import { relativeTime } from '../../lib/relative-time.js';
@@ -205,6 +205,7 @@
       if (!noteId) { await ensureNote(); return; }
       const n = await NoteApi.updateItem(noteId, uuid, p);
       updatedAt = n?.updated_at ?? updatedAt;
+      if ('checked' in p || 'due_date' in p) signalCountsChanged();
     });
   }
   function onItemDelete(e) {

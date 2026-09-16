@@ -45,6 +45,27 @@ for (const u of [i1, i2]) await api('PATCH', `/api/notes/${c.id}/items/${u}`, { 
 n = (await api('DELETE', `/api/notes/${c.id}/items/${i3}`)).json;
 ok(n.items.length === 2 && n.items.every(i => i.checked), 'check + delete item');
 
+console.log('tasks due count');
+const due = (await api('POST', '/api/notes', { title: 'Errands', kind: 'checklist', items: [
+  { text: 'Renew passport', due_date: '2026-01-05' },
+  { text: 'Later', due_date: '2099-12-31' },
+  { text: 'No date' },
+] })).json;
+let counts = (await api('GET', '/api/notes/counts?today=2026-01-05')).json;
+ok(counts.tasksDue === 1 && counts.today === '2026-01-05', 'counts today and overdue only');
+const doneUuid = due.items.find(i => i.text === 'Renew passport').uuid;
+await api('PATCH', `/api/notes/${due.id}/items/${doneUuid}`, { checked: true });
+counts = (await api('GET', '/api/notes/counts?today=2026-01-05')).json;
+ok(counts.tasksDue === 0, 'a checked item stops counting');
+await api('PATCH', `/api/notes/${due.id}/items/${doneUuid}`, { checked: false });
+await api('PATCH', `/api/notes/${due.id}`, { archived: true });
+counts = (await api('GET', '/api/notes/counts?today=2026-01-05')).json;
+ok(counts.tasksDue === 0, 'an archived list stops counting');
+await api('PATCH', `/api/notes/${due.id}`, { archived: false });
+counts = (await api('GET', '/api/notes/counts?today=bogus')).json;
+ok(counts.tasksDue >= 0 && /^\d{4}-\d{2}-\d{2}$/.test(counts.today), 'a bad date falls back to the server date');
+await api('DELETE', `/api/notes/${due.id}/forever`);   // leave the rest of the checks with two notes
+
 console.log('labels');
 const home = (await api('POST', '/api/labels', { name: 'Home', color: 'moss' })).json;
 const dup = await api('POST', '/api/labels', { name: 'home' });

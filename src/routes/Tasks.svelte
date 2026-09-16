@@ -16,7 +16,7 @@
   import { bannerStyle, tasksGroupBy, tasksAllChecklists } from '../stores/settings.js';
   import { isTask, isTasksInbox } from '../../server/lib/task-rules.js';
   import { NoteApi } from '../lib/api.js';
-  import { notesChanged, signalNotesChanged } from '../stores/notes.js';
+  import { notesChanged, signalNotesChanged, signalCountsChanged } from '../stores/notes.js';
   import { showError, showUndo } from '../stores/toast.js';
   import { canEdit } from '../lib/note-sharing.js';
   import { colorDot } from '../lib/note-colors.js';
@@ -68,6 +68,7 @@
     }
     try {
       await NoteApi.updateItem(task.note.id, task.uuid, { checked });
+      signalCountsChanged();
       if (checked) {
         showUndo($_('tasks.done', { values: { text: task.text.slice(0, 40) } }), async () => {
           await NoteApi.updateItem(task.note.id, task.uuid, { checked: false }).catch(() => {});
@@ -87,7 +88,7 @@
     const task = dueFor;
     if (!task) return;
     notes = notes.map(n => n.id !== task.note.id ? n : { ...n, items: n.items.map(i => i.uuid === task.uuid ? { ...i, due_date: value } : i) });
-    try { await NoteApi.updateItem(task.note.id, task.uuid, { due_date: value }); }
+    try { await NoteApi.updateItem(task.note.id, task.uuid, { due_date: value }); signalCountsChanged(); }
     catch (e) { showError(e.message); load(); }
   }
 

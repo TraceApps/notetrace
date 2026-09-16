@@ -165,6 +165,8 @@ const _NoteApiHttp = {
     const qs = p.toString();
     return this.get(`/api/notes${qs ? '?' + qs : ''}`);
   },
+  // { tasksDue } for the sidebar badge; `today` is this device's date.
+  getNoteCounts(today)           { return this.get(`/api/notes/counts?today=${encodeURIComponent(today)}`); },
   getNote(id)                    { return this.get(`/api/notes/${id}`); },
   createNote(data)               { return this.post('/api/notes', data); },
   updateNote(id, patch)          { return this.patch(`/api/notes/${id}`, patch); },

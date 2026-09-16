@@ -974,6 +974,31 @@ export const importNotes = db.transaction((u, list = []) => {
 
 const _escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+/**
+ * How many open checklist items due by `today` (YYYY-MM-DD) the caller can
+ * see, for the Tasks badge in the sidebar. Counted here so a badge doesn't
+ * cost a fetch of the whole library every time a note changes.
+ */
+export function tasksDueCount(u, today) {
+  const day = cleanDueDate(today) || stampNow().slice(0, 10);
+  const item = `ci.deleted_at IS NULL AND ci.checked = 0 AND ci.due_date IS NOT NULL
+                  AND ci.due_date <= ? AND trim(ci.text) != ''`;
+  const note = `n.deleted_at IS NULL AND n.trashed_at IS NULL AND n.kind = 'checklist'`;
+  const row = u == null
+    ? db.prepare(
+        `SELECT COUNT(*) AS n FROM checklist_items ci JOIN notes n ON n.id = ci.note_id AND ${note}
+          WHERE ${item} AND n.user_id IS NULL AND n.archived = 0`
+      ).get(day)
+    : db.prepare(
+        `SELECT COUNT(*) AS n FROM checklist_items ci
+           JOIN notes n ON n.id = ci.note_id AND ${note}
+           LEFT JOIN note_members m ON m.note_id = n.id AND m.user_id = ? AND m.deleted_at IS NULL
+          WHERE ${item} AND (n.user_id = ? OR m.id IS NOT NULL)
+            AND (CASE WHEN m.id IS NULL THEN n.archived ELSE m.archived END) = 0`
+      ).get(u, day, u);
+  return { tasksDue: row?.n || 0, today: day };
+}
+
 /** Titled notes the caller can see, for link suggestions. */
 export function listNoteTitles(u) {
   return _selectNotes(u, { where: ["n.trashed_at IS NULL", "n.title != ''"], order: 'n.updated_at DESC' })

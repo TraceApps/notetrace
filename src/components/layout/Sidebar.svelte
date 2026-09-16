@@ -9,7 +9,7 @@
   import { APP_VERSION } from '../../lib/version.js';
   import { updateAvailable } from '../../lib/updates.js';
   import { pwaUpdateReady } from '../../lib/pwa-update.js';
-  import { labels, refreshLabels, notesChanged } from '../../stores/notes.js';
+  import { labels, refreshLabels, notesChanged, countsChanged } from '../../stores/notes.js';
   import { sidebarRail, sidebarLabelsCollapsed } from '../../stores/settings.js';
   import { sharingAvailable } from '../../lib/note-sharing.js';
   import { NoteApi } from '../../lib/api.js';
@@ -90,13 +90,12 @@
         const next = nextOccurrence(n.reminder_at, n.reminder_rrule, n.reminder_tz, now);
         return next && next >= now && next < end;
       }).length;
-      const all = await NoteApi.getNotes({ view: 'notes' });
-      const today = todayStr(now);
-      tasksDue = (all || []).filter(n => n.kind === 'checklist')
-        .flatMap(n => n.items || []).filter(i => !i.checked && i.due_date && i.due_date <= today).length;
+      // Counted on the server: a badge shouldn't cost the whole library.
+      const counts = await NoteApi.getNoteCounts(todayStr(now));
+      tasksDue = counts?.tasksDue || 0;
     } catch { /* keep the last count */ }
   }
-  $: $notesChanged, countDueToday();
+  $: $notesChanged, $countsChanged, countDueToday();
 
   onMount(() => {
     refreshLabels();
