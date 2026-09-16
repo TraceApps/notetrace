@@ -10,6 +10,7 @@
   import ReminderChip from './ReminderChip.svelte';
   import AttachmentGrid from './AttachmentGrid.svelte';
   import { isAudio, isImage } from '../../lib/ai-extract.js';
+  import { isFile, fileIcon, displayName } from '../../lib/file-kinds.js';
   import { formatDuration } from '../../lib/voice-recorder.js';
   import { isOwner, canEdit, isShared } from '../../lib/note-sharing.js';
   import { linkPreviews } from '../../stores/settings.js';
@@ -41,7 +42,8 @@
   $: noteLabels = (note.labels || []).map(id => $labelsById.get(id)).filter(Boolean);
   $: images = (note.attachments || []).filter(isImage);
   $: voice = (note.attachments || []).filter(isAudio);
-  $: empty = !note.title && !preview && !(note.items || []).length && !images.length && !voice.length;
+  $: files = (note.attachments || []).filter(isFile);
+  $: empty = !note.title && !preview && !(note.items || []).length && !images.length && !voice.length && !files.length;
   // Found by something you can't see on the card: a voice note's transcript or
   // text read from an image.
   $: hiddenMatch = terms.length && !textHasTerms(note, terms)
@@ -151,8 +153,8 @@
 
   {#if hiddenMatch}
     <p class="card-match">
-      <span class="material-symbols-rounded">{isAudio(hiddenMatch.a) ? 'mic' : 'image'}</span>
-      <Highlight text={hiddenMatch.snip} {terms} />
+      <span class="material-symbols-rounded">{isAudio(hiddenMatch.a) ? 'mic' : isFile(hiddenMatch.a) ? fileIcon(hiddenMatch.a) : 'image'}</span>
+      <span class="card-match-text"><Highlight text={hiddenMatch.snip} {terms} /></span>
     </p>
   {/if}
   {#if note.kind === 'text'}
@@ -205,6 +207,16 @@
     <div class="card-progress" role="progressbar" aria-valuemin="0" aria-valuemax={totalItems} aria-valuenow={checkedCount}
       aria-label={$_('notes.checked_items', { values: { count: checkedCount } })}>
       <span style="width:{Math.round(progress * 100)}%"></span>
+    </div>
+  {/if}
+  {#if files.length}
+    <div class="card-files">
+      {#each files.slice(0, 2) as f (f.uuid)}
+        <span class="card-file" title={displayName(f)}>
+          <span class="material-symbols-rounded">{fileIcon(f)}</span><span class="card-file-name">{displayName(f)}</span>
+        </span>
+      {/each}
+      {#if files.length > 2}<span class="card-file card-file-more">+{files.length - 2}</span>{/if}
     </div>
   {/if}
   {#if noteLabels.length || note.reminder_at || shared || voice.length}
@@ -462,6 +474,8 @@
     font-size: 12.5px; line-height: 1.45; color: var(--text-2);
   }
   .card-match .material-symbols-rounded { font-size: 15px; color: var(--text-3); flex-shrink: 0; }
+  /* One run of text, so the highlighted word doesn't split the snippet into columns. */
+  .card-match-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .card-items { list-style: none; display: flex; flex-direction: column; gap: 7px; }
   .card-items li { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.4; color: color-mix(in srgb, var(--text-1) 82%, transparent); }
   .card-item-text { overflow-wrap: anywhere; }
@@ -487,6 +501,19 @@
   }
   .chip-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
   .chip-icon { font-size: 14px; margin-left: -2px; }
+  /* A note's files: a pill each (at most two, then a count), under the text. */
+  .card-files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; min-width: 0; }
+  .card-file {
+    display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%;
+    height: 28px; padding: 0 10px 0 7px; border-radius: 9px;
+    font-size: 12.5px; color: var(--text-1);
+    background: color-mix(in srgb, var(--text-1) 7%, transparent);
+    border: 1px solid color-mix(in srgb, var(--text-1) 9%, transparent);
+  }
+  .card-file .material-symbols-rounded { font-size: 16px; color: var(--note-glow, var(--accent)); flex-shrink: 0; }
+  .card-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .card-file-more { padding: 0 9px; color: var(--text-2); font-weight: 600; }
+  :global(html.density-compact) .card-file { height: 24px; font-size: 11.5px; }
   .card-check:disabled { opacity: 0.5; cursor: default; }
 
   .card-pin, .card-act {

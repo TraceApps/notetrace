@@ -220,8 +220,9 @@ export async function readImageText(blob) {
   return cleanExtracted(data.choices?.[0]?.message?.content || '');
 }
 
-export const isAudio = (a) => /^audio\//i.test(String(a?.mime || '')) || /\.(webm|ogg|m4a|mp3|wav|aac)$/i.test(String(a?.url || ''));
-export const isImage = (a) => !isAudio(a) && (/^image\//i.test(String(a?.mime || '')) || !a?.mime);
+// One definition of what's a picture, a voice note, or a file (file-kinds.js).
+import { isAudio, isImage } from './file-kinds.js';
+export { isAudio, isImage };
 
 /**
  * A short summary of a voice note, from its transcript. Transcribes first when

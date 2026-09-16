@@ -32,3 +32,13 @@ test('groups combine, and toggling twice removes a filter', () => {
   assert.deepEqual(ids(toggleFilter(emptyFilters(), 'labels', 3)), [1]);
   assert.equal(hasFilters(toggleFilter(toggleFilter(emptyFilters(), 'colors', 'moss'), 'colors', 'moss')), false);
 });
+
+test('Files matches notes with a document, and Images only matches pictures', () => {
+  const pdf = { kind: 'text', attachments: [{ mime: 'application/pdf', url: '/uploads/a.pdf' }] };
+  const pic = { kind: 'text', attachments: [{ mime: 'image/jpeg', url: '/uploads/a.jpg' }] };
+  const f = (types) => ({ types, colors: [], labels: [] });
+  assert.equal(matchesFilters(pdf, f(['files'])), true);
+  assert.equal(matchesFilters(pdf, f(['images'])), false);
+  assert.equal(matchesFilters(pic, f(['images'])), true);
+  assert.equal(matchesFilters(pic, f(['files'])), false);
+});

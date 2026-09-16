@@ -1,6 +1,30 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
+import fs from 'node:fs';
+import path from 'node:path';
+
+// PDF.js reads these at run time: the 14 standard fonts (a PDF that names
+// Helvetica without embedding it), character maps for Asian scripts, and the
+// decoders and colour profiles scanned PDFs need. They go out with the app
+// under pdfjs/ and are fetched only when a PDF uses them (src/lib/pdf.js).
+const PDFJS_DIRS = ['standard_fonts', 'cmaps', 'wasm', 'iccs'];
+function pdfjsAssets() {
+  const root = path.resolve('node_modules/pdfjs-dist');
+  return {
+    name: 'pdfjs-assets',
+    generateBundle() {
+      for (const dir of PDFJS_DIRS) {
+        const from = path.join(root, dir);
+        if (!fs.existsSync(from)) continue;
+        for (const name of fs.readdirSync(from)) {
+          const file = path.join(from, name);
+          if (fs.statSync(file).isFile()) this.emitFile({ type: 'asset', fileName: `pdfjs/${dir}/${name}`, source: fs.readFileSync(file) });
+        }
+      }
+    },
+  };
+}
 
 export default defineConfig({
   // Use relative asset URLs so the bundle works regardless of the path the
@@ -25,6 +49,8 @@ export default defineConfig({
           if (id.includes('node_modules/cheerio')) return 'cheerio';
           if (id.includes('node_modules/@zxing')) return 'zxing';
           if (id.includes('node_modules/quagga')) return 'quagga';
+          // PDF.js loads only when a PDF is opened or added (src/lib/pdf.js).
+          if (id.includes('node_modules/pdfjs-dist')) return 'pdfjs';
           // Bucket every other node_modules dep into a single
           // 'vendor' chunk so the main app code stays small.
           if (id.includes('node_modules')) return 'vendor';
@@ -36,6 +62,7 @@ export default defineConfig({
   // Capacitor native build: output to dist/ (default) — capacitor.config.ts points webDir here
   plugins: [
     svelte(),
+    pdfjsAssets(),
     VitePWA({
       // 'prompt' downloads new bundles but WAITS for the app to
       // call updateSW(true) before activating. That's what lets us
@@ -46,7 +73,7 @@ export default defineConfig({
       workbox: {
         // The app itself is cached, so the installed web app opens without a
         // connection and shows the notes, images, and voice notes it has seen.
-        globPatterns: ['**/*.{js,css,html,woff2,woff,png,svg,ico,webmanifest}'],
+        globPatterns: ['**/*.{js,mjs,css,html,woff2,woff,png,svg,ico,webmanifest}'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         // Reminder notification clicks and shared photos (public/sw-extras.js).
         importScripts: ['sw-extras.js'],
@@ -76,6 +103,16 @@ export default defineConfig({
               // stored as the whole file would play back truncated.
               cacheableResponse: { statuses: [0, 200] },
               expiration: { maxEntries: 400, maxAgeSeconds: 60 * 60 * 24 * 60, purgeOnQuotaError: true },
+            }
+          },
+          {
+            // PDF.js fonts and decoders: fetched the first time a PDF needs one, then kept.
+            urlPattern: ({ url }) => /\/pdfjs\//.test(url.pathname),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'pdfjs-assets',
+              cacheableResponse: { statuses: [0, 200] },
+              expiration: { maxEntries: 300, maxAgeSeconds: 60 * 60 * 24 * 180 },
             }
           },
           {
@@ -121,7 +158,8 @@ export default defineConfig({
             title: 'title',
             text: 'text',
             url: 'url',
-            files: [{ name: 'images', accept: ['image/*', '.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', 'audio/*', '.m4a', '.mp3', '.wav', '.ogg', '.opus', '.webm', '.aac', '.amr', '.3gp'] }],
+            // Any file: pictures, recordings, PDFs, documents.
+            files: [{ name: 'images', accept: ['*/*'] }],
           },
         },
         icons: [

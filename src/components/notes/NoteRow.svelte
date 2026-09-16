@@ -10,6 +10,7 @@
   import { relativeTime } from '../../lib/relative-time.js';
   import { longpress } from '../../lib/long-press.js';
   import { isAudio, isImage } from '../../lib/ai-extract.js';
+  import { isFile } from '../../lib/file-kinds.js';
   import { resolveAssetUrl } from '../../lib/platform.js';
 
   export let note;
@@ -26,6 +27,7 @@
   $: noteLabels = (note.labels || []).map(id => $labelsById.get(id)).filter(Boolean).slice(0, 3);
   $: thumb = (note.attachments || []).find(isImage);
   $: hasVoice = (note.attachments || []).some(isAudio);
+  $: fileCount = (note.attachments || []).filter(isFile).length;
   $: shared = (note.share_count || 0) > 0 || (note.share_role && note.share_role !== 'owner');
   let thumbFailed = false;
   $: thumb, thumbFailed = false;
@@ -58,6 +60,7 @@
       {/if}
       {#if note.reminder_at}<span class="meta"><span class="material-symbols-rounded">notifications</span></span>{/if}
       {#if hasVoice}<span class="meta"><span class="material-symbols-rounded">mic</span></span>{/if}
+      {#if fileCount}<span class="meta"><span class="material-symbols-rounded">attach_file</span>{fileCount > 1 ? fileCount : ''}</span>{/if}
       {#if shared}<span class="meta"><span class="material-symbols-rounded">group</span></span>{/if}
       {#each noteLabels as l (l.id)}
         <span class="row-label"><span class="dot" style="background:{colorDot(l.color)}"></span>{l.name}</span>

@@ -4,24 +4,27 @@
  * Filters combine across groups (a type AND a color AND a label) and any
  * choice within a group matches (Lists OR Images).
  */
+import { isAudio, isImage, isFile } from './file-kinds.js';
 export const FILTER_TYPES = [
   { key: 'checklist', icon: 'checklist',       label: 'filters.lists' },
   { key: 'text',      icon: 'notes',           label: 'filters.text' },
   { key: 'images',    icon: 'image',           label: 'filters.images' },
   { key: 'voice',     icon: 'mic',             label: 'filters.voice' },
+  { key: 'files',     icon: 'attach_file',     label: 'filters.files' },
   { key: 'reminders', icon: 'notifications',   label: 'filters.reminders' },
   { key: 'shared',    icon: 'group',           label: 'filters.shared' },
   { key: 'links',     icon: 'link',            label: 'filters.links' },
 ];
 
+
 const URL_RE = /\bhttps?:\/\/[^\s<>()]+/i;
-const isAudio = (a) => /^audio\//i.test(String(a?.mime || '')) || /\.(webm|ogg|m4a|mp3|wav|aac)$/i.test(String(a?.url || ''));
 
 const TYPE_TESTS = {
   checklist: (n) => n.kind === 'checklist',
   text:      (n) => n.kind !== 'checklist',
-  images:    (n) => (n.attachments || []).some(a => !isAudio(a)),
+  images:    (n) => (n.attachments || []).some(isImage),
   voice:     (n) => (n.attachments || []).some(isAudio),
+  files:     (n) => (n.attachments || []).some(isFile),
   reminders: (n) => !!n.reminder_at,
   shared:    (n) => (n.share_count || 0) > 0 || (!!n.share_role && n.share_role !== 'owner'),
   links:     (n) => URL_RE.test(n.title || '') || URL_RE.test(n.body_md || '') || (n.items || []).some(i => URL_RE.test(i.text || '')),

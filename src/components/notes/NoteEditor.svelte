@@ -39,6 +39,10 @@
   import { cooktraceLink, loadCooktraceLink } from '../../lib/cooktrace.js';
   import VoiceRecorder from './VoiceRecorder.svelte';
   import VoiceNotes from './VoiceNotes.svelte';
+  import FileAttachments from './FileAttachments.svelte';
+  import FileViewer from './FileViewer.svelte';
+  import { isFile, previewKind } from '../../lib/file-kinds.js';
+  import { fileIndexPatch } from '../../lib/file-index.js';
   import { recordingSupported, uploadVoiceNote, formatDuration } from '../../lib/voice-recorder.js';
   import { extractSupport, transcribeVoiceNote, summarizeVoiceNote, readImageText, fetchAttachmentBlob, isAudio, isImage } from '../../lib/ai-extract.js';
   import { autoTranscribe, autoSummarizeLong, autoReadImages } from '../../stores/settings.js';
@@ -420,7 +424,7 @@
       if (!noteId) return;
       apply(await NoteApi.deleteAttachment(noteId, uuid));
     });
-    if (gone) showUndo($_(isAudio(gone) ? 'notes.undo_voice' : 'notes.undo_image'), () => restoreAttachment(gone));
+    if (gone) showUndo($_(isAudio(gone) ? 'notes.undo_voice' : isFile(gone) ? 'files.undo_removed' : 'notes.undo_image'), () => restoreAttachment(gone));
   }
   function restoreAttachment(att) {
     touched = true;
@@ -430,8 +434,11 @@
       if (!noteId) return;
       apply(await NoteApi.addAttachments(noteId, [att]));
       // The note keeps what was read or transcribed from it.
-      if (att.extracted_text || att.waveform || att.segments) {
-        await NoteApi.updateAttachment(noteId, att.uuid, { extracted_text: att.extracted_text ?? null, waveform: att.waveform ?? null, segments: att.segments ?? null });
+      if (att.extracted_text || att.waveform || att.segments || att.summary || att.preview_url) {
+        await NoteApi.updateAttachment(noteId, att.uuid, {
+          extracted_text: att.extracted_text ?? null, waveform: att.waveform ?? null, segments: att.segments ?? null,
+          summary: att.summary ?? null, preview_url: att.preview_url ?? null,
+        });
       }
     });
   }
@@ -440,9 +447,68 @@
     const files = [...(fileList || [])];
     const images = files.filter(isImageFile);
     const audio = files.filter(f => !isImageFile(f) && isAudioFile(f));
+    const others = files.filter(f => !isImageFile(f) && !isAudioFile(f));
     if (images.length) addImages(images);
     if (audio.length) addAudioFiles(audio);
-    return images.length + audio.length;
+    if (others.length) addOtherFiles(others);
+    return files.length;
+  }
+
+  // ── Files (any kind: PDFs, documents, archives, video) ─────────────
+  $: fileAttachments = attachments.filter(isFile);
+  let pendingFiles = [];          // shown as "Uploading" until they're stored
+  let fileInput;
+  let fileViewerIndex = null;
+  function openFilePicker() { tick().then(() => fileInput?.click()); }
+
+  async function addOtherFiles(files) {
+    if (contentLocked) return;
+    touched = true;
+    for (const file of files) {
+      const uuid = crypto.randomUUID?.() || `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}`;
+      const mime = file.type || 'application/octet-stream';
+      pendingFiles = [...pendingFiles, { uuid, name: file.name, size_bytes: file.size, mime, pending: true }];
+      let stored;
+      try {
+        stored = await NoteApi.uploadFile(file);
+      } catch (err) {
+        showError($_('files.upload_failed', { values: { name: file.name || '', error: err.message || '' } }));
+        continue;
+      } finally {
+        pendingFiles = pendingFiles.filter(p => p.uuid !== uuid);
+      }
+      const att = { uuid, url: stored.url, mime: stored.mime || mime, name: file.name || null, size_bytes: stored.size ?? file.size ?? null };
+      attachments = [...attachments, att];
+      await enqueue(async () => {
+        if (!noteId) { await ensureNote(); return; }
+        apply(await NoteApi.addAttachments(noteId, [att]));
+      });
+      indexFile(att, file);
+    }
+  }
+
+  /**
+   * A PDF gets a picture of its first page for its chip, and a PDF's or a text
+   * file's words go into search, the way a voice note's transcript does.
+   */
+  async function indexFile(att, file) {
+    if (previewKind(att) === 'none' || previewKind(att) === 'video') return;
+    extracting = { ...extracting, [att.uuid]: 'reading' };
+    try {
+      const patch = await fileIndexPatch(att, file, { uploadImage: (f) => NoteApi.uploadImage(f) });
+      if (!Object.keys(patch).length) return;
+      attachments = attachments.map(a => a.uuid === att.uuid ? { ...a, ...patch } : a);
+      await enqueue(async () => {
+        if (noteId) await NoteApi.updateAttachment(noteId, att.uuid, patch);
+      });
+    } finally {
+      const { [att.uuid]: _done, ...rest } = extracting;
+      extracting = rest;
+    }
+  }
+  function openFile(e) {
+    const i = fileAttachments.findIndex(f => f.uuid === e.detail.uuid);
+    if (i >= 0) fileViewerIndex = i;
   }
   // A recording that waited on this device went up while the note is open.
   function onVoiceUploaded(e) {
@@ -482,7 +548,7 @@
   let audioInput;
 
   function onPaste(e) {
-    const files = [...(e.clipboardData?.files || [])].filter(f => isImageFile(f) || isAudioFile(f));
+    const files = [...(e.clipboardData?.files || [])];
     if (!files.length || contentLocked) return;
     e.preventDefault();
     addFiles(files);
@@ -494,7 +560,7 @@
   }
   function onDrop(e) {
     dragOver = false;
-    const files = [...(e.dataTransfer?.files || [])].filter(f => isImageFile(f) || isAudioFile(f));
+    const files = [...(e.dataTransfer?.files || [])];
     if (!files.length || contentLocked) return;
     e.preventDefault();
     addFiles(files);
@@ -764,12 +830,13 @@
     };
   }
 
-  // Note-level commands typed as /checklist, /image, /voice, /reminder.
+  // Note-level commands typed as /checklist, /image, /file, /voice, /reminder.
   function onSlash(key) {
     const rect = document.querySelector('.editor-panel .tiptap-host')?.getBoundingClientRect() || null;
     const fake = { currentTarget: { getBoundingClientRect: () => rect } };
     if (key === 'checklist') convert();
     else if (key === 'image') imageInput.click();
+    else if (key === 'file') openFilePicker();
     else if (key === 'voice') openRecorder(fake);
     else if (key === 'reminder') { reminderAnchor = rect; reminderOpen = true; }
   }
@@ -889,6 +956,9 @@
             <button class="icon-btn" on:click={() => imageInput.click()} title={$_('attachments.add_image')} aria-label={$_('attachments.add_image')}>
               <span class="material-symbols-rounded">add_photo_alternate</span>
             </button>
+            <button class="icon-btn" on:click={openFilePicker} title={$_('files.attach')} aria-label={$_('files.attach')}>
+              <span class="material-symbols-rounded">attach_file</span>
+            </button>
             {#if canRecord}
               <button class="icon-btn" data-record on:click={openRecorder} title={$_('voice.record')} aria-label={$_('voice.record')}>
                 <span class="material-symbols-rounded">mic</span>
@@ -961,11 +1031,13 @@
           on:remove={removeImage} on:transcribe={(e) => extractText(e.detail)} on:addtext={(e) => addTextToNote(e.detail)}
           on:summarize={(e) => summarizeVoice(e.detail)}
           on:waveform={(e) => saveWaveform(e.detail)} />
+        <FileAttachments files={[...fileAttachments, ...pendingFiles]} editable={!contentLocked} busy={extracting}
+          on:open={openFile} on:remove={removeImage} />
         {#key editorKey}
           {#if kind === 'text'}
             <TipTapEditor bind:this={bodyRef} bind:value={body} editable={!contentLocked} showToolbar={!narrow}
               on:formats={(e) => formats = e.detail}
-              slashActions={contentLocked ? [] : ['checklist', 'image', ...(canRecord ? ['voice'] : []), ...(isOwner ? ['reminder'] : [])]}
+              slashActions={contentLocked ? [] : ['checklist', 'image', 'file', ...(canRecord ? ['voice'] : []), ...(isOwner ? ['reminder'] : [])]}
               on:slash={(e) => onSlash(e.detail)}
               linkTitles={linkTitles.filter(t => t.toLowerCase() !== title.trim().toLowerCase())}
               placeholder={$_('notes.body_placeholder')} on:change={scheduleText} on:openlink={(e) => openLinked(e.detail)} />
@@ -1101,6 +1173,9 @@
               <button class="icon-btn" on:click={() => imageInput.click()} title={$_('attachments.add_image')} aria-label={$_('attachments.add_image')}>
                 <span class="material-symbols-rounded">add_photo_alternate</span>
               </button>
+              <button class="icon-btn" on:click={openFilePicker} title={$_('files.attach')} aria-label={$_('files.attach')}>
+                <span class="material-symbols-rounded">attach_file</span>
+              </button>
               {#if canRecord}
                 <button class="icon-btn" data-record on:click={openRecorder} title={$_('voice.record')} aria-label={$_('voice.record')}>
                   <span class="material-symbols-rounded">mic</span>
@@ -1161,6 +1236,11 @@
 <input bind:this={audioInput} class="note-audio-input" type="file" multiple hidden
   accept="audio/*,.m4a,.mp3,.wav,.ogg,.opus,.webm,.flac,.aac,.amr,.3gp"
   on:change={(e) => { addAudioFiles([...e.target.files]); e.target.value = ''; }} />
+<input bind:this={fileInput} class="note-file-input" type="file" multiple hidden
+  on:change={(e) => { addFiles([...e.target.files]); e.target.value = ''; }} />
+{#if fileViewerIndex != null}
+  <FileViewer files={fileAttachments} index={fileViewerIndex} on:close={() => fileViewerIndex = null} />
+{/if}
 {#if viewerIndex != null}
   <ImageViewer attachments={imageAttachments} index={viewerIndex} canRead={$extractSupport.readImages && !contentLocked}
     canAdd={!contentLocked} busy={extracting}
@@ -1171,6 +1251,9 @@
   <div class="sheet-menu">
     <button class="sheet-item" on:click={() => fromSheet(() => imageInput.click(), addAnchor)}>
       <span class="material-symbols-rounded">add_photo_alternate</span>{$_('attachments.add_image')}
+    </button>
+    <button class="sheet-item" on:click={() => { addOpen = false; openFilePicker(); }}>
+      <span class="material-symbols-rounded">attach_file</span>{$_('files.attach')}
     </button>
     {#if canRecord}
       <button class="sheet-item" on:click={() => fromSheet(openRecorder, addAnchor)}>
@@ -1198,6 +1281,9 @@
         {#if !contentLocked}
           <button class="sheet-item" on:click={() => fromSheet(() => imageInput.click(), moreAnchor)}>
             <span class="material-symbols-rounded">add_photo_alternate</span>{$_('attachments.add_image')}
+          </button>
+          <button class="sheet-item" on:click={() => { moreOpen = false; openFilePicker(); }}>
+            <span class="material-symbols-rounded">attach_file</span>{$_('files.attach')}
           </button>
           {#if canRecord}
             <button class="sheet-item" on:click={() => fromSheet(openRecorder, moreAnchor)}>

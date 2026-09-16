@@ -30,7 +30,7 @@
   export let showToolbar = true;
   /** Titles offered after typing [[ (other notes the user can see). */
   export let linkTitles = [];
-  /** Note-level slash commands the parent handles: 'checklist' | 'image' | 'voice' | 'reminder'. */
+  /** Note-level slash commands the parent handles: 'checklist' | 'image' | 'file' | 'voice' | 'reminder'. */
   export let slashActions = [];
 
   const dispatch = createEventDispatcher();
@@ -58,6 +58,7 @@
     { key: 'date',      icon: 'today',                words: 'date today now' },
     { key: 'time',      icon: 'schedule',             words: 'time now clock' },
     { key: 'image',     icon: 'add_photo_alternate',  words: 'image photo picture', parent: true },
+    { key: 'file',      icon: 'attach_file',          words: 'file attach attachment pdf document', parent: true },
     { key: 'voice',     icon: 'mic',                  words: 'voice record audio', parent: true },
     { key: 'reminder',  icon: 'notification_add',     words: 'reminder remind alarm', parent: true },
   ];
