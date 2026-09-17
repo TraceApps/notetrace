@@ -21,25 +21,58 @@
 
   function close() { open = false; dispatch('close'); }
 
+  // The part of the screen a keyboard leaves free. Contents size to it through
+  // --pop-avail (the label list shrinks and scrolls rather than hiding).
+  function viewport() {
+    const vv = window.visualViewport;
+    const top = vv ? vv.offsetTop : 0;
+    const height = vv ? vv.height : window.innerHeight;
+    return { top, bottom: top + height, height, keyboard: Math.max(0, window.innerHeight - top - height) };
+  }
+
   async function place() {
     narrow = window.innerWidth < 600;
-    if (narrow || !anchor) { style = ''; return; }
+    const vp = viewport();
+    if (narrow || !anchor) {
+      style = `bottom:${vp.keyboard}px; max-height:${Math.round(vp.height - 12)}px; --pop-avail:${Math.round(vp.height - 12)}px;`;
+      return;
+    }
+    const room = Math.round(vp.height - 24);
+    style = `left:-9999px; top:0; max-height:${room}px; --pop-avail:${room}px;`;
     await tick();
     if (!panel) return;
-    const pw = panel.offsetWidth, ph = panel.offsetHeight;
+    const pw = panel.offsetWidth, ph = Math.min(panel.offsetHeight, room);
     const ax = anchor.left ?? anchor.x, ay = anchor.bottom ?? anchor.y;
     const top = anchor.top ?? anchor.y;
-    let left = Math.min(Math.max(12, ax), window.innerWidth - pw - 12);
+    const left = Math.min(Math.max(12, ax), window.innerWidth - pw - 12);
     let y = ay + 6;
-    if (y + ph > window.innerHeight - 12) y = Math.max(12, top - ph - 6);
-    style = `left:${left}px; top:${y}px;`;
+    if (y + ph > vp.bottom - 12) y = top - ph - 6;
+    // Neither below nor above fits (a keyboard is up): keep it inside what's visible.
+    y = Math.min(Math.max(vp.top + 12, y), vp.bottom - 12 - ph);
+    style = `left:${left}px; top:${y}px; max-height:${room}px; --pop-avail:${room}px;`;
   }
 
   $: if (open) place();
 
   function onKey(e) { if (open && e.key === 'Escape') { e.stopPropagation(); close(); } }
-  onMount(() => window.addEventListener('keydown', onKey, true));
-  onDestroy(() => window.removeEventListener('keydown', onKey, true));
+  // A keyboard opening or closing moves the popover with it.
+  let _vvFrame = 0;
+  function onViewport() {
+    if (!open) return;
+    cancelAnimationFrame(_vvFrame);
+    _vvFrame = requestAnimationFrame(place);
+  }
+  onMount(() => {
+    window.addEventListener('keydown', onKey, true);
+    window.visualViewport?.addEventListener('resize', onViewport);
+    window.addEventListener('resize', onViewport);
+  });
+  onDestroy(() => {
+    window.removeEventListener('keydown', onKey, true);
+    window.visualViewport?.removeEventListener('resize', onViewport);
+    window.removeEventListener('resize', onViewport);
+    cancelAnimationFrame(_vvFrame);
+  });
 </script>
 
 {#if open}
@@ -65,6 +98,8 @@
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
     max-width: calc(100vw - 24px);
+    overflow-y: auto; overscroll-behavior: contain;
+    transition: bottom 180ms ease, top 180ms ease;
   }
   .pop-panel.sheet :global(.label-picker) { width: 100%; }
   .pop-panel.sheet {

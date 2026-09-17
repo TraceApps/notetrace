@@ -13,6 +13,9 @@
 
   let query = '';
   let busy = false;
+  // With a keyboard and mouse, typing searches straight away. On a touch
+  // screen the keyboard would cover the labels, so it waits for a tap on Search.
+  const typeFirst = typeof window !== 'undefined' && !!window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
 
   $: q = query.trim().toLowerCase();
   // Nested labels ("Home/Garage") list under their parent, indented.
@@ -50,12 +53,12 @@
   }
 </script>
 
-<div class="label-picker">
+<div class="label-picker" tabindex="-1" data-autofocus={typeFirst ? undefined : ''}>
   <p class="lp-title">{$_('notes.label_note')}</p>
   <div class="lp-search">
     <span class="material-symbols-rounded">search</span>
-    <!-- svelte-ignore a11y-autofocus -->
-    <input autofocus placeholder={$_('notes.label_search')} bind:value={query} on:keydown={onKey} />
+    <input data-autofocus={typeFirst ? '' : undefined} placeholder={$_('notes.label_search')} aria-label={$_('notes.label_search')}
+      bind:value={query} on:keydown={onKey} enterkeyhint="done" />
   </div>
   <ul class="lp-list">
     {#each filtered as l (l.id)}
@@ -79,7 +82,7 @@
 </div>
 
 <style>
-  .label-picker { display: flex; flex-direction: column; gap: 8px; width: 260px; max-width: 100%; }
+  .label-picker { display: flex; flex-direction: column; gap: 8px; width: 260px; max-width: 100%; outline: none; }
   .lp-title { font-size: 13px; font-weight: 600; color: var(--text-2); }
   .lp-search {
     display: flex; align-items: center; gap: 8px;
@@ -89,7 +92,12 @@
   }
   .lp-search .material-symbols-rounded { font-size: 18px; }
   .lp-search input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text-1); font-size: 14px; }
-  .lp-list { list-style: none; max-height: 240px; overflow-y: auto; margin: 0 -6px; }
+  /* Room the popover has (above a keyboard, say), less the title and search. */
+  .lp-list {
+    list-style: none; margin: 0 -6px;
+    max-height: max(120px, min(320px, calc(var(--pop-avail, 100dvh) - 170px)));
+    overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+  }
   .lp-row {
     display: flex; align-items: center; gap: 10px;
     min-height: 40px; padding: 0 6px;
