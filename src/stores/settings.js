@@ -14,7 +14,7 @@ const _dlog = import.meta.env.DEV
 export const USER_PREFS = new Set([
   // Locale + display
   'accentColor','pageBanners','bannerStyle','bannerAnimation','startPage',
-  'dateFormat','timeFormat','timezone',
+  'language','dateFormat','timeFormat','timezone',
   // AI Assistant ("Trace" persona)
   'aiEnabled','aiProvider','aiApiKey','aiModel','aiBaseUrl','aiAssistantName','aiKeyVerified',
   // Smart Log (hold-to-record on the FAB → AI parses spoken intent → tool execution)
@@ -344,6 +344,9 @@ export const pageBanners = derived(bannerStyle, $s => $s !== 'off');
 // 'animated'. Four styles: 'shimmer' (default), 'drift', 'pulse', 'aurora'.
 export const bannerAnimation = createSettingStore('bannerAnimation', 'shimmer');
 export const startPage   = createSettingStore('startPage',   '/');
+// UI language. English is the only one shipped today; translations register
+// themselves in src/i18n/index.js as they arrive.
+export const language    = createSettingStore('language',    'en');
 export const dateFormat  = createSettingStore('dateFormat',  'US');
 export const timeFormat  = createSettingStore('timeFormat',  '12h');
 export const timezone    = createSettingStore('timezone',    '');

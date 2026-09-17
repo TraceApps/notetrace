@@ -113,10 +113,20 @@ test('Android share sheet accepts text and files of any kind, single and multipl
   assert.match(read('../src/components/notes/NoteEditor.svelte'), /prefill\?\.images\?\.length\) addFiles\(prefill\.images\)/);
 });
 
-test('English strings load before the first render (English only)', () => {
+test('locales register the way the other Trace apps do, ready for translations', () => {
   const i18n = read('../src/i18n/index.js');
-  assert.match(i18n, /addMessages\('en', en\)/);
-  assert.doesNotMatch(i18n, /register\(/, 'lazy-loaded messages leave the locale unset when the app first renders');
+  // Same shape as CookTrace / LiftTrace / NutriTrace: lazily registered
+  // locales, a list the picker reads, and the browser's language when the
+  // user hasn't chosen one. A translation dropped into src/i18n/ needs only
+  // a register() call and an AVAILABLE_LOCALES entry.
+  assert.match(i18n, /register\('en', \(\) => import\('\.\/en\.json'\)\)/);
+  assert.match(i18n, /export const AVAILABLE_LOCALES/);
+  assert.match(i18n, /getLocaleFromNavigator/);
+  assert.match(i18n, /fallbackLocale: 'en'/);
+  // The saved language drives svelte-i18n, and the picker offers what's registered.
+  assert.match(read('../src/App.svelte'), /if \(\$language\) locale\.set\(\$language\)/);
+  assert.match(read('../src/components/settings/SettingsRegional.svelte'), /AVAILABLE_LOCALES as loc/);
+  assert.match(read('../src/stores/settings.js'), /'language'/);
 });
 
 test('Android records voice notes in a microphone foreground service', () => {

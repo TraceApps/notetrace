@@ -1,11 +1,26 @@
 <script>
-  // Regional section: date and time format.
+  // Regional section: language, date and time format.
   import { _ } from 'svelte-i18n';
-  import { dateFormat, timeFormat } from '../../stores/settings.js';
+  import { AVAILABLE_LOCALES } from '../../i18n/index.js';
+  import { language, dateFormat, timeFormat } from '../../stores/settings.js';
 </script>
 
 <div class="section-body">
   <div class="card settings-card">
+    <div class="setting-row">
+      <div>
+        <span class="setting-label">{$_('settings_page.regional.language')}</span>
+        <div class="setting-desc">{$_('settings_page.regional.language_desc')}</div>
+      </div>
+      <div class="select-wrap" style="width:160px">
+        <select aria-label={$_('settings_page.regional.language')} class="select sel-sm" value={$language} on:change={e => language.set(e.target.value)}>
+          {#each AVAILABLE_LOCALES as loc (loc.code)}
+            <option value={loc.code}>{loc.label}</option>
+          {/each}
+        </select>
+      </div>
+    </div>
+    <div class="setting-divider"></div>
     <div class="setting-row">
       <span class="setting-label">{$_('settings_page.regional.date_format')}</span>
       <div class="select-wrap" style="width:160px">

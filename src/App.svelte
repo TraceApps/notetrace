@@ -17,8 +17,8 @@
   import ConfirmDialogMount from './components/ui/ConfirmDialogMount.svelte';
   import { DB }    from './lib/db.js';
   import { NoteApi } from './lib/api.js';
-  import { navStyle, applyAccentColor, accentColor, applyAppearance, appearance, disableAnimations, sidebarPersistent, sidebarRail, sidebarRailMedium, cardDensity, pageBanners, bannerStyle, bannerAnimation, forceMobileLayout, startPage } from './stores/settings.js';
-  import { _ } from 'svelte-i18n';
+  import { navStyle, applyAccentColor, accentColor, applyAppearance, appearance, disableAnimations, sidebarPersistent, sidebarRail, sidebarRailMedium, cardDensity, pageBanners, bannerStyle, bannerAnimation, forceMobileLayout, startPage, language } from './stores/settings.js';
+  import { _, locale } from 'svelte-i18n';
   import { currentUser, userMgmtActive, setupRequired, loadAuthState, handleOidcCallback } from './stores/auth.js';
   import { needsNativeSetup, isNative, getNativeMode, getServerUrl, apiUrl } from './lib/platform.js';
   import { writable } from 'svelte/store';
@@ -311,6 +311,8 @@
 
   $: if (!_hasSidebar) sidebarOpen = false;
 
+  // svelte-i18n follows the saved language setting.
+  $: if ($language) locale.set($language);
   $: applyAccentColor($accentColor);
   $: applyAppearance($appearance);
 
