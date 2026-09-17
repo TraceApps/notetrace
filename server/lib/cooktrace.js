@@ -79,7 +79,7 @@ function _config(userId) {
 }
 
 export function unlink(userId) {
-  for (const k of [URL_KEY, TOKEN_KEY, 'cooktraceInfo']) _del(userId, k);
+  for (const k of [URL_KEY, TOKEN_KEY, ENABLED_KEY, 'cooktraceInfo']) _del(userId, k);
 }
 
 // ── Calls to CookTrace ──────────────────────────────────────────────────
