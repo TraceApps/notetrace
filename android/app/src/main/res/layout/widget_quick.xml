@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Quick Note widget: a Take a note bar with list, voice, and drawing buttons. -->
+<!-- Quick Note widget: a Capture a thought bar with list, voice, and drawing buttons. -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"

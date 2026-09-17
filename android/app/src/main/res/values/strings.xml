@@ -8,7 +8,7 @@
     <string name="shortcut_note">New Note</string>
     <string name="shortcut_list">New List</string>
     <string name="shortcut_drawing">New Drawing</string>
-    <string name="widget_take_note">Take a note…</string>
+    <string name="widget_take_note">Capture a thought…</string>
     <string name="widget_quick_label">Quick Note</string>
     <string name="widget_quick_desc">Start a note, list, voice note, or drawing</string>
     <string name="widget_notes_label">Notes</string>

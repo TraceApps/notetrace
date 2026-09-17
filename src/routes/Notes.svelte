@@ -435,7 +435,7 @@
   }
   // On a phone the + button sits in the corner, so Trace's button stacks above it.
   // A phone, upright or on its side, starts notes from the + button; wider or taller
-  // screens use the Take a note bar. Kept in step with the media query in the styles.
+  // screens use the Capture a thought bar. Kept in step with the media query in the styles.
   const PHONE_CAPTURE = '(max-width: 600px), (pointer: coarse) and (max-height: 500px)';
   $: phoneCapture = typeof window !== 'undefined' && ($viewport, !!window.matchMedia?.(PHONE_CAPTURE).matches);
   $: if (typeof document !== 'undefined') document.documentElement.style.setProperty('--page-fab-space', canCapture && phoneCapture && !searchOpen ? '76px' : '0px');
