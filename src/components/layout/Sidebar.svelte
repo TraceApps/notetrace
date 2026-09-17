@@ -191,6 +191,20 @@
     : $syncState.lastSync ? $_('sidebar.synced', { values: { when: relativeTime($syncState.lastSync).toLowerCase() } })
     : $_('sidebar.not_synced');
   $: syncBad = isNative ? syncMode && (!$syncState.online || !!$syncState.connectionIssue) : !$offlineState.online;
+  $: syncBusy = isNative ? ($syncState.syncing && syncMode) : $offlineState.syncing;
+  $: syncWaiting = !isNative && $offlineState.online && !!$offlineState.pending;
+  // Green when everything is up, amber while offline or still to send (nothing
+  // is lost, it just hasn't gone yet), red only when the server can be reached
+  // but the sync itself is failing.
+  $: syncTone = (isNative && syncMode && $syncState.connectionIssue && $syncState.online) ? 'bad'
+    : (syncBad || syncWaiting) ? 'wait'
+    : syncBusy ? 'busy'
+    : 'ok';
+  $: syncIcon = syncTone === 'bad' ? 'cloud_alert'
+    : syncBad ? 'cloud_off'
+    : syncBusy ? 'sync'
+    : syncWaiting ? 'cloud_upload'
+    : 'cloud_done';
   // Refresh the "Synced 2 min ago" text now and then.
   let _tick = 0;
   const _tickTimer = setInterval(() => { _tick++; }, 60 * 1000);
@@ -343,6 +357,13 @@
     </nav>
 
     <div class="sidebar-footer">
+      <!-- Sync gets its own line: it changes, the version doesn't. -->
+      {#if syncText && !rail}
+        <div class="sync-row {syncTone}">
+          <span class="material-symbols-rounded" class:spin={syncBusy} aria-hidden="true">{syncIcon}</span>
+          <span class="sync-text">{syncText}</span>
+        </div>
+      {/if}
       {#if $userMgmtActive && $currentUser}
         <div class="sidebar-user">
           <button class="user-avatar" on:click={() => go('/profile')}
@@ -358,9 +379,7 @@
           {#if !rail}
             <div class="user-info">
               <span class="user-name">{$currentUser.full_name || $currentUser.username}</span>
-              <span class="sidebar-version">
-                {APP_VERSION}{#if syncText}<span class="sync-sep"> · </span><span class="sync-text" class:bad={syncBad}>{syncText}</span>{/if}
-              </span>
+              <span class="sidebar-version">{APP_VERSION}</span>
             </div>
             <button class="btn-icon logout-btn" on:click={handleLogout} title={$_('common.sign_out')} aria-label={$_('common.sign_out')}>
               <span class="material-symbols-rounded">logout</span>
@@ -369,7 +388,7 @@
         </div>
       {:else}
         <span class="sidebar-version" data-tip={rail ? APP_VERSION : undefined}>
-          {rail ? APP_VERSION.replace(/-.*/, '') : APP_VERSION}{#if syncText && !rail}<span class="sync-sep"> · </span><span class="sync-text" class:bad={syncBad}>{syncText}</span>{/if}
+          {rail ? APP_VERSION.replace(/-.*/, '') : APP_VERSION}
         </span>
       {/if}
     </div>
@@ -605,13 +624,38 @@
     padding: 12px 14px;
     border-top: 1px solid var(--border);
     display: flex;
-    align-items: center;
-    justify-content: flex-end;
+    flex-direction: column;
+    align-items: stretch;
   }
-  .rail .sidebar-footer { justify-content: center; padding: 12px 0; }
+  .sidebar-footer > :global(.sidebar-user) { width: 100%; }
+  .rail .sidebar-footer { align-items: center; padding: 12px 0; }
   .sidebar-version { font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sync-sep { opacity: 0.6; }
-  .sync-text.bad { color: var(--warning); }
+  /* Sync state on its own line above the account, so it reads as status
+     rather than as part of the version number. */
+  .sync-row {
+    display: flex; align-items: center; gap: 7px;
+    margin: 0 0 9px; padding: 6px 9px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--text-1) 5%, transparent);
+    font-size: 11.5px; color: var(--text-2);
+    min-width: 0;
+  }
+  .sync-row .material-symbols-rounded { font-size: 15px; color: var(--text-3); flex-shrink: 0; }
+  .sync-row .sync-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sync-row.ok .material-symbols-rounded { color: var(--success); }
+  .sync-row.wait {
+    background: color-mix(in srgb, var(--warning) 14%, transparent);
+    color: var(--warning);
+  }
+  .sync-row.wait .material-symbols-rounded { color: var(--warning); }
+  .sync-row.bad {
+    background: color-mix(in srgb, var(--danger) 15%, transparent);
+    color: var(--danger);
+  }
+  .sync-row.bad .material-symbols-rounded { color: var(--danger); }
+  .sync-row .spin { animation: sidebar-sync-spin 1.1s linear infinite; }
+  @keyframes sidebar-sync-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .sync-row .spin { animation: none; } }
 
   .sidebar-user {
     display: flex;
