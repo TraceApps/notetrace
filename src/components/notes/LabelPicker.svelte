@@ -67,16 +67,16 @@
   <ul class="lp-list">
     {#each filtered as l (l._key)}
       {#if l._group}
-      <li class="lp-group" style="padding-left:{l._depth * 14 + 6}px">
+      <li class="lp-group" style="--depth:{l._depth}">
         <span class="material-symbols-rounded">folder</span>
         <span class="lp-name" title={l._short}>{l._short}</span>
       </li>
       {:else}
-      <li>
+      <li class:nested={l._depth > 0} style="--depth:{l._depth}">
         <label class="lp-row">
           <input type="checkbox" checked={selected.includes(l.id)} on:change={() => toggle(l.id)} />
           <span class="lp-dot"><LabelGlyph label={l} iconSize={17} /></span>
-          <span class="lp-name" style="padding-left:{l._depth * 14}px" title={l.name}>{l._short}</span>
+          <span class="lp-name" title={l.name}>{l._short}</span>
         </label>
       </li>
       {/if}
@@ -117,11 +117,20 @@
   }
   .lp-row:hover { background: color-mix(in srgb, var(--text-1) 6%, transparent); }
   .lp-row input { accent-color: var(--accent); width: 16px; height: 16px; }
+  /* A group heading, with its labels indented under it behind a guide line so
+     it's clear which labels belong to it and which don't. */
   .lp-group {
-    display: flex; align-items: center; gap: 8px; min-height: 32px; padding-right: 6px;
+    display: flex; align-items: center; gap: 8px; min-height: 32px;
+    padding: 4px 6px 2px calc(6px + var(--depth, 0) * 16px);
     font-size: 12px; font-weight: 600; letter-spacing: 0.02em; color: var(--text-3);
   }
   .lp-group .material-symbols-rounded { font-size: 17px; }
+  .lp-list li.nested { position: relative; padding-left: calc(var(--depth, 0) * 16px); }
+  .lp-list li.nested::before {
+    content: ''; position: absolute; top: 2px; bottom: 2px;
+    left: calc(6px + (var(--depth, 1) - 1) * 16px + 7px);
+    border-left: 1.5px solid color-mix(in srgb, var(--text-3) 55%, transparent);
+  }
   .lp-dot { width: 18px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .lp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lp-create {

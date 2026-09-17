@@ -28,7 +28,9 @@ import { isNative } from './platform.js';
 import { getDb, LOCAL_USER_ID } from './db-native.js';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 
-const TABLES = ['notes', 'labels', 'checklist_items', 'note_labels', 'note_versions', 'user_settings', 'ai_chat_history'];
+// Every table the local database has, less sync bookkeeping (sync_log,
+// sync_meta), which belongs to this device rather than to the data.
+const TABLES = ['notes', 'labels', 'checklist_items', 'note_labels', 'note_attachments', 'note_versions', 'user_settings', 'ai_chat_history'];
 
 async function _selectAll(db, table) {
   const r = await db.query(`SELECT * FROM ${table}`, []);

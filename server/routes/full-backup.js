@@ -180,9 +180,11 @@ const upload = multer({
 
 // ── Tables we dump / restore ──────────────────────────────────────────
 // Server-only ephemera (oauth_state, password_reset_tokens,
-// notification_log) is intentionally skipped — their lifetime is
+// notification_log) is intentionally skipped: their lifetime is
 // shorter than a backup and restoring stale rows would either
-// re-fire notifications or hand out consumed tokens.
+// re-fire notifications or hand out consumed tokens. link_previews is a
+// cache that refills itself. scripts/backup-coverage.test.js checks that
+// every other table is here, so a new one can't go missing.
 function dumpDatabase() {
   return {
     users:           db.prepare('SELECT * FROM users').all(),
@@ -204,6 +206,10 @@ function dumpDatabase() {
     // TODO(review): should invite_tokens be included in backups? Rows
     // may be expired or already-used by the time the restore runs.
     invite_tokens:         _selectIfExists('invite_tokens'),
+    // Integrations set up by hand: API tokens (hashed) and webhooks, so a
+    // restore doesn't quietly break whatever calls this server.
+    api_tokens:            _selectIfExists('api_tokens'),
+    webhooks:              _selectIfExists('webhooks'),
   };
 }
 
@@ -298,6 +304,8 @@ function restoreFromZip(zip) {
     }
     // See TODO(review) in dumpDatabase: pending invitations only.
     _restoreTable('invite_tokens',         data.invite_tokens);
+    _restoreTable('api_tokens',            data.api_tokens);
+    _restoreTable('webhooks',              data.webhooks);
 
     // OIDC — restore only when target tables exist.
     try {
