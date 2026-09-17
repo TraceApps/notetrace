@@ -301,7 +301,7 @@
   const BUBBLE_KEYS = ['bold', 'italic', 'underline', 'highlight', 'link', 'clear'];
   $: bubbleTools = tools.filter(t => BUBBLE_KEYS.includes(t.key));
   let bubble = null;   // { x, y, below }
-  let fmtBarEl;
+  let fmtBarEl, bubbleEl;
   const coarse = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches;
   function updateBubble() {
     if (!editor || !editor.isEditable || !editor.isFocused || suggest) { bubble = null; return; }
@@ -310,7 +310,11 @@
     const view = editor.view;
     const a = view.coordsAtPos(sel.from), b = view.coordsAtPos(sel.to);
     const left = Math.min(a.left, b.left), right = Math.max(a.right, b.right);
-    const x = Math.max(120, Math.min(window.innerWidth - 120, (left + right) / 2));
+    // Centred on the selection, but kept inside the note (the editor window, or the screen on a phone).
+    const half = (bubbleEl?.offsetWidth || 250) / 2 + 8;
+    const box = el.closest('.editor-panel')?.getBoundingClientRect() || { left: 0, right: window.innerWidth };
+    const minX = Math.max(box.left, 0) + half, maxX = Math.min(box.right, window.innerWidth) - half;
+    const x = maxX > minX ? Math.max(minX, Math.min(maxX, (left + right) / 2)) : window.innerWidth / 2;
     // On a touch screen the system's own copy/paste menu sits above the selection, so this goes below.
     const top = Math.min(a.top, b.top);
     // Also below when above would cover the formatting toolbar or run off the top.
@@ -333,7 +337,7 @@
   </div>
 {/if}
 {#if bubble && bubbleTools.length}
-  <div class="sel-bubble" class:below={bubble.below} use:portal role="toolbar" aria-label={$_('notes.formatting')}
+  <div class="sel-bubble" bind:this={bubbleEl} class:below={bubble.below} use:portal role="toolbar" aria-label={$_('notes.formatting')}
     style="left:{bubble.x}px; top:{bubble.y}px">
     {#each bubbleTools as t (t.key)}
       <button type="button" class="sel-btn" class:on={active[t.key]} title={$_(t.label)} aria-label={$_(t.label)} aria-pressed={!!active[t.key]}
