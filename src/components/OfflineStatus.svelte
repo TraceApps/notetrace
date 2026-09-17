@@ -37,7 +37,7 @@
 
 {#if state}
   <div class="offline-host" use:portal role="status" aria-live="polite">
-    <button class="offline-pill" class:bad={state === 'offline' || state === 'failed'}
+    <button class="offline-pill" class:wait={state === 'offline' || state === 'waiting'} class:bad={state === 'failed'} class:ok={state === 'synced'}
       title={state === 'waiting' || state === 'failed' ? $_('offline.retry') : text}
       disabled={state !== 'waiting' && state !== 'failed'}
       on:click={() => flushOutbox()}
@@ -61,7 +61,10 @@
     border: 1px solid var(--border-strong); box-shadow: var(--shadow-md, 0 4px 16px rgba(0,0,0,.18));
   }
   .offline-pill:disabled { cursor: default; opacity: 1; }
-  .offline-pill.bad { color: var(--warning, #f5a524); }
+  /* One rule across the app: green done, amber not yet, red failing. */
+  .offline-pill.ok .material-symbols-rounded { color: var(--success); }
+  .offline-pill.wait { color: var(--warning); }
+  .offline-pill.bad { color: var(--danger); }
   .offline-pill .material-symbols-rounded { font-size: 17px; }
   .spin { animation: offline-spin 1.2s linear infinite; }
   @keyframes offline-spin { to { transform: rotate(360deg); } }

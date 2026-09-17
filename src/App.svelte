@@ -660,8 +660,11 @@
     >
       <span class="material-symbols-rounded">menu</span>
       {#if _syncModeActive && !_serverReachable}
-        <span class="conn-badge conn-offline">
-          <span class="material-symbols-rounded" style="font-size:10px">cloud_off</span>
+        <!-- Amber for offline (nothing lost, it just hasn't gone yet), red when
+             the server is reachable but the sync is failing. Same rule as the
+             sidebar's sync line and the pill at the top. -->
+        <span class="conn-badge" class:conn-failing={$syncState.online && $syncState.connectionIssue} class:conn-offline={!($syncState.online && $syncState.connectionIssue)}>
+          <span class="material-symbols-rounded" style="font-size:10px">{$syncState.online && $syncState.connectionIssue ? 'cloud_alert' : 'cloud_off'}</span>
         </span>
       {/if}
     </button>
@@ -815,7 +818,11 @@
     transition: background 0.3s;
   }
   .conn-offline {
-    background: var(--error, #ef4444);
+    background: var(--warning);
+    color: #1b1300;
+  }
+  .conn-failing {
+    background: var(--danger);
     color: #fff;
   }
 

@@ -97,7 +97,7 @@
       </form>
 
       {#if $shopping.offline || $shopping.pending || $shopping.error}
-        <p class="status" class:bad={!!$shopping.error} role="status" transition:slide={{ duration: ms }}>
+        <p class="status" class:bad={!!$shopping.error} class:wait={!$shopping.error && ($shopping.offline || !!$shopping.pending)} role="status" transition:slide={{ duration: ms }}>
           <span class="material-symbols-rounded">{$shopping.error ? 'error' : $shopping.offline ? 'cloud_off' : 'cloud_upload'}</span>
           {#if $shopping.error}{$shopping.error}
           {:else if $shopping.offline}{$shopping.at ? $_('shopping.offline_from', { values: { when: relativeTime($shopping.at).toLowerCase() } }) : $_('shopping.offline')}{#if $shopping.pending}{' '}{$_('shopping.waiting', { values: { n: $shopping.pending } })}{/if}
@@ -196,6 +196,8 @@
   .status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); padding: 0 4px; }
   .status .material-symbols-rounded { font-size: 18px; color: var(--text-3); }
   .status.bad, .status.bad .material-symbols-rounded { color: var(--danger); }
+  /* Amber while offline or with changes still to send, as everywhere else. */
+  .status.wait, .status.wait .material-symbols-rounded { color: var(--warning); }
 
   .aisle { display: flex; flex-direction: column; gap: 6px; }
   .aisle-title {
