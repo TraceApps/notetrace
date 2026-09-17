@@ -11,6 +11,7 @@
   import BottomNav from './components/layout/BottomNav.svelte';
   import Sidebar   from './components/layout/Sidebar.svelte';
   import Tasks     from './routes/Tasks.svelte';
+  import Shopping  from './routes/Shopping.svelte';
   import UpdateBanner from './components/UpdateBanner.svelte';
   import Toast     from './components/ui/Toast.svelte';
   import ConfirmDialogMount from './components/ui/ConfirmDialogMount.svelte';
@@ -224,6 +225,7 @@
     '/label/:id':          Notes,
     '/shared':             Notes,
     '/tasks':              Tasks,
+    '/shopping':           Shopping,
     '/settings':           Settings,
     '/settings/:section':  Settings,
     '/wizard':             Wizard,

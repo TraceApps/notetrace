@@ -1,13 +1,12 @@
 /**
- * cooktrace.js: send checklist items to a CookTrace shopping list.
+ * cooktrace.js: the CookTrace shopping list, from NoteTrace.
  *
  * Each user links their own CookTrace with its address and an API token
- * made in CookTrace (Settings, API Tokens, with the mcp:write scope). The
+ * made in CookTrace (Settings, API Tokens, with the shopping scope). The
  * token is stored encrypted and never leaves this server: the browser and
- * the phone call NoteTrace, and NoteTrace calls CookTrace. Items go in
- * through CookTrace's MCP endpoint (add_shopping_item), so CookTrace needs
- * MCP_ENABLED=1 and MCP_WRITE_ENABLED=1. Nothing on the CookTrace side
- * changes for this.
+ * the phone call NoteTrace, and NoteTrace calls CookTrace's shopping API
+ * (/api/v1/shopping) to list, add, check off, and clear items. CookTrace
+ * needs no server setting for it.
  *
  * CookTrace on a private address (a LAN IP, localhost, a Docker network
  * name) needs ALLOW_PRIVATE_COOKTRACE_URLS=1 here.
@@ -15,7 +14,7 @@
 import db from '../db.js';
 import { encrypt, decrypt } from './token-crypto.js';
 import { assertSafeUrl } from './ssrf-guard.js';
-import { normalizeCooktraceUrl, parseMcpReply } from './cooktrace-core.js';
+import { normalizeCooktraceUrl } from './cooktrace-core.js';
 
 const URL_KEY = 'cooktraceUrl';
 const TOKEN_KEY = 'cooktraceToken';
@@ -100,24 +99,29 @@ async function _me(url, token) {
   return data;
 }
 
-let _rpcId = 0;
-async function _mcp(url, token, method, params) {
-  const res = await _fetch(`${url}/api/mcp`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ jsonrpc: '2.0', id: ++_rpcId, method, params }),
+
+/** A call to CookTrace's shopping API with the saved token. Throws CooktraceError with a message for people. */
+async function _shopping(cfg, method, path = '', body) {
+  const res = await _fetch(`${cfg.url}/api/v1/shopping${path}`, {
+    method,
+    headers: { Accept: 'application/json', Authorization: `Bearer ${cfg.token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
   });
-  if (res.status === 404) throw new CooktraceError('MCP is off on this CookTrace. Set MCP_ENABLED=1 and MCP_WRITE_ENABLED=1 there.', 400);
   if (res.status === 401) throw new CooktraceError('CookTrace didn\'t accept the saved token. Link CookTrace again in Settings.', 400);
-  if (res.status === 403) throw new CooktraceError('The CookTrace token needs the mcp:write scope.', 400);
+  if (res.status === 403) throw new CooktraceError('The CookTrace token needs the shopping scope.', 400);
+  // The list itself missing (not one item) means a CookTrace from before the shopping API.
+  if (res.status === 404 && (!path || path.startsWith('?'))) throw new CooktraceError('This CookTrace is too old for NoteTrace. Update CookTrace, then link it again.', 400);
   if (res.status === 429) throw new CooktraceError('CookTrace is rate limiting this token. Try again in a minute.', 429);
-  const msg = parseMcpReply(await res.text());
-  if (!res.ok || !msg) throw new CooktraceError(`CookTrace answered with an error (${res.status}).`);
-  if (msg.error) {
-    if (/not found|unknown tool/i.test(msg.error.message || '')) throw new CooktraceError('This CookTrace doesn\'t allow adding items. Set MCP_WRITE_ENABLED=1 there.', 400);
-    throw new CooktraceError(msg.error.message || 'CookTrace answered with an error.');
-  }
-  return msg.result;
+  const data = await res.json().catch(() => null);
+  if (res.status === 404) throw new CooktraceError(data?.error || 'That item isn\'t on the CookTrace list any more.', 404);
+  if (!res.ok || !data) throw new CooktraceError(data?.error || `CookTrace answered with an error (${res.status}).`);
+  return data;
+}
+
+function _required(userId) {
+  const cfg = _config(userId);
+  if (!cfg) throw new CooktraceError('Link CookTrace in Settings first.', 409);
+  return cfg;
 }
 
 /** Check a URL and token, then save them. Returns the link for Settings. */
@@ -128,39 +132,34 @@ export async function link(userId, { url: rawUrl, token: rawToken }) {
   if (!token) throw new CooktraceError('Enter a CookTrace API token.', 400);
   const me = await _me(url, token);
   const scopes = Array.isArray(me.scopes) ? me.scopes : [];
-  if (!scopes.includes('mcp:write')) throw new CooktraceError('The CookTrace token needs the mcp:write scope.', 400);
-  const tools = await _mcp(url, token, 'tools/list', {});
-  const canAdd = (tools?.tools || []).some(t => t.name === 'add_shopping_item');
-  if (!canAdd) throw new CooktraceError('This CookTrace doesn\'t allow adding items yet. Set MCP_WRITE_ENABLED=1 there.', 400);
+  if (!scopes.includes('shopping')) throw new CooktraceError('The CookTrace token needs the shopping scope.', 400);
+  // Proves this CookTrace has the shopping API, not just that the token is valid.
+  await _shopping({ url, token }, 'GET', '?include_checked=false');
   _set(userId, URL_KEY, url);
   _set(userId, TOKEN_KEY, encrypt(token));
   _set(userId, 'cooktraceInfo', { username: me.user.username || null, can_add: true });
   return getLink(userId);
 }
 
-/**
- * Add names to the CookTrace shopping list, one call each, in order.
- * Stops at the first failure and reports how many made it.
- */
-export async function addToShoppingList(userId, names) {
-  const cfg = _config(userId);
-  if (!cfg) throw new CooktraceError('Link CookTrace in Settings first.', 409);
-  const added = [];
-  for (const name of names) {
-    let result;
-    try {
-      result = await _mcp(cfg.url, cfg.token, 'tools/call', { name: 'add_shopping_item', arguments: { name } });
-    } catch (e) {
-      if (!added.length) throw e;
-      return { added: added.length, failed: names.length - added.length, error: e.message };
-    }
-    if (result?.isError) {
-      const text = result.content?.map(c => c.text || '').join(' ').trim();
-      const error = /not found|unknown tool/i.test(text || '') ? 'This CookTrace doesn\'t allow adding items. Set MCP_WRITE_ENABLED=1 there.' : (text || 'CookTrace refused an item.');
-      if (!added.length) throw new CooktraceError(error, 400);
-      return { added: added.length, failed: names.length - added.length, error };
-    }
-    added.push(name);
-  }
-  return { added: added.length, failed: 0 };
+/** The CookTrace shopping list, sorted as CookTrace shows it. { items } */
+export async function listShopping(userId) {
+  const data = await _shopping(_required(userId), 'GET', '?include_checked=true');
+  return { items: Array.isArray(data.items) ? data.items : [] };
+}
+
+/** Add names (or { name, quantity, unit }) in one call. { added, skipped } counts and items. */
+export async function addToShoppingList(userId, entries) {
+  const items = entries.map(e => (typeof e === 'string' ? { name: e } : e));
+  const data = await _shopping(_required(userId), 'POST', '', { items });
+  return { added: data.added || [], skipped: data.skipped || [] };
+}
+
+export async function checkShoppingItem(userId, id, checked) {
+  const n = Number.parseInt(id, 10);
+  if (!Number.isFinite(n) || n <= 0) throw new CooktraceError('Invalid item.', 400);
+  return _shopping(_required(userId), 'PATCH', `/${n}/check`, { checked: !!checked });
+}
+
+export async function clearCheckedShopping(userId) {
+  return _shopping(_required(userId), 'DELETE', '/checked');
 }

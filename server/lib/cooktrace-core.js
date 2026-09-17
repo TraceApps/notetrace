@@ -36,14 +36,3 @@ export function shoppingNames(items, { includeChecked = false } = {}) {
   }
   return out;
 }
-
-/**
- * An MCP Streamable HTTP reply is either plain JSON or an SSE stream with
- * the JSON-RPC message in a `data:` line.
- */
-export function parseMcpReply(text) {
-  const body = String(text || '');
-  const lines = body.split('\n').filter(l => l.startsWith('data:'));
-  const raw = lines.length ? lines[lines.length - 1].slice(5).trim() : body.trim();
-  try { return JSON.parse(raw); } catch { return null; }
-}

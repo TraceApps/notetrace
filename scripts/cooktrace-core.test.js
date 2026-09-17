@@ -3,7 +3,7 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeCooktraceUrl, shoppingNames, parseMcpReply, MAX_SEND_ITEMS } from '../server/lib/cooktrace-core.js';
+import { normalizeCooktraceUrl, shoppingNames, MAX_SEND_ITEMS } from '../server/lib/cooktrace-core.js';
 
 test('normalizeCooktraceUrl trims, drops trailing slashes, and needs http(s)', () => {
   assert.equal(normalizeCooktraceUrl('  https://cook.example.com/// '), 'https://cook.example.com');
@@ -29,11 +29,4 @@ test('shoppingNames sends unchecked items once, cleaned', () => {
 test('shoppingNames stops at the send limit', () => {
   const many = Array.from({ length: 80 }, (_, i) => ({ text: `Item ${i}`, checked: false }));
   assert.equal(shoppingNames(many).length, MAX_SEND_ITEMS);
-});
-
-test('parseMcpReply reads plain JSON and SSE replies', () => {
-  const msg = { jsonrpc: '2.0', id: 1, result: { tools: [] } };
-  assert.deepEqual(parseMcpReply(JSON.stringify(msg)), msg);
-  assert.deepEqual(parseMcpReply(`event: message\ndata: ${JSON.stringify(msg)}\n\n`), msg);
-  assert.equal(parseMcpReply('<html>not found</html>'), null);
 });

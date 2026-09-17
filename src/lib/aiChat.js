@@ -42,7 +42,7 @@ export const AI_DEFAULT_MODELS = {
 export const AI_MODEL_CUSTOM = '__custom__';
 
 export const AI_MODELS = {
-  claude:  ['claude-haiku-4-5-20251001', 'claude-sonnet-5', 'claude-opus-5', 'claude-fable-5', 'claude-opus-4-8', AI_MODEL_CUSTOM],
+  claude:  ['claude-haiku-4-5-20251001', 'claude-sonnet-5', 'claude-opus-5', 'claude-fable-5-1', 'claude-fable-5', 'claude-opus-4-8', AI_MODEL_CUSTOM],
   openai:  ['gpt-5.6-luna', 'gpt-5.6-terra', 'gpt-5.6', 'gpt-4o-mini', 'gpt-4o', AI_MODEL_CUSTOM],
   gemini:  ['gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.1-pro', 'gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-2.5-pro', AI_MODEL_CUSTOM],
   custom:  [],
@@ -53,7 +53,8 @@ export const AI_MODEL_LABELS = {
   'claude-haiku-4-5-20251001': 'Claude Haiku (fast, cheap)',
   'claude-sonnet-5':           'Claude Sonnet 5 (balanced)',
   'claude-opus-5':             'Claude Opus 5',
-  'claude-fable-5':            'Claude Fable 5 (most capable)',
+  'claude-fable-5-1':          'Claude Fable 5.1 (most capable)',
+  'claude-fable-5':            'Claude Fable 5 (previous)',
   'claude-opus-4-8':           'Claude Opus 4.8 (previous)',
   'gpt-5.6-luna':              'GPT-5.6 Luna (fast, cheap)',
   'gpt-5.6-terra':             'GPT-5.6 Terra (balanced)',

@@ -4,7 +4,10 @@
  *   GET    /api/integrations/cooktrace           the link (never the token)
  *   PUT    /api/integrations/cooktrace           { url, token }: check, then save
  *   DELETE /api/integrations/cooktrace           unlink
- *   POST   /api/integrations/cooktrace/shopping  { items }: add to the shopping list
+ *   GET    /api/integrations/cooktrace/shopping  the CookTrace shopping list { items }
+ *   POST   /api/integrations/cooktrace/shopping  { items }: add to it → { added, skipped, names }
+ *   PATCH  /api/integrations/cooktrace/shopping/:id  { checked }: check an item off, or back on
+ *   DELETE /api/integrations/cooktrace/shopping/checked  clear checked items
  *
  * `items` is a checklist ([{ text, checked }]) or plain names; unchecked
  * items are sent unless `include_checked` is true.
@@ -43,6 +46,14 @@ router.delete('/cooktrace', wrap((req, res) => {
   res.json({ connected: false });
 }));
 
+const listLimit = makeRateLimiter({ max: 60, windowMs: 60_000, label: 'cooktrace-list' });
+
+router.get('/cooktrace/shopping', listLimit, wrap(async (req, res) => {
+  try {
+    res.json(await CookTrace.listShopping(uid(req)));
+  } catch (e) { _fail(res, e); }
+}));
+
 router.post('/cooktrace/shopping', sendLimit, wrap(async (req, res) => {
   const raw = Array.isArray(req.body?.items) ? req.body.items : [];
   const items = raw.map(it => (typeof it === 'string' ? { text: it, checked: false } : it));
@@ -50,6 +61,18 @@ router.post('/cooktrace/shopping', sendLimit, wrap(async (req, res) => {
   if (!names.length) return res.status(400).json({ error: 'There are no items to send.' });
   try {
     res.json({ ...(await CookTrace.addToShoppingList(uid(req), names)), names });
+  } catch (e) { _fail(res, e); }
+}));
+
+router.patch('/cooktrace/shopping/:id', listLimit, wrap(async (req, res) => {
+  try {
+    res.json(await CookTrace.checkShoppingItem(uid(req), req.params.id, !!req.body?.checked));
+  } catch (e) { _fail(res, e); }
+}));
+
+router.delete('/cooktrace/shopping/checked', sendLimit, wrap(async (req, res) => {
+  try {
+    res.json(await CookTrace.clearCheckedShopping(uid(req)));
   } catch (e) { _fail(res, e); }
 }));
 

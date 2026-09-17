@@ -24,14 +24,14 @@
     const sending = open;
     try {
       const r = await sendToCooktrace(sending);
-      if (r.failed) {
-        showError($_('cooktrace.partly_sent', { values: { added: r.added, total: r.added + r.failed, error: r.error || '' } }));
-      } else {
-        showSuccess($_('cooktrace.sent', { values: { count: r.added } }));
-      }
-      // Items the server de-duplicated count as sent, so match by name.
-      const sentNames = new Set((r.names || []).slice(0, r.added).map(n => n.toLowerCase()));
-      dispatch('sent', { uuids: checkAfter ? sending.filter(i => sentNames.has(_clean(i.text))).map(i => i.uuid) : [] });
+      const added = r.added?.length || 0;
+      const skipped = r.skipped?.length || 0;
+      if (added && skipped) showSuccess($_('cooktrace.sent_some_skipped', { values: { count: added, skipped } }));
+      else if (skipped) showSuccess($_('cooktrace.all_skipped', { values: { count: skipped } }));
+      else showSuccess($_('cooktrace.sent', { values: { count: added } }));
+      // Added or already there, every sent item is on the CookTrace list now.
+      const onList = new Set((r.names || []).map(n => n.toLowerCase()));
+      dispatch('sent', { uuids: checkAfter ? sending.filter(i => onList.has(_clean(i.text))).map(i => i.uuid) : [] });
     } catch (e) {
       showError(e.message);
     } finally {
