@@ -19,8 +19,12 @@
 
   $: q = query.trim().toLowerCase();
   // Nested labels ("Home/Garage") list under their parent, indented.
-  $: ordered = flattenTree(buildLabelTree($labels)).filter(n => n.label).map(n => ({ ...n.label, _depth: n.depth, _short: n.name }));
-  $: filtered = q ? $labels.filter(l => l.name.toLowerCase().includes(q)).map(l => ({ ...l, _depth: 0, _short: l.name })) : ordered;
+  // A group that isn't a label itself ("DockerCompose" in "DockerCompose/YAML")
+  // shows as a heading, so its labels aren't left without a name above them.
+  $: ordered = flattenTree(buildLabelTree($labels)).map(n => n.label
+    ? { ...n.label, _key: n.label.id, _depth: n.depth, _short: n.name }
+    : { _key: `group:${n.path}`, _group: true, _depth: n.depth, _short: n.name });
+  $: filtered = q ? $labels.filter(l => l.name.toLowerCase().includes(q)).map(l => ({ ...l, _key: l.id, _depth: 0, _short: l.name })) : ordered;
   $: exact = $labels.some(l => l.name.toLowerCase() === q);
 
   function toggle(id) {
@@ -48,7 +52,7 @@
     if (e.key === 'Enter') {
       e.preventDefault();
       if (!exact && q) create();
-      else if (filtered.length === 1) toggle(filtered[0].id);
+      else if (filtered.length === 1 && !filtered[0]._group) toggle(filtered[0].id);
     }
   }
 </script>
@@ -61,7 +65,13 @@
       bind:value={query} on:keydown={onKey} enterkeyhint="done" />
   </div>
   <ul class="lp-list">
-    {#each filtered as l (l.id)}
+    {#each filtered as l (l._key)}
+      {#if l._group}
+      <li class="lp-group" style="padding-left:{l._depth * 14 + 6}px">
+        <span class="material-symbols-rounded">folder</span>
+        <span class="lp-name" title={l._short}>{l._short}</span>
+      </li>
+      {:else}
       <li>
         <label class="lp-row">
           <input type="checkbox" checked={selected.includes(l.id)} on:change={() => toggle(l.id)} />
@@ -69,6 +79,7 @@
           <span class="lp-name" style="padding-left:{l._depth * 14}px" title={l.name}>{l._short}</span>
         </label>
       </li>
+      {/if}
     {/each}
   </ul>
   {#if q && !exact}
@@ -106,6 +117,11 @@
   }
   .lp-row:hover { background: color-mix(in srgb, var(--text-1) 6%, transparent); }
   .lp-row input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .lp-group {
+    display: flex; align-items: center; gap: 8px; min-height: 32px; padding-right: 6px;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.02em; color: var(--text-3);
+  }
+  .lp-group .material-symbols-rounded { font-size: 17px; }
   .lp-dot { width: 18px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .lp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lp-create {
