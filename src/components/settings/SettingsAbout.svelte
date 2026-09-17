@@ -56,7 +56,7 @@
           <span class="material-symbols-rounded" style="font-size:14px">coffee</span> Ko-fi
         </a>
       </div>
-      <div class="setting-desc" style="padding-left:30px;font-size:11px">NoteTrace is free to self-host. Donations are appreciated but never required.</div>
+      <div class="setting-desc" style="padding-left:30px;font-size:11px">{$_('settings_page.about.support_note')}</div>
     </div>
   </div>
 </div>

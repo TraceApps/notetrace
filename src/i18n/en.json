@@ -1286,6 +1286,7 @@
       "crash_available":        "Crash report available"
     },
     "about": {
+      "support_note": "NoteTrace is free to self-host, always. The current goal is a Mac and an iPhone so the Trace apps can run properly on iOS.",
       "app_name":               "NoteTrace",
       "federation_prefix":      "Optional federation with ",
       "federation_suffix":      " for nutrition tracking",
