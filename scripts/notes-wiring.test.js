@@ -119,7 +119,10 @@ test('locales register the way the other Trace apps do, ready for translations',
   // locales, a list the picker reads, and the browser's language when the
   // user hasn't chosen one. A translation dropped into src/i18n/ needs only
   // a register() call and an AVAILABLE_LOCALES entry.
-  assert.match(i18n, /register\('en', \(\) => import\('\.\/en\.json'\)\)/);
+  // English is bundled so the first render never shows a raw key; other
+  // locales load on demand, the way the sister apps register every one.
+  assert.match(i18n, /addMessages\('en', en\)/);
+  assert.match(i18n, /\/\/ register\('sv'|register\('[a-z]{2}', \(\) => import\(/);
   assert.match(i18n, /export const AVAILABLE_LOCALES/);
   assert.match(i18n, /getLocaleFromNavigator/);
   assert.match(i18n, /fallbackLocale: 'en'/);
