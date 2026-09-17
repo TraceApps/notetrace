@@ -3,6 +3,8 @@
  *
  *   GET    /api/integrations/cooktrace           the link (never the token)
  *   PUT    /api/integrations/cooktrace           { url, token }: check, then save
+ *   PATCH  /api/integrations/cooktrace           { enabled }: turn it on or off, keeping the link
+ *   POST   /api/integrations/cooktrace/test      check the saved link still works
  *   DELETE /api/integrations/cooktrace           unlink
  *   GET    /api/integrations/cooktrace/shopping  the CookTrace shopping list { items }
  *   POST   /api/integrations/cooktrace/shopping  { items }: add to it → { added, skipped, names }
@@ -38,6 +40,16 @@ router.get('/cooktrace', wrap((req, res) => {
 router.put('/cooktrace', linkLimit, wrap(async (req, res) => {
   try {
     res.json(await CookTrace.link(uid(req), req.body || {}));
+  } catch (e) { _fail(res, e); }
+}));
+
+router.patch('/cooktrace', wrap((req, res) => {
+  res.json(CookTrace.setEnabled(uid(req), req.body?.enabled === true));
+}));
+
+router.post('/cooktrace/test', linkLimit, wrap(async (req, res) => {
+  try {
+    res.json(await CookTrace.test(uid(req)));
   } catch (e) { _fail(res, e); }
 }));
 

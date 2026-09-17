@@ -16,7 +16,7 @@
   import { nextOccurrence } from '../../lib/reminders.js';
   import { syncState } from '../../lib/sync.js';
   import { offlineState } from '../../lib/offline-api.js';
-  import { cooktraceLink, loadCooktraceLink } from '../../lib/cooktrace.js';
+  import { cooktraceLink, cooktraceOn, loadCooktraceLink } from '../../lib/cooktrace.js';
   import { confirmDialog } from '../../stores/confirmDialog.js';
   import { relativeTime } from '../../lib/relative-time.js';
   import { todayStr } from '../../lib/due-dates.js';
@@ -81,7 +81,7 @@
     { path: '/reminders', icon: 'notifications', label: $_('nav.reminders'), badge: dueToday },
     { path: '/tasks',     icon: 'task_alt',      label: $_('nav.tasks'),     badge: tasksDue, badgeKey: 'sidebar.tasks_due' },
     // The CookTrace shopping list, once CookTrace is linked.
-    ...($cooktraceLink?.connected ? [{ path: '/shopping', icon: 'shopping_cart', label: $_('nav.shopping') }] : []),
+    ...(cooktraceOn($cooktraceLink) ? [{ path: '/shopping', icon: 'shopping_cart', label: $_('nav.shopping') }] : []),
     ...($sharingAvailable ? [{ path: '/shared', icon: 'group', label: $_('nav.shared') }] : []),
     { path: '/archive',   icon: 'archive',       label: $_('nav.archive') },
     { path: '/trash',     icon: 'delete',        label: $_('nav.trash') },

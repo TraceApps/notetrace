@@ -18,6 +18,7 @@ import { normalizeCooktraceUrl } from './cooktrace-core.js';
 
 const URL_KEY = 'cooktraceUrl';
 const TOKEN_KEY = 'cooktraceToken';
+const ENABLED_KEY = 'cooktraceEnabled';
 const TIMEOUT_MS = 15_000;
 
 function _envFlag(v) {
@@ -55,9 +56,17 @@ function _del(userId, key) {
 export function getLink(userId) {
   const url = _get(userId, URL_KEY);
   const token = _get(userId, TOKEN_KEY);
-  if (!url || !token) return { connected: false };
+  const enabled = _get(userId, ENABLED_KEY);
+  if (!url || !token) return { connected: false, enabled: enabled === true };
   const info = _get(userId, 'cooktraceInfo') || {};
-  return { connected: true, url, username: info.username || null, can_add: info.can_add !== false };
+  // A link made before the switch existed counts as on.
+  return { connected: true, enabled: enabled !== false, url, username: info.username || null, can_add: info.can_add !== false };
+}
+
+/** Turn the link on or off without forgetting it. Off hides Shopping and Send to CookTrace. */
+export function setEnabled(userId, enabled) {
+  _set(userId, ENABLED_KEY, !!enabled);
+  return getLink(userId);
 }
 
 function _config(userId) {
@@ -124,12 +133,34 @@ function _required(userId) {
   return cfg;
 }
 
-/** Check a URL and token, then save them. Returns the link for Settings. */
+/**
+ * Check a URL and token, then save them. Returns the link for Settings.
+ * No token reuses the saved one, but only for the saved address: the token
+ * never goes to an address it wasn't linked with.
+ */
 export async function link(userId, { url: rawUrl, token: rawToken }) {
   const url = normalizeCooktraceUrl(rawUrl);
-  const token = String(rawToken || '').trim();
+  let token = String(rawToken || '').trim();
   if (!url) throw new CooktraceError('Enter the CookTrace address, starting with http:// or https://.', 400);
+  if (!token) {
+    const saved = _config(userId);
+    if (saved && saved.url !== url) throw new CooktraceError('Enter the API token again for the new address.', 400);
+    token = saved?.token || '';
+  }
   if (!token) throw new CooktraceError('Enter a CookTrace API token.', 400);
+  await _check(url, token, userId);
+  _set(userId, ENABLED_KEY, true);
+  return getLink(userId);
+}
+
+/** Check the saved link still works (the Test button). Returns the link, or throws why not. */
+export async function test(userId) {
+  const cfg = _required(userId);
+  await _check(cfg.url, cfg.token, userId);
+  return getLink(userId);
+}
+
+async function _check(url, token, userId) {
   const me = await _me(url, token);
   const scopes = Array.isArray(me.scopes) ? me.scopes : [];
   if (!scopes.includes('shopping')) throw new CooktraceError('The CookTrace token needs the shopping scope.', 400);
@@ -138,7 +169,6 @@ export async function link(userId, { url: rawUrl, token: rawToken }) {
   _set(userId, URL_KEY, url);
   _set(userId, TOKEN_KEY, encrypt(token));
   _set(userId, 'cooktraceInfo', { username: me.user.username || null, can_add: true });
-  return getLink(userId);
 }
 
 /** The CookTrace shopping list, sorted as CookTrace shows it. { items } */

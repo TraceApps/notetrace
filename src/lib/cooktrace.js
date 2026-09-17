@@ -9,8 +9,11 @@ import { isNative, getServerUrl } from './platform.js';
 
 export const cooktraceAvailable = !isNative || !!getServerUrl();
 
-/** { connected, url, username } once loaded; null before. */
+/** { connected, enabled, url, username } once loaded; null before. */
 export const cooktraceLink = writable(null);
+
+/** Linked and switched on: Shopping and Send to CookTrace show. */
+export const cooktraceOn = (link) => !!link?.connected && link.enabled !== false;
 
 let _loading = null;
 export function loadCooktraceLink({ force = false } = {}) {
@@ -24,6 +27,21 @@ export function loadCooktraceLink({ force = false } = {}) {
 
 export async function linkCooktrace(url, token) {
   const link = await NoteApi.put('/api/integrations/cooktrace', { url, token });
+  cooktraceLink.set(link);
+  _loading = Promise.resolve(link);
+  return link;
+}
+
+/** Check the saved link still works. Resolves the link, or throws why not. */
+export async function testCooktrace() {
+  const link = await NoteApi.post('/api/integrations/cooktrace/test', {});
+  cooktraceLink.set(link);
+  _loading = Promise.resolve(link);
+  return link;
+}
+
+export async function setCooktraceEnabled(enabled) {
+  const link = await NoteApi.patch('/api/integrations/cooktrace', { enabled: !!enabled });
   cooktraceLink.set(link);
   _loading = Promise.resolve(link);
   return link;

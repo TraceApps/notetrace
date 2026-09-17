@@ -12,7 +12,7 @@
   import { push } from 'svelte-spa-router';
   import { bannerStyle, disableAnimations } from '../stores/settings.js';
   import {
-    cooktraceLink, loadCooktraceLink, cooktraceAvailable,
+    cooktraceLink, cooktraceOn, loadCooktraceLink, cooktraceAvailable,
     shopping, loadShopping, setShoppingChecked, addShoppingItem, clearCheckedShopping, shoppingQueue,
   } from '../lib/cooktrace.js';
   import { applyPending, groupShopping, amountLabel } from '../lib/shopping-groups.js';
@@ -23,7 +23,7 @@
   let showChecked = false;
   let addInput;
 
-  $: linked = !!$cooktraceLink?.connected;
+  $: linked = cooktraceOn($cooktraceLink);
   // What CookTrace last said, with anything still on its way laid over it.
   $: shown = applyPending($shopping.items || [], ($shopping.pending, shoppingQueue()));
   $: ({ groups, checked } = groupShopping(shown));
@@ -32,7 +32,7 @@
 
   onMount(async () => {
     const link = await loadCooktraceLink();
-    if (link?.connected) loadShopping();
+    if (cooktraceOn(link)) loadShopping();
     document.addEventListener('visibilitychange', onVisible);
   });
   onDestroy(() => document.removeEventListener('visibilitychange', onVisible));

@@ -17,6 +17,7 @@ export const SERVER_ONLY_KEYS = new Set([
   'cooktraceUrl',
   'cooktraceToken',
   'cooktraceInfo',
+  'cooktraceEnabled',
 ]);
 
 // Pattern fallback so newly added admin keys are auto-protected if they

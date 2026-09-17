@@ -40,7 +40,7 @@
   import ShareDialog from './ShareDialog.svelte';
   import TraceActions from './TraceActions.svelte';
   import CooktraceSend from './CooktraceSend.svelte';
-  import { cooktraceLink, loadCooktraceLink } from '../../lib/cooktrace.js';
+  import { cooktraceLink, cooktraceOn, loadCooktraceLink } from '../../lib/cooktrace.js';
   import VoiceRecorder from './VoiceRecorder.svelte';
   import VoiceNotes from './VoiceNotes.svelte';
   import FileAttachments from './FileAttachments.svelte';
@@ -1297,7 +1297,7 @@
                 <span class="material-symbols-rounded">auto_awesome</span>
               </button>
             {/if}
-            {#if $cooktraceLink?.connected && kind === 'checklist'}
+            {#if cooktraceOn($cooktraceLink) && kind === 'checklist'}
               <button class="icon-btn" on:click={openCooktrace} title={$_('cooktrace.send')} aria-label={$_('cooktrace.send')}>
                 <span class="material-symbols-rounded">add_shopping_cart</span>
               </button>
@@ -1461,7 +1461,7 @@
         <span class="material-symbols-rounded">auto_awesome</span>{$_('trace_actions.title')}
       </button>
     {/if}
-    {#if $cooktraceLink?.connected && kind === 'checklist' && !fullBar}
+    {#if cooktraceOn($cooktraceLink) && kind === 'checklist' && !fullBar}
       <button class="sheet-item" on:click={() => fromSheet(openCooktrace, moreAnchor)}>
         <span class="material-symbols-rounded">add_shopping_cart</span>{$_('cooktrace.send')}
       </button>
