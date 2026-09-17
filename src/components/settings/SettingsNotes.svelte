@@ -3,7 +3,7 @@
   // Notes section: how notes behave (density, order, gestures, shortcuts,
   // link previews) and what Tasks gathers. Appearance keeps the app's look.
   import { _ } from 'svelte-i18n';
-  import { linkPreviews, noteSort, keyboardShortcuts, cardDensity, swipeToArchive, tasksAllChecklists } from '../../stores/settings.js';
+  import { linkPreviews, noteSort, labelOrder, keyboardShortcuts, cardDensity, swipeToArchive, tasksAllChecklists } from '../../stores/settings.js';
   import { linkPreviewsAvailable } from '../../lib/link-preview.js';
   import ShortcutsHelp from '../notes/ShortcutsHelp.svelte';
   import { noteTemplates } from '../../stores/settings.js';
@@ -55,6 +55,20 @@
         <select aria-label={$_('settings_page.notes.note_order')} class="select sel-sm" value={$noteSort} on:change={e => noteSort.set(e.target.value)}>
           <option value="edited">{$_('settings_page.notes.note_order_edited')}</option>
           <option value="custom">{$_('settings_page.notes.note_order_custom')}</option>
+        </select>
+      </div>
+    </div>
+    <div class="setting-divider"></div>
+    <div class="setting-row">
+      <div>
+        <span class="setting-label">{$_('settings_page.notes.label_order')}</span>
+        <div class="setting-desc">{$_('settings_page.notes.label_order_desc')}</div>
+      </div>
+      <div class="select-wrap" style="width:160px">
+        <select aria-label={$_('settings_page.notes.label_order')} class="select sel-sm" value={$labelOrder} on:change={e => labelOrder.set(e.target.value)}>
+          <option value="alpha">{$_('settings_page.notes.label_order_alpha')}</option>
+          <option value="used">{$_('settings_page.notes.label_order_used')}</option>
+          <option value="custom">{$_('settings_page.notes.label_order_custom')}</option>
         </select>
       </div>
     </div>

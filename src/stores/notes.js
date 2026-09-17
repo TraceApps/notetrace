@@ -10,8 +10,12 @@
  */
 import { writable, derived } from 'svelte/store';
 import { NoteApi } from '../lib/api.js';
+import { labelOrder } from './settings.js';
+import { orderLabels } from '../lib/label-tree.js';
 
-export const labels = writable([]);
+// As saved; everything shows `labels`, in the order picked in Settings.
+const savedLabels = writable([]);
+export const labels = derived([savedLabels, labelOrder], ([$l, $mode]) => orderLabels($l, $mode));
 export const labelsById = derived(labels, $l => new Map($l.map(l => [l.id, l])));
 export const notesChanged = writable(0);
 export const countsChanged = writable(0);
@@ -21,7 +25,7 @@ let _loading = null;
 export function refreshLabels() {
   if (_loading) return _loading;
   _loading = NoteApi.getLabels()
-    .then(rows => { labels.set(Array.isArray(rows) ? rows : []); })
+    .then(rows => { savedLabels.set(Array.isArray(rows) ? rows : []); })
     .catch(() => {})
     .finally(() => { _loading = null; });
   return _loading;

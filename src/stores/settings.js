@@ -23,6 +23,7 @@ export const USER_PREFS = new Set([
   'autoTranscribe','autoSummarizeLong','autoReadImages','aiTranscribeModel',
   // Note cards
   'linkPreviews', 'noteSort', 'noteOrder',
+  'labelOrder',
   'noteTemplates',
   'tasksGroupBy', 'tasksAllChecklists',
   // Notifications
@@ -281,6 +282,8 @@ export const linkPreviews      = createSettingStore('linkPreviews',      true);
 // 'edited' (newest edit first) or 'custom' (the order you dragged notes into).
 export const noteSort          = createSettingStore('noteSort',          'edited');
 export const noteOrder         = createSettingStore('noteOrder',         []);
+// Labels in the sidebar and pickers: 'alpha' (A to Z), 'used' (most notes first), or 'custom' (dragged in Edit Labels).
+export const labelOrder        = createSettingStore('labelOrder',        'alpha');
 // Notes to start from (src/lib/note-templates.js).
 export const noteTemplates     = createSettingStore('noteTemplates',     []);
 export const keyboardShortcuts = createSettingStore('keyboardShortcuts', true);

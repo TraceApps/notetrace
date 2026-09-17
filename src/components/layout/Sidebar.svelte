@@ -1,6 +1,7 @@
 <script>
   import { fly, fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
+  import { flip } from 'svelte/animate';
   import { location, push } from 'svelte-spa-router';
   import { _ } from 'svelte-i18n';
   import { createEventDispatcher, onMount, onDestroy, tick } from 'svelte';
@@ -10,7 +11,7 @@
   import { updateAvailable } from '../../lib/updates.js';
   import { pwaUpdateReady } from '../../lib/pwa-update.js';
   import { labels, refreshLabels, notesChanged, countsChanged } from '../../stores/notes.js';
-  import { sidebarRail, sidebarLabelsCollapsed } from '../../stores/settings.js';
+  import { sidebarRail, sidebarLabelsCollapsed, disableAnimations } from '../../stores/settings.js';
   import { sharingAvailable } from '../../lib/note-sharing.js';
   import { NoteApi } from '../../lib/api.js';
   import { nextOccurrence } from '../../lib/reminders.js';
@@ -313,8 +314,10 @@
             </button>
           {/if}
           {#each labelTree as node (node.path)}
-            <LabelTreeItem {node} {activePath} collapsed={$labelTreeCollapsed || []}
-              on:go={(e) => go(e.detail)} on:toggle={(e) => toggleBranch(e.detail)} />
+            <div class="tree-slot" animate:flip={{ duration: $disableAnimations ? 0 : 260, easing: cubicOut }}>
+              <LabelTreeItem {node} {activePath} collapsed={$labelTreeCollapsed || []}
+                on:go={(e) => go(e.detail)} on:toggle={(e) => toggleBranch(e.detail)} />
+            </div>
           {/each}
           {#if !$labels.length && !showShopping}
             <button class="sidebar-item sidebar-label-item muted" on:click={() => labelManagerOpen = true}>
@@ -464,6 +467,7 @@
   .sidebar-divider { height: 1px; background: var(--border); margin: 0 16px 8px; }
   .rail .sidebar-divider { margin: 0 14px 8px; }
 
+  .tree-slot { display: flex; flex-direction: column; gap: 2px; }
   .sidebar-nav {
     flex: 1;
     display: flex;
@@ -516,7 +520,6 @@
   .sidebar-panel :global(.label-dot) { width: 8px; height: 8px; border-radius: 50%; }
   .rail-label :global(.label-dot) { width: 10px; height: 10px; }
   .shopping-glyph { font-size: 18px; color: var(--accent); }
-  .rail-label .shopping-glyph { font-size: 22px; }
   .sidebar-panel :global(.label-count) { font-size: 12px; color: var(--text-3); }
   /* Nested labels (LabelTreeItem) */
   .sidebar-nav :global(.tree-item) { padding-left: calc(14px + var(--depth, 0) * 18px) !important; }

@@ -34,6 +34,31 @@ export function buildLabelTree(labels) {
   return root.children.map(strip);
 }
 
+/**
+ * Labels in the order chosen in Settings, nested labels right after their
+ * parent. mode: 'alpha' (A to Z), 'used' (most notes first, counting the
+ * labels nested under a parent), or 'custom' (the order dragged in Edit
+ * Labels; a group sits where its first label does). Ties go A to Z.
+ */
+export function orderLabels(labels, mode = 'alpha') {
+  const tree = buildLabelTree(labels);
+  const count = (n) => (n.label?.note_count || 0) + n.children.reduce((s, c) => s + count(c), 0);
+  const pos = (n) => Math.min(n.label && n.label.position != null ? Number(n.label.position) : Infinity, ...n.children.map(pos));
+  const byName = (a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true });
+  const cmp = mode === 'used' ? (a, b) => count(b) - count(a) || byName(a, b)
+    : mode === 'custom' ? (a, b) => (pos(a) - pos(b)) || byName(a, b)
+    : byName;
+  const out = [];
+  const walk = (nodes) => {
+    for (const n of [...nodes].sort(cmp)) {
+      if (n.label) out.push(n.label);
+      walk(n.children);
+    }
+  };
+  walk(tree);
+  return out;
+}
+
 /** Ids of a label and every label nested under it. */
 export function labelAndDescendantIds(labels, labelId) {
   const label = (labels || []).find(l => l.id === labelId);
