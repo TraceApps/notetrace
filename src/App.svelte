@@ -47,9 +47,9 @@
   // error is surfaced with showFailureBanner=true.
   $: _connectionCopy = describeConnectionIssue($syncState.connectionIssue, $_, true);
   $: _syncBannerCopy = $syncState.showErrorBanner && _connectionCopy
-    ? { ..._connectionCopy, icon: 'cloud_off' }
+    ? { ..._connectionCopy, icon: _connectionCopy.tone === 'wait' ? 'cloud_off' : 'cloud_alert' }
     : ($syncState.showErrorBanner && $syncState.error
-      ? { title: $_('sync.error_title'), detail: $syncState.error, icon: 'error' }
+      ? { title: $_('sync.error_title'), detail: $syncState.error, icon: 'error', tone: 'bad' }
       : null);
 
   // Pull-to-refresh gesture (native server mode). Mirrors NT App.svelte.
@@ -673,7 +673,7 @@
 {/if}
 
 {#if _syncModeActive && !needsLogin && _syncBannerCopy}
-  <div class="sync-connection-banner"
+  <div class="sync-connection-banner {_syncBannerCopy.tone || 'bad'}"
     use:portal
     transition:slide={{ duration: $disableAnimations ? 0 : 200 }}>
     <span class="material-symbols-rounded sync-banner-icon">{_syncBannerCopy.icon}</span>
@@ -838,15 +838,23 @@
     z-index: 250;
     display: flex; align-items: center; gap: 10px;
     padding: 10px 12px;
-    color: var(--error, #ef4444);
-    background: color-mix(in srgb, var(--error, #ef4444) 8%, var(--surface-2));
-    border: 1px solid color-mix(in srgb, var(--error, #ef4444) 25%, var(--border));
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 8%, var(--surface-2));
+    border: 1px solid color-mix(in srgb, var(--danger) 25%, var(--border));
+    /* Same rule as the rest of the app: amber for no network, red for a
+       server that can't be reached or is answering with errors. */
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-lg);
     font-size: 12px;
     font-weight: 500;
     transition: left 0.25s ease;
   }
+  .sync-connection-banner.wait {
+    color: var(--warning);
+    background: color-mix(in srgb, var(--warning) 8%, var(--surface-2));
+    border-color: color-mix(in srgb, var(--warning) 25%, var(--border));
+  }
+  .sync-connection-banner.wait .sync-banner-btn { color: var(--warning); }
   .sync-banner-icon {
     flex: 0 0 auto;
     font-size: 18px;
@@ -861,7 +869,7 @@
   .sync-banner-btn {
     flex: 0 0 auto;
     border: 0;
-    color: var(--error, #ef4444);
+    color: var(--danger);
     background: transparent;
     font: inherit; font-weight: 600;
     cursor: pointer;

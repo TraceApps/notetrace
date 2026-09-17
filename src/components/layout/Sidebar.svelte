@@ -711,5 +711,5 @@
     color: var(--text-3);
     transition: color var(--dur-fast);
   }
-  .logout-btn:hover { color: var(--error, #f87171); }
+  .logout-btn:hover { color: var(--danger); }
 </style>
