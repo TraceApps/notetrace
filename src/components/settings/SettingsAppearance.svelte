@@ -31,8 +31,8 @@
   // Where the app opens. Applied once on launch (App.svelte).
   $: START_PAGE_OPTS = [
     { value: '/', label: $_('nav.notes') },
-    { value: '/reminders', label: $_('nav.reminders') },
     { value: '/tasks', label: $_('nav.tasks') },
+    { value: '/reminders', label: $_('nav.reminders') },
     { value: '/archive', label: $_('nav.archive') },
   ];
   const ACCENT_COLORS = [

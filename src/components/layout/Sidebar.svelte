@@ -80,8 +80,8 @@
 
   $: navItems = [
     { path: '/notes',     icon: 'sticky_note_2', label: $_('nav.notes') },
-    { path: '/reminders', icon: 'notifications', label: $_('nav.reminders'), badge: dueToday },
     { path: '/tasks',     icon: 'task_alt',      label: $_('nav.tasks'),     badge: tasksDue, badgeKey: 'sidebar.tasks_due' },
+    { path: '/reminders', icon: 'notifications', label: $_('nav.reminders'), badge: dueToday },
     ...($sharingAvailable ? [{ path: '/shared', icon: 'group', label: $_('nav.shared') }] : []),
     { path: '/archive',   icon: 'archive',       label: $_('nav.archive') },
     { path: '/trash',     icon: 'delete',        label: $_('nav.trash') },
