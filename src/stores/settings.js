@@ -19,6 +19,8 @@ export const USER_PREFS = new Set([
   'aiEnabled','aiProvider','aiApiKey','aiModel','aiBaseUrl','aiAssistantName','aiKeyVerified',
   // Smart Log (hold-to-record on the FAB → AI parses spoken intent → tool execution)
   'smartLogEnabled',
+  // Language the Smart Log microphone listens for ('auto' = device locale)
+  'smartLogVoiceLang',
   // Voice notes and images: automatic transcription / reading text with Trace
   'autoTranscribe','autoSummarizeLong','autoReadImages','aiTranscribeModel',
   // Note cards
@@ -371,6 +373,8 @@ export const aiKeyVerified  = createSettingStore('aiKeyVerified',  false);
 // tidies the dictation into a note.
 // Defaults off; user enables explicitly in Settings → Trace.
 export const smartLogEnabled = createSettingStore('smartLogEnabled', false);
+// Language the Smart Log microphone listens for. 'auto' follows the device locale.
+export const smartLogVoiceLang = createSettingStore('smartLogVoiceLang', 'auto');
 export const autoTranscribe    = createSettingStore('autoTranscribe',    true);
 export const autoSummarizeLong = createSettingStore('autoSummarizeLong', false);
 export const autoReadImages    = createSettingStore('autoReadImages',    false);

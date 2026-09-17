@@ -1,7 +1,7 @@
 <script>
   import Toggle from './Toggle.svelte';
   import { _ } from 'svelte-i18n';
-  import { aiEnabled, aiProvider, aiApiKey, aiModel, aiBaseUrl, aiAssistantName, aiKeyVerified, smartLogEnabled, autoTranscribe, autoSummarizeLong, autoReadImages, aiTranscribeModel, envLocks as envLocksStore } from '../../stores/settings.js';
+  import { aiEnabled, aiProvider, aiApiKey, aiModel, aiBaseUrl, aiAssistantName, aiKeyVerified, smartLogEnabled, smartLogVoiceLang, autoTranscribe, autoSummarizeLong, autoReadImages, aiTranscribeModel, envLocks as envLocksStore } from '../../stores/settings.js';
   import { AI_PROVIDERS, AI_DEFAULT_MODELS, AI_MODELS, AI_MODEL_LABELS, AI_MODEL_CUSTOM, callAI, callAIProxy } from '../../lib/aiChat.js';
   import { showError, showSuccess } from '../../stores/toast.js';
   import ConnectionStatus from './ConnectionStatus.svelte';
@@ -21,6 +21,11 @@
   const providerLabel = (id) =>
     AI_PROVIDERS.find(p => p.id === providerId(id))?.label || id || '';
   $: lockedProvider = envLocks.ai ? providerId(envLocks.ai_provider) : '';
+
+  // Smart Log voice-input language options, the same list as NutriTrace.
+  const VOICE_LANG_CODES = ['auto', 'en-US', 'en-GB', 'it-IT', 'es-ES', 'es-MX', 'fr-FR', 'de-DE', 'pt-BR', 'pt-PT',
+    'nl-NL', 'pl-PL', 'ru-RU', 'sv-SE', 'da-DK', 'nb-NO', 'fi-FI', 'cs-CZ', 'tr-TR', 'ja-JP', 'ko-KR', 'zh-CN', 'zh-TW', 'hi-IN', 'ar-SA'];
+  $: VOICE_LANGS = VOICE_LANG_CODES.map(value => ({ value, label: $_(`settings_trace_ct.voice_langs.${value.replace('-', '_')}`) }));
 
   let showKey = false;
   let testing = false;
@@ -334,6 +339,21 @@
       </div>
       <Toggle label={$_('settings_trace_ct.smart_log')} checked={$smartLogEnabled} on:change={e => smartLogEnabled.set(e.detail)} />
     </div>
+    {#if $smartLogEnabled}
+      <div class="setting-divider"></div>
+      <div class="setting-row">
+        <div>
+          <span class="setting-label">{$_('settings_trace_ct.voice_lang')}</span>
+          <span class="setting-desc">{$_('settings_trace_ct.voice_lang_desc')}</span>
+        </div>
+        <div class="select-wrap expand-left" style="width:220px">
+          <select aria-label={$_('settings_trace_ct.voice_lang')} class="select sel-sm" value={$smartLogVoiceLang}
+            on:change={e => smartLogVoiceLang.set(e.currentTarget.value)}>
+            {#each VOICE_LANGS as opt}<option value={opt.value}>{opt.label}</option>{/each}
+          </select>
+        </div>
+      </div>
+    {/if}
 
     <!-- Voice notes and images -->
     <div class="setting-divider"></div>
@@ -439,7 +459,7 @@
     border-radius: var(--radius-lg);
     font-size: 13px; color: var(--text-3);
   }
-  .env-lock-banner .material-symbols-rounded { font-size: 17px; }
+  .env-lock-banner .material-symbols-rounded { font-size: 17px; color: var(--accent); flex-shrink: 0; }
 
   /* expand-left: anchor the native dropdown to the right edge so it
      opens leftward instead of rightward. Useful when the select sits

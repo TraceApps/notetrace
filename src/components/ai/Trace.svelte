@@ -18,8 +18,14 @@
   import TraceFace from './TraceFace.svelte';
   import {
     aiEnabled, aiEffectivelyEnabled, envLocks, aiAssistantName, aiProvider, aiApiKey, aiModel, aiBaseUrl,
-    aiKeyVerified, dateFormat, smartLogEnabled,
+    aiKeyVerified, dateFormat, smartLogEnabled, smartLogVoiceLang,
   } from '../../stores/settings.js';
+  // Voice input language from Settings; 'auto' means the device locale.
+  function _resolveVoiceLang() {
+    const v = smartLogVoiceLang.get();
+    if (v && v !== 'auto') return v;
+    return navigator.language || 'en-US';
+  }
   const Mascot = TraceFace;
   import { showError, showSuccess } from '../../stores/toast.js';
   import { confirmDialog } from '../../stores/confirmDialog.js';
@@ -475,7 +481,7 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
       const rec = new SR();
       rec.continuous = false;
       rec.interimResults = true;   // live update while speaking for snappy feedback
-      rec.lang = navigator.language || 'en-US';
+      rec.lang = _resolveVoiceLang();
       rec.onresult = (e) => {
         let text = '';
         for (let i = e.resultIndex; i < e.results.length; i++) {
