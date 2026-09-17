@@ -129,6 +129,13 @@ export async function loadShopping() {
   }
 }
 
+/** Show the saved list (for the count by Shopping List in the menu) without asking CookTrace. */
+export function primeShopping() {
+  if (get(shopping).items) return;
+  const cached = _read('list', null);
+  if (cached) _publish({ items: cached.items, at: cached.at });
+}
+
 function _queueOp(op) {
   _write('queue', [..._queue(), op]);
   _publish({});

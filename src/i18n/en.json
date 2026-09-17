@@ -9,7 +9,7 @@
     "shared":   "Shared with Me",
     "search":   "Search",
     "tasks":    "Tasks",
-    "shopping": "Shopping"
+    "shopping": "Shopping List"
   },
   "list": {
     "layout":        "Layout",
@@ -185,7 +185,7 @@
     "logout_confirm":    "Sign Out Anyway"
   },
   "shopping": {
-    "title": "Shopping",
+    "title": "Shopping List",
     "refresh": "Refresh",
     "open_cooktrace": "Open in CookTrace",
     "not_linked_title": "Your CookTrace Shopping List",
@@ -676,7 +676,7 @@
     "heading":           "Shopping List",
     "intro":             "See your CookTrace shopping list here and send checklist items to it. The token stays on this server.",
     "enable":            "Enable CookTrace",
-    "enable_desc":       "Show your CookTrace shopping list in Shopping, and Send to CookTrace on checklists.",
+    "enable_desc":       "Show your CookTrace list as Shopping List with your labels, and Send to CookTrace on checklists.",
     "connected":         "Connected",
     "connected_as":      "Connected as {user}",
     "connected_toast":   "CookTrace connection verified.",

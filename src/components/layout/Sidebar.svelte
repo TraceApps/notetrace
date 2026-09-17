@@ -16,7 +16,7 @@
   import { nextOccurrence } from '../../lib/reminders.js';
   import { syncState } from '../../lib/sync.js';
   import { offlineState } from '../../lib/offline-api.js';
-  import { cooktraceLink, cooktraceOn, loadCooktraceLink } from '../../lib/cooktrace.js';
+  import { cooktraceLink, cooktraceOn, loadCooktraceLink, shopping, primeShopping } from '../../lib/cooktrace.js';
   import { confirmDialog } from '../../stores/confirmDialog.js';
   import { relativeTime } from '../../lib/relative-time.js';
   import { todayStr } from '../../lib/due-dates.js';
@@ -80,13 +80,16 @@
     { path: '/notes',     icon: 'sticky_note_2', label: $_('nav.notes') },
     { path: '/reminders', icon: 'notifications', label: $_('nav.reminders'), badge: dueToday },
     { path: '/tasks',     icon: 'task_alt',      label: $_('nav.tasks'),     badge: tasksDue, badgeKey: 'sidebar.tasks_due' },
-    // The CookTrace shopping list, once CookTrace is linked.
-    ...(cooktraceOn($cooktraceLink) ? [{ path: '/shopping', icon: 'shopping_cart', label: $_('nav.shopping') }] : []),
     ...($sharingAvailable ? [{ path: '/shared', icon: 'group', label: $_('nav.shared') }] : []),
     { path: '/archive',   icon: 'archive',       label: $_('nav.archive') },
     { path: '/trash',     icon: 'delete',        label: $_('nav.trash') },
   ];
   $: settingsItem = { path: '/settings', icon: 'settings', label: $_('nav.settings') };
+
+  // The CookTrace shopping list sits with the labels, once CookTrace is on.
+  $: showShopping = cooktraceOn($cooktraceLink);
+  $: if (showShopping) primeShopping();
+  $: shoppingOpen = ($shopping.items || []).filter(i => !i.checked).length;
 
   let labelManagerOpen = false;
   $: labelTree = buildLabelTree($labels);
@@ -273,6 +276,12 @@
 
       {#if rail}
         <div class="sidebar-divider nav-divider"></div>
+        {#if showShopping}
+          <button class="sidebar-item rail-label" class:active={activePath === '/shopping'} on:click={() => go('/shopping')}
+            data-tip={$_('nav.shopping')} aria-label={$_('nav.shopping')}>
+            <span class="material-symbols-rounded sidebar-icon">shopping_cart</span>
+          </button>
+        {/if}
         {#each $labels as l (l.id)}
           <button class="sidebar-item rail-label" class:active={activePath === `/label/${l.id}`} on:click={() => go(`/label/${l.id}`)}
             data-tip={l.name} aria-label={l.name}>
@@ -293,11 +302,20 @@
           </button>
         </div>
         {#if !$sidebarLabelsCollapsed}
+          {#if showShopping}
+            <button class="sidebar-item sidebar-label-item tree-item shopping-label" class:active={activePath === '/shopping'}
+              style="--depth:0" on:click={() => go('/shopping')}>
+              <span class="label-dot-wrap"><span class="material-symbols-rounded shopping-glyph">shopping_cart</span></span>
+              <span class="sidebar-label">{$_('nav.shopping')}</span>
+              {#if shoppingOpen}<span class="label-count">{shoppingOpen}</span>{/if}
+              {#if activePath === '/shopping'}<div class="active-indicator"></div>{/if}
+            </button>
+          {/if}
           {#each labelTree as node (node.path)}
             <LabelTreeItem {node} {activePath} collapsed={$labelTreeCollapsed || []}
               on:go={(e) => go(e.detail)} on:toggle={(e) => toggleBranch(e.detail)} />
           {/each}
-          {#if !$labels.length}
+          {#if !$labels.length && !showShopping}
             <button class="sidebar-item sidebar-label-item muted" on:click={() => labelManagerOpen = true}>
               <span class="material-symbols-rounded sidebar-icon">new_label</span>
               <span class="sidebar-label">{$_('labels.create')}</span>
@@ -496,6 +514,8 @@
   .sidebar-panel :global(.label-dot-wrap) { width: 22px; display: flex; justify-content: center; align-items: center; flex-shrink: 0; }
   .sidebar-panel :global(.label-dot) { width: 8px; height: 8px; border-radius: 50%; }
   .rail-label :global(.label-dot) { width: 10px; height: 10px; }
+  .shopping-glyph { font-size: 18px; color: var(--accent); }
+  .rail-label .shopping-glyph { font-size: 22px; }
   .sidebar-panel :global(.label-count) { font-size: 12px; color: var(--text-3); }
   /* Nested labels (LabelTreeItem) */
   .sidebar-nav :global(.tree-item) { padding-left: calc(14px + var(--depth, 0) * 18px) !important; }
