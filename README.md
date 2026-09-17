@@ -39,9 +39,11 @@ It runs as a single Docker container on your own hardware, with a PWA for the br
 
 ## Status
 
-NoteTrace is in active development toward its first release candidate. Working today:
+NoteTrace is feature complete and in testing toward v1.0.0. Working today:
 
-- **Notes and checklists.** Card grid with a pinned section and quick capture, a rich editor that stores Markdown with Undo for deleted items and attachments, checklists with drag to reorder, images on any note, labels with colors and icons, sixteen note colors, archive, trash with a 30-day purge, full-text search (Ctrl+K), and version history.
+- **Notes and checklists.** Card grid with a pinned section and quick capture, checklists with drag to reorder, images on any note, labels with colors and icons, sixteen note colors, archive, trash with a 30-day purge, full-text search (Ctrl+K), and version history.
+- **A real editor.** Markdown underneath, with bold, italic, underline, highlight, links, headings, quotes, code, lists that indent, and checkboxes inside a text note. Select text and a small bar offers the common ones; slash commands and keyboard shortcuts cover the rest. Undo for deleted items and attachments.
+- **Templates and printing.** Save a note as a template and start new notes from it. Print a note or save it as a PDF, from the browser or the Android app.
 - **Reminders.** One-off or repeating (daily, weekly, monthly, yearly), kept at the same local time across daylight saving. Android fires them as exact alarms even with the app closed, the browser shows them while NoteTrace is open, and the server delivers them through your push service and a `reminder.fired` webhook.
 - **Sharing.** Share a note or list with other accounts on your server, with view or edit access. Pin, archive, labels, and reminders stay personal.
 - **Import and export.** Google Keep (Google Takeout, images included), Evernote (.enex), Memos (straight from your Memos server), Blinko backups, and Markdown files (Obsidian, Joplin, and other Markdown exports). Export everything as a Markdown ZIP with images.
@@ -51,12 +53,14 @@ NoteTrace is in active development toward its first release candidate. Working t
 - **Trace in your notes.** Tidy Up, Summarize, and Make a Checklist from the editor, and a Trace chat that can find, create, and update notes, check items off, and set reminders. The same note tools are on the MCP endpoint for external AI agents.
 - **Tasks and List layout.** A Tasks view of checklist items with due dates and of checklists you choose to show there, grouped by due date or list, with a daily Tasks Due notification. A List layout with grouping by label, color, or date that opens the note beside the list on wide screens.
 - **Fast with thousands of notes.** Notes draw a screenful at a time as you scroll; search, Select All, and the keyboard still cover the whole library.
-- **Offline.** The installed web app opens without a connection and shows the notes, images, and voice notes it has seen. A voice note whose upload fails waits on the device and goes up later.
-- **Organize fast.** Filter search by type, color, and label; search marks the matching words and shows when a match came from a voice note or an image; select many notes and pin, color, label, remind, archive, or trash them at once; drag notes into your own order; nest labels (`Home/Garage`); a Shared with Me view; and link previews on cards, fetched by your server.
+- **Offline in the browser.** The installed web app opens without a connection, shows the notes, images, and voice notes it has seen, and lets you write. Edits, new notes, ticks, colors, labels, and reminders wait in an outbox and go up when you're back, merged the same way the phone's changes are. Open tabs stay in step, and a voice note whose upload fails waits on the device and goes up later.
+- **Organize fast.** Filter search by type, color, and label; search marks the matching words and shows when a match came from a voice note or an image; select many notes and pin, color, label, remind, archive, or trash them at once; drag notes into your own order; nest labels (`Home/Garage`) and list them A to Z, by most used, or in an order you drag; a Shared with Me view; and link previews on cards, fetched by your server.
 - **Foldables and screen sizes.** Navigation that fits the screen, a layout remembered per screen, the open note moving between full screen and the side pane as you fold and unfold, and layouts that keep content off the crease when a foldable is half open.
 - **Polish.** A sidebar that collapses to icons, keyboard shortcuts (press `?`), slash commands in the editor, compact cards, swipe to archive and pull to refresh on phones, and a note that grows out of its card when opened.
-- **CookTrace.** Send a checklist's open items to your CookTrace shopping list.
+- **CookTrace shopping list.** Your CookTrace list, live, in a Shopping List view grouped by aisle: check items off, add to it, and clear what's bought, offline too. Send a checklist's open items to it. The same item from two recipes shows once, with the amounts added up.
 - **Share from anywhere.** Share text, links, photos, and audio into a new note from any Android app or into the installed web app, and an optional fingerprint, face, or PIN app lock on Android.
+- **Home screen widgets.** A quick note bar with buttons for a list, a voice note, and a drawing, a scrolling list of your notes that opens the one you tap, and a New Note tile in the quick settings.
+- **Drawings and files.** Draw on any note, and attach files of any kind alongside images and recordings.
 
 The foundation it shares with the other Trace apps:
 
@@ -67,6 +71,7 @@ The foundation it shares with the other Trace apps:
 - **Trace AI.** Multi-provider assistant (Claude / OpenAI / Gemini / any OpenAI-compatible endpoint).
 - **Push notifications.** Apprise, Gotify, and ntfy.
 - **Integrations.** API tokens, webhooks, and an MCP endpoint.
+- **Accessibility.** Dialogs hold and return focus, switches say what they are, landmarks and headings are in place, and text meets contrast targets, checked with an automated audit.
 
 What comes next, including the Wear OS companion, is in [ROADMAP.md](ROADMAP.md).
 

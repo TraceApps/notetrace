@@ -32,6 +32,9 @@ Items marked ~~strikethrough~~ have been implemented.
 - ~~Capture images from the Android share sheet~~
 - ~~Native reminders on Android~~
 - ~~Biometric app lock~~
+- ~~Editing offline in the browser, with an outbox that syncs when you're back~~
+- Attachments offline in the browser: hold an image, voice note, drawing, or file on the device and upload it when the connection is back (today they need a connection; text, checklists, colors, labels, and reminders already work offline)
+- Sharing, version history, and imports while offline: they need the server today, and say so
 
 ## Sharing and Import
 
