@@ -35,3 +35,24 @@ test('amounts read naturally', () => {
   assert.equal(amountLabel({ unit: 'bunch' }), 'bunch');
   assert.equal(amountLabel({}), '');
 });
+
+test('the same item from two recipes shows once, like CookTrace', () => {
+  const { groups, checked } = groupShopping([
+    item(1, 'Onion', 'Produce', { quantity: 1, recipe_name: 'Chili' }),
+    item(2, 'Limes', 'Produce', { quantity: 3 }),
+    item(3, 'onion', 'Produce', { quantity: 2, recipe_name: 'Tacos' }),
+    item(4, 'Flour', 'Baking', { quantity: 2, unit: 'cups' }),
+    item(5, 'Flour', 'Baking', { quantity: 100, unit: 'g' }),
+    item(6, 'Salt', 'Baking', { quantity: 1 }),
+    item(7, 'Salt', 'Baking'),
+    item(8, 'Eggs', 'Dairy', { checked: true, quantity: 6 }),
+    item(9, 'Eggs', 'Dairy', { checked: true, quantity: 6 }),
+  ]);
+  const produce = groups.find(g => g.aisle === 'Produce').items;
+  assert.deepEqual(produce.map(i => [i.name, i.quantity, i.ids, i.recipe_names]), [['Onion', 3, [1, 3], ['Chili', 'Tacos']], ['Limes', 3, [2], []]]);
+  const baking = groups.find(g => g.aisle === 'Baking').items;
+  assert.equal(baking.filter(i => i.name === 'Flour').length, 2, 'different units stay apart');
+  assert.equal(baking.find(i => i.name === 'Salt').quantity, null, 'an unknown amount makes the total unknown');
+  assert.deepEqual(checked.map(i => [i.name, i.quantity, i.ids]), [['Eggs', 12, [8, 9]]]);
+  assert.equal(new Set(groups.flatMap(g => g.items.map(i => i.key))).size, groups.flatMap(g => g.items).length, 'keys are unique');
+});

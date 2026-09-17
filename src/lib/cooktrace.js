@@ -141,9 +141,12 @@ function _queueOp(op) {
   _publish({});
 }
 
-/** Check an item off (or back on). Shows at once; goes to CookTrace now or when back online. */
-export async function setShoppingChecked(id, checked) {
-  _queueOp({ type: 'check', id, checked: !!checked });
+/** Check rows off (or back on): one, or all the rows behind a merged item. Shows at once; goes to CookTrace now or when back online. */
+export async function setShoppingCheckedMany(ids, checked) {
+  const list = (ids || []).filter(id => typeof id === 'number');
+  if (!list.length) return;
+  _write('queue', [..._queue(), ...list.map(id => ({ type: 'check', id, checked: !!checked }))]);
+  _publish({});
   if (await _flush()) _refreshSoon();
 }
 

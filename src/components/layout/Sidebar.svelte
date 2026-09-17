@@ -17,6 +17,7 @@
   import { syncState } from '../../lib/sync.js';
   import { offlineState } from '../../lib/offline-api.js';
   import { cooktraceLink, cooktraceOn, loadCooktraceLink, shopping, primeShopping } from '../../lib/cooktrace.js';
+  import { groupShopping } from '../../lib/shopping-groups.js';
   import { confirmDialog } from '../../stores/confirmDialog.js';
   import { relativeTime } from '../../lib/relative-time.js';
   import { todayStr } from '../../lib/due-dates.js';
@@ -89,7 +90,7 @@
   // The CookTrace shopping list sits with the labels, once CookTrace is on.
   $: showShopping = cooktraceOn($cooktraceLink);
   $: if (showShopping) primeShopping();
-  $: shoppingOpen = ($shopping.items || []).filter(i => !i.checked).length;
+  $: shoppingOpen = groupShopping($shopping.items || []).groups.reduce((n, g) => n + g.items.length, 0);
 
   let labelManagerOpen = false;
   $: labelTree = buildLabelTree($labels);

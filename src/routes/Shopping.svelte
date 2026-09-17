@@ -13,7 +13,7 @@
   import { bannerStyle, disableAnimations } from '../stores/settings.js';
   import {
     cooktraceLink, cooktraceOn, loadCooktraceLink, cooktraceAvailable,
-    shopping, loadShopping, setShoppingChecked, addShoppingItem, clearCheckedShopping, shoppingQueue,
+    shopping, loadShopping, setShoppingCheckedMany, addShoppingItem, clearCheckedShopping, shoppingQueue,
   } from '../lib/cooktrace.js';
   import { applyPending, groupShopping, amountLabel } from '../lib/shopping-groups.js';
   import { relativeTime } from '../lib/relative-time.js';
@@ -27,7 +27,7 @@
   // What CookTrace last said, with anything still on its way laid over it.
   $: shown = applyPending($shopping.items || [], ($shopping.pending, shoppingQueue()));
   $: ({ groups, checked } = groupShopping(shown));
-  $: openCount = shown.filter(i => !i.checked).length;
+  $: openCount = groups.reduce((n, g) => n + g.items.length, 0);
   $: ms = $disableAnimations ? 0 : 180;
 
   onMount(async () => {
@@ -121,15 +121,15 @@
           <section class="aisle" transition:slide={{ duration: ms }}>
             <h2 class="aisle-title">{g.aisle || $_('shopping.no_aisle')}<span class="count">{g.items.length}</span></h2>
             <ul class="items">
-              {#each g.items as it (it.id)}
+              {#each g.items as it (it.key)}
                 <li class="item" class:pending={it.pending} animate:flip={{ duration: ms }} out:slide={{ duration: ms }}>
-                  <button class="check" on:click={() => setShoppingChecked(it.id, true)} disabled={typeof it.id !== 'number'}
+                  <button class="check" on:click={() => setShoppingCheckedMany(it.ids, true)} disabled={!it.ids.some(id => typeof id === 'number')}
                     aria-label={$_('shopping.check', { values: { name: it.name } })}>
                     <span class="material-symbols-rounded">radio_button_unchecked</span>
                   </button>
                   <span class="name">{it.name}</span>
                   {#if amountLabel(it)}<span class="amount">{amountLabel(it)}</span>{/if}
-                  {#if it.recipe_name}<span class="recipe" title={$_('shopping.from_recipe', { values: { name: it.recipe_name } })}><span class="material-symbols-rounded">menu_book</span>{it.recipe_name}</span>{/if}
+                  {#if it.recipe_names.length}<span class="recipe" title={$_('shopping.from_recipe', { values: { name: it.recipe_names.join(', ') } })}><span class="material-symbols-rounded">menu_book</span>{it.recipe_names.join(', ')}</span>{/if}
                 </li>
               {/each}
             </ul>
@@ -149,9 +149,9 @@
             </div>
             {#if showChecked}
               <ul class="items" transition:slide={{ duration: ms }}>
-                {#each checked as it (it.id)}
+                {#each checked as it (it.key)}
                   <li class="item done" class:pending={it.pending}>
-                    <button class="check on" on:click={() => setShoppingChecked(it.id, false)} disabled={typeof it.id !== 'number'}
+                    <button class="check on" on:click={() => setShoppingCheckedMany(it.ids, false)} disabled={!it.ids.some(id => typeof id === 'number')}
                       aria-label={$_('shopping.uncheck', { values: { name: it.name } })}>
                       <span class="material-symbols-rounded fill">check_circle</span>
                     </button>
