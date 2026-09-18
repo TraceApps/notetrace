@@ -77,6 +77,16 @@ test('a spoken note is recognised by the system, and waits when offline', () => 
   assert.match(pairing, /if \(op\.kind in adds\) outbox\(ctx\)/);
 });
 
+test('every list scrolls with the crown', () => {
+  // A Pixel Watch scrolls by its crown; a plain ScalingLazyColumn only takes a
+  // finger, which makes the app feel broken on hardware that has one.
+  const ui = read('android/wear/src/main/java/com/notetrace/app/wear/MainActivity.kt');
+  assert.match(ui, /rotaryScrollable\(RotaryScrollableDefaults\.behavior\(listState\)/);
+  const built = (ui.match(/ScalingLazyColumn\(/g) || []).length;
+  assert.equal(built, 1, 'CrownColumn should be the only place that builds a list, so no screen misses the crown');
+  assert.match(ui, /private fun CrownColumn\(/);
+});
+
 test('the complication reads the snapshot and is redrawn when it changes', () => {
   const manifest = read('android/wear/src/main/AndroidManifest.xml');
   assert.match(manifest, /BIND_COMPLICATION_PROVIDER/);

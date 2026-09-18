@@ -16,13 +16,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,6 +48,8 @@ import androidx.wear.compose.material3.TitleCard
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.items
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
+import androidx.wear.compose.foundation.rotary.RotaryScrollableDefaults
+import androidx.wear.compose.foundation.rotary.rotaryScrollable
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
@@ -87,6 +94,26 @@ fun WearApp(store: WearStore) {
             }
         }
     }
+}
+
+/**
+ * A list that the crown scrolls, not only a finger. Every screen uses this, so
+ * the bezel or crown works the way it does in the rest of the watch.
+ */
+@Composable
+private fun CrownColumn(
+    listState: androidx.wear.compose.foundation.lazy.ScalingLazyListState,
+    content: androidx.wear.compose.foundation.lazy.ScalingLazyListScope.() -> Unit,
+) {
+    val focus = remember { FocusRequester() }
+    ScalingLazyColumn(
+        state = listState,
+        modifier = Modifier
+            .fillMaxSize()
+            .rotaryScrollable(RotaryScrollableDefaults.behavior(listState), focusRequester = focus),
+        content = content,
+    )
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
 }
 
 /** Press, speak, and hand back what was heard. The system does the listening. */
@@ -142,9 +169,9 @@ private fun HomeScreen(store: WearStore, nav: NavHostController) {
             }
             return@ScreenScaffold
         }
-        ScalingLazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        CrownColumn(listState) {
             item { ListHeader { Text("NoteTrace") } }
-            if (state.pending > 0 || state.offline) {
+            if (state.pending > 0 || state.offline || state.error != null) {
                 item { StatusLine(state) }
             }
             item { SpeakButton("Speak a note", speak) }
@@ -187,6 +214,14 @@ private fun HomeScreen(store: WearStore, nav: NavHostController) {
                     }
                 }
             }
+            item {
+                Button(
+                    onClick = { scope.launch { store.refresh() } },
+                    label = { Text(if (state.loading) "Refreshing" else "Refresh") },
+                    icon = { Icon(painter = painterResource(R.drawable.ic_refresh), contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
             if (state.checklists.isEmpty() && state.shopping.isEmpty()) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)) {
@@ -211,7 +246,7 @@ private fun ChecklistScreen(store: WearStore, noteId: Long) {
     val speak = rememberSpeech("Say the item") { said -> scope.launch { store.addSpokenItem(noteId, said) } }
 
     ScreenScaffold(scrollState = listState) {
-        ScalingLazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        CrownColumn(listState) {
             item { ListHeader { Text(note?.title ?: "Checklist", maxLines = 2, overflow = TextOverflow.Ellipsis) } }
             item { SpeakButton("Add an item", speak) }
             if (items.isEmpty()) {
@@ -247,7 +282,7 @@ private fun RemindersScreen(store: WearStore, nav: NavHostController) {
     val sorted = state.reminders.sortedBy { it.reminderAt }
 
     ScreenScaffold(scrollState = listState) {
-        ScalingLazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        CrownColumn(listState) {
             item { ListHeader { Text("Reminders") } }
             items(sorted, key = { it.id }) { note ->
                 val overdue = WhenText.isOverdue(note.reminderAt)
@@ -287,7 +322,7 @@ private fun NoteScreen(store: WearStore, noteId: Long) {
     val note = state.checklists.firstOrNull { it.id == noteId }
 
     ScreenScaffold(scrollState = listState) {
-        ScalingLazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        CrownColumn(listState) {
             item { ListHeader { Text(note?.title ?: "Note", maxLines = 2, overflow = TextOverflow.Ellipsis) } }
             item {
                 Text(
@@ -323,9 +358,9 @@ private fun ShoppingScreen(store: WearStore) {
     val byAisle = open.groupBy { it.aisle ?: "Other" }.toSortedMap(compareBy { it == "Other" })
 
     ScreenScaffold(scrollState = listState) {
-        ScalingLazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        CrownColumn(listState) {
             item { ListHeader { Text("Shopping List") } }
-            if (state.pending > 0 || state.offline) item { StatusLine(state) }
+            if (state.pending > 0 || state.offline || state.error != null) item { StatusLine(state) }
             item { SpeakButton("Add to the list", speak) }
             byAisle.forEach { (aisle, items) ->
                 item { ListHeader { Text(aisle) } }
@@ -353,11 +388,17 @@ private fun ShoppingScreen(store: WearStore) {
  */
 @Composable
 private fun ItemRow(text: String, checked: Boolean, amount: String = "", onToggle: () -> Unit) {
+    val haptics = LocalHapticFeedback.current
+    val toggle = {
+        // A tick you can feel, for a glance-and-tap in a shop.
+        runCatching { haptics.performHapticFeedback(HapticFeedbackType.LongPress) }
+        onToggle()
+    }
     SplitCheckboxButton(
         checked = checked,
-        onCheckedChange = { onToggle() },
+        onCheckedChange = { toggle() },
         toggleContentDescription = text,
-        onContainerClick = onToggle,
+        onContainerClick = toggle,
         containerClickLabel = text,
         label = {
             Text(
@@ -376,6 +417,7 @@ private fun ItemRow(text: String, checked: Boolean, amount: String = "", onToggl
 @Composable
 private fun StatusLine(state: WearStore.State) {
     val text = when {
+        state.error != null -> state.error
         state.offline && state.pending > 0 -> "Offline, ${state.pending} waiting"
         state.offline -> "Offline"
         state.pending > 0 -> "${state.pending} waiting"
@@ -385,7 +427,7 @@ private fun StatusLine(state: WearStore.State) {
     Text(
         text,
         textAlign = TextAlign.Center,
-        color = MaterialTheme.colorScheme.secondary,
+        color = if (state.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary,
         style = MaterialTheme.typography.labelSmall,
         modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
     )
