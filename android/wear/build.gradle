@@ -51,7 +51,11 @@ android {
             }
         }
         release {
-            minifyEnabled false
+            // Smaller and quicker to start on a watch, which has less of
+            // everything. The services are kept by name in proguard-rules.pro.
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             if (hasReleaseKeystore) {
                 signingConfig signingConfigs.release
             }
@@ -89,5 +93,8 @@ dependencies {
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
     // HttpURLConnection can't send PATCH, which ticking an item off needs.
     implementation "com.squareup.okhttp3:okhttp:4.12.0"
+    // Applies the bundled startup profile on first run.
+    implementation "androidx.profileinstaller:profileinstaller:1.4.1"
     debugImplementation "androidx.compose.ui:ui-tooling"
+    testImplementation "junit:junit:4.13.2"
 }

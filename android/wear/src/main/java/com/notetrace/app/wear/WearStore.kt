@@ -24,6 +24,8 @@ class WearStore(private val ctx: Context) {
         val offline: Boolean = false,
         val error: String? = null,
         val pending: Int = 0,
+        /** A word about what just happened, shown for a moment. */
+        val flash: String? = null,
         val checklists: List<NoteApi.Note> = emptyList(),
         val reminders: List<NoteApi.Note> = emptyList(),
         val shopping: List<NoteApi.ShopItem> = emptyList(),
@@ -104,11 +106,20 @@ class WearStore(private val ctx: Context) {
         Pairing.config(ctx)?.let { flush(it) }
     }
 
-    /** What the wearer just said becomes a note, now or when there's a connection. */
+    /**
+     * What the wearer just said becomes a note, now or when there's a connection.
+     * A time in the sentence ("tomorrow at nine") becomes the reminder instead
+     * of being written down.
+     */
     suspend fun addSpokenNote(text: String) {
         val clean = text.trim()
         if (clean.isBlank()) return
-        Pairing.queue(ctx, Pairing.Op.note(clean))
+        val heard = SpokenTime.parse(clean)
+        val body = heard.text.ifBlank { clean }
+        val at = heard.at?.withZoneSameInstant(java.time.ZoneOffset.UTC)
+            ?.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")).orEmpty()
+        flash(if (at.isNotBlank()) "Reminder set" else "Note saved")
+        Pairing.queue(ctx, Pairing.Op.note(body, at, java.util.TimeZone.getDefault().id))
         _state.value = _state.value.copy(pending = Pairing.outbox(ctx).size)
         val cfg = Pairing.config(ctx) ?: return
         if (flush(cfg)) refresh()
@@ -124,10 +135,20 @@ class WearStore(private val ctx: Context) {
         flush(cfg)
     }
 
+    /** Say what just happened, briefly. The watch has no room for a toast. */
+    private fun flash(message: String) {
+        _state.value = _state.value.copy(flash = message)
+    }
+
+    fun clearFlash() {
+        if (_state.value.flash != null) _state.value = _state.value.copy(flash = null)
+    }
+
     /** Said while looking at a checklist: a new item on it. */
     suspend fun addSpokenItem(noteId: Long, text: String) {
         val clean = text.trim()
         if (clean.isBlank()) return
+        flash("Added")
         Pairing.queue(ctx, Pairing.Op.newItem(noteId, clean))
         _state.value = _state.value.copy(pending = Pairing.outbox(ctx).size)
         val cfg = Pairing.config(ctx) ?: return
@@ -138,6 +159,7 @@ class WearStore(private val ctx: Context) {
     suspend fun addSpokenShopping(text: String) {
         val clean = text.trim()
         if (clean.isBlank()) return
+        flash("Added")
         Pairing.queue(ctx, Pairing.Op.newShopping(clean))
         _state.value = _state.value.copy(pending = Pairing.outbox(ctx).size)
         val cfg = Pairing.config(ctx) ?: return
@@ -163,7 +185,7 @@ class WearStore(private val ctx: Context) {
                 when (op.kind) {
                     "item" -> NoteApi.setChecked(cfg, op.noteId, op.uuid, op.checked)
                     "shopping" -> NoteApi.checkShopping(cfg, op.id, op.checked)
-                    "note" -> NoteApi.createNote(cfg, op.text)
+                    "note" -> NoteApi.createNote(cfg, op.text, op.at, op.tz)
                     "add_item" -> NoteApi.addItem(cfg, op.noteId, op.text)
                     "add_shopping" -> NoteApi.addShopping(cfg, op.text)
                     "reminder_done" -> NoteApi.clearReminder(cfg, op.noteId)

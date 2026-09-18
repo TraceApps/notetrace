@@ -70,7 +70,7 @@ test('a spoken note is recognised by the system, and waits when offline', () => 
   assert.doesNotMatch(read('android/wear/src/main/AndroidManifest.xml'), /RECORD_AUDIO/);
   // Said with no connection: it queues rather than vanishing.
   const pairing = read('android/wear/src/main/java/com/notetrace/app/wear/Pairing.kt');
-  assert.match(pairing, /fun note\(text: String\)/);
+  assert.match(pairing, /fun note\(text: String/);
   const store = read('android/wear/src/main/java/com/notetrace/app/wear/WearStore.kt');
   assert.match(store, /"note" -> NoteApi\.createNote/);
   // Two spoken notes are two notes: only ticks collapse in the outbox.
@@ -109,6 +109,18 @@ test('anything added or finished on the watch survives no connection', () => {
   }
   // Adds never collapse into each other; two spoken items are two items.
   assert.match(pairing, /val adds = setOf\("note", "add_item", "add_shopping"\)/);
+});
+
+test('a time said out loud sets the reminder instead of being written down', () => {
+  const store = read('android/wear/src/main/java/com/notetrace/app/wear/WearStore.kt');
+  assert.match(store, /SpokenTime\.parse\(clean\)/);
+  // Worked out on the watch, so it still happens with no connection, and the
+  // queued note carries the time it was meant to have.
+  const pairing = read('android/wear/src/main/java/com/notetrace/app/wear/Pairing.kt');
+  assert.match(pairing, /val at: String = ""/);
+  assert.match(read('android/wear/src/main/java/com/notetrace/app/wear/NoteApi.kt'), /payload\.put\("reminder_at", reminderAt\)/);
+  // The parser has its own tests, run by :wear:testDebugUnitTest.
+  assert.ok(fs.existsSync(path.join(root, 'android/wear/src/test/java/com/notetrace/app/wear/SpokenTimeTest.kt')));
 });
 
 test('the tile is registered and draws from the saved snapshot', () => {

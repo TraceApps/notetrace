@@ -113,10 +113,14 @@ object Pairing {
         val id: Long,
         val checked: Boolean,
         val text: String = "",
+        /** A reminder heard in what was said, kept so a queued note still gets it. */
+        val at: String = "",
+        val tz: String = "",
     ) {
         fun toJson(): JSONObject = JSONObject()
             .put("kind", kind).put("noteId", noteId).put("uuid", uuid)
             .put("id", id).put("checked", checked).put("text", text)
+            .put("at", at).put("tz", tz)
 
         companion object {
             fun from(o: JSONObject) = Op(
@@ -126,12 +130,14 @@ object Pairing {
                 id = o.optLong("id"),
                 checked = o.optBoolean("checked"),
                 text = o.optString("text"),
+                at = o.optString("at"),
+                tz = o.optString("tz"),
             )
 
             fun item(noteId: Long, uuid: String, checked: Boolean) = Op("item", noteId, uuid, 0, checked)
             fun shopping(id: Long, checked: Boolean) = Op("shopping", 0, "", id, checked)
             /** Spoken with no connection: these wait here rather than being lost. */
-            fun note(text: String) = Op("note", 0, "", 0, false, text)
+            fun note(text: String, at: String = "", tz: String = "") = Op("note", 0, "", 0, false, text, at, tz)
             fun newItem(noteId: Long, text: String) = Op("add_item", noteId, "", 0, false, text)
             fun newShopping(text: String) = Op("add_shopping", 0, "", 0, false, text)
             fun reminderDone(noteId: Long) = Op("reminder_done", noteId, "", 0, false, "")

@@ -80,15 +80,23 @@ object NoteApi {
         return notes.sortedByDescending { it.pinned } to items
     }
 
-    /** A new text note, from what the wearer said. */
-    suspend fun createNote(cfg: Pairing.Config, text: String) {
+    /**
+     * A new text note, from what the wearer said. A time heard in the sentence
+     * becomes the note's reminder rather than part of its text.
+     */
+    suspend fun createNote(cfg: Pairing.Config, text: String, reminderAt: String = "", tz: String = "") {
         val clean = text.trim()
         if (clean.isBlank()) return
         // The first line becomes the title, as it does everywhere else in NoteTrace.
         val firstBreak = clean.indexOf('\n')
         val title = (if (firstBreak > 0) clean.substring(0, firstBreak) else clean).take(80)
         val body = if (firstBreak > 0) clean.substring(firstBreak + 1).trim() else ""
-        send(cfg, "POST", "/api/notes", JSONObject().put("title", title).put("body_md", body).put("kind", "text"))
+        val payload = JSONObject().put("title", title).put("body_md", body).put("kind", "text")
+        if (reminderAt.isNotBlank()) {
+            payload.put("reminder_at", reminderAt)
+            if (tz.isNotBlank()) payload.put("reminder_tz", tz)
+        }
+        send(cfg, "POST", "/api/notes", payload)
     }
 
     /**

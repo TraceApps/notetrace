@@ -53,6 +53,7 @@ import androidx.wear.compose.foundation.rotary.rotaryScrollable
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -79,6 +80,31 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun WearApp(store: WearStore) {
     val nav = rememberSwipeDismissableNavController()
+    val state by store.state.collectAsStateWithLifecycle()
+
+    // "Note saved", "Reminder set", "Added": said once, then gone. Without it,
+    // speaking into a dead zone gives no sign that anything was kept.
+    val flash = state.flash
+    if (flash != null) {
+        LaunchedEffect(flash) {
+            delay(1400)
+            store.clearFlash()
+        }
+        AppScaffold {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    flash + (if (state.offline || state.pending > 0) ", waiting for a connection" else ""),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+            }
+        }
+        return
+    }
+
     AppScaffold {
         SwipeDismissableNavHost(navController = nav, startDestination = "home") {
             composable("home") { HomeScreen(store, nav) }
