@@ -104,6 +104,16 @@ class WearStore(private val ctx: Context) {
         Pairing.config(ctx)?.let { flush(it) }
     }
 
+    /** What the wearer just said becomes a note, now or when there's a connection. */
+    suspend fun addSpokenNote(text: String) {
+        val clean = text.trim()
+        if (clean.isBlank()) return
+        Pairing.queue(ctx, Pairing.Op.note(clean))
+        _state.value = _state.value.copy(pending = Pairing.outbox(ctx).size)
+        val cfg = Pairing.config(ctx) ?: return
+        if (flush(cfg)) refresh()
+    }
+
     suspend fun setShoppingChecked(id: Long, checked: Boolean) {
         _state.value = _state.value.copy(
             shopping = _state.value.shopping.map { if (it.id == id) it.copy(checked = checked) else it },
@@ -115,7 +125,7 @@ class WearStore(private val ctx: Context) {
     }
 
     /** Send what's waiting. Anything the server refuses is dropped, not retried forever. */
-    private suspend fun flush(cfg: Pairing.Config) {
+    private suspend fun flush(cfg: Pairing.Config): Boolean {
         var queue = Pairing.outbox(ctx)
         while (queue.isNotEmpty()) {
             val op = queue.first()
@@ -123,11 +133,12 @@ class WearStore(private val ctx: Context) {
                 when (op.kind) {
                     "item" -> NoteApi.setChecked(cfg, op.noteId, op.uuid, op.checked)
                     "shopping" -> NoteApi.checkShopping(cfg, op.id, op.checked)
+                    "note" -> NoteApi.createNote(cfg, op.text)
                 }
             } catch (e: Exception) {
                 if (isOffline(e)) {
                     _state.value = _state.value.copy(offline = true, pending = queue.size)
-                    return
+                    return false
                 }
                 // The item is gone, or the server said no: drop it and carry on.
             }
@@ -135,6 +146,7 @@ class WearStore(private val ctx: Context) {
             Pairing.writeOutbox(ctx, queue)
         }
         _state.value = _state.value.copy(pending = 0, offline = false)
+        return true
     }
 
     private fun bumpCounts(noteId: Long, items: List<NoteApi.Item>) {

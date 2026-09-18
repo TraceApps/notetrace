@@ -61,6 +61,22 @@ test('the watch asks for the slim list, and the server can answer it', () => {
   }
 });
 
+test('a spoken note is recognised by the system, and waits when offline', () => {
+  const ui = read('android/wear/src/main/java/com/notetrace/app/wear/MainActivity.kt');
+  // The system recogniser does the listening, so the app records nothing, needs
+  // no microphone permission, and follows the watch's own language.
+  assert.match(ui, /RecognizerIntent\.ACTION_RECOGNIZE_SPEECH/);
+  assert.match(ui, /store\.addSpokenNote/);
+  assert.doesNotMatch(read('android/wear/src/main/AndroidManifest.xml'), /RECORD_AUDIO/);
+  // Said with no connection: it queues rather than vanishing.
+  const pairing = read('android/wear/src/main/java/com/notetrace/app/wear/Pairing.kt');
+  assert.match(pairing, /fun note\(text: String\)/);
+  const store = read('android/wear/src/main/java/com/notetrace/app/wear/WearStore.kt');
+  assert.match(store, /"note" -> NoteApi\.createNote/);
+  // Two spoken notes are two notes: only ticks collapse in the outbox.
+  assert.match(pairing, /if \(op\.kind == "note"\) outbox\(ctx\)/);
+});
+
 test('the tile is registered and draws from the saved snapshot', () => {
   const manifest = read('android/wear/src/main/AndroidManifest.xml');
   assert.match(manifest, /androidx\.wear\.tiles\.action\.BIND_TILE_PROVIDER/);

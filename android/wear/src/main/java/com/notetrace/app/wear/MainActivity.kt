@@ -1,8 +1,12 @@
 package com.notetrace.app.wear
 
+import android.content.Intent
 import android.os.Bundle
+import android.speech.RecognizerIntent
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +21,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -85,8 +90,16 @@ fun WearApp(store: WearStore) {
 @Composable
 private fun HomeScreen(store: WearStore, nav: NavHostController) {
     val state by store.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
     val listState = rememberScalingLazyListState()
     val is24h = WhenText.is24Hour(LocalContext.current)
+    val speak = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val said = result.data
+            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull()
+            .orEmpty()
+        if (said.isNotBlank()) scope.launch { store.addSpokenNote(said) }
+    }
 
     ScreenScaffold(scrollState = listState) {
         if (!state.paired) {
@@ -106,6 +119,21 @@ private fun HomeScreen(store: WearStore, nav: NavHostController) {
             item { ListHeader { Text("NoteTrace") } }
             if (state.pending > 0 || state.offline) {
                 item { StatusLine(state) }
+            }
+            item {
+                Button(
+                    onClick = {
+                        speak.launch(
+                            Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                putExtra(RecognizerIntent.EXTRA_PROMPT, "Say your note")
+                            },
+                        )
+                    },
+                    label = { Text("Speak a note") },
+                    icon = { Icon(painter = painterResource(R.drawable.ic_mic), contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
             if (state.reminders.isNotEmpty()) {
                 val due = state.reminders.count { WhenText.isOverdue(it.reminderAt) }

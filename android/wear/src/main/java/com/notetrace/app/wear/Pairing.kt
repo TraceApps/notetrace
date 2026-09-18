@@ -105,10 +105,18 @@ object Pairing {
 
     // ── Ticks made with no connection ────────────────────────────────────
 
-    /** One waiting change: a checklist item, or a shopping item. */
-    data class Op(val kind: String, val noteId: Long, val uuid: String, val id: Long, val checked: Boolean) {
+    /** One waiting change: a ticked item, a ticked shopping item, or a spoken note. */
+    data class Op(
+        val kind: String,
+        val noteId: Long,
+        val uuid: String,
+        val id: Long,
+        val checked: Boolean,
+        val text: String = "",
+    ) {
         fun toJson(): JSONObject = JSONObject()
-            .put("kind", kind).put("noteId", noteId).put("uuid", uuid).put("id", id).put("checked", checked)
+            .put("kind", kind).put("noteId", noteId).put("uuid", uuid)
+            .put("id", id).put("checked", checked).put("text", text)
 
         companion object {
             fun from(o: JSONObject) = Op(
@@ -117,10 +125,13 @@ object Pairing {
                 uuid = o.optString("uuid"),
                 id = o.optLong("id"),
                 checked = o.optBoolean("checked"),
+                text = o.optString("text"),
             )
 
             fun item(noteId: Long, uuid: String, checked: Boolean) = Op("item", noteId, uuid, 0, checked)
             fun shopping(id: Long, checked: Boolean) = Op("shopping", 0, "", id, checked)
+            /** Spoken with no connection: the note waits here rather than being lost. */
+            fun note(text: String) = Op("note", 0, "", 0, false, text)
         }
     }
 
@@ -132,7 +143,8 @@ object Pairing {
 
     fun queue(ctx: Context, op: Op) {
         // The last word on an item wins, so a double tap doesn't send twice.
-        val kept = outbox(ctx).filterNot {
+        // Spoken notes always queue: two of them are two notes, not a correction.
+        val kept = if (op.kind == "note") outbox(ctx) else outbox(ctx).filterNot {
             it.kind == op.kind && it.noteId == op.noteId && it.uuid == op.uuid && it.id == op.id
         }
         writeOutbox(ctx, kept + op)

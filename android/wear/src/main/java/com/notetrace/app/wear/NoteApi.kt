@@ -76,6 +76,17 @@ object NoteApi {
         return notes to items
     }
 
+    /** A new text note, from what the wearer said. */
+    suspend fun createNote(cfg: Pairing.Config, text: String) {
+        val clean = text.trim()
+        if (clean.isBlank()) return
+        // The first line becomes the title, as it does everywhere else in NoteTrace.
+        val firstBreak = clean.indexOf('\n')
+        val title = (if (firstBreak > 0) clean.substring(0, firstBreak) else clean).take(80)
+        val body = if (firstBreak > 0) clean.substring(firstBreak + 1).trim() else ""
+        send(cfg, "POST", "/api/notes", JSONObject().put("title", title).put("body_md", body).put("kind", "text"))
+    }
+
     /** Tick an item off, or back on. */
     suspend fun setChecked(cfg: Pairing.Config, noteId: Long, uuid: String, checked: Boolean) {
         send(cfg, "PATCH", "/api/notes/$noteId/items/$uuid", JSONObject().put("checked", checked))
