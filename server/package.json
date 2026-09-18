@@ -1,6 +1,6 @@
 {
   "name": "notetrace-api",
-  "version": "1.0.0-dev01",
+  "version": "1.0.0-dev02",
   "type": "module",
   "scripts": {
     "start": "node index.js",

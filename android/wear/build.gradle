@@ -16,7 +16,7 @@ android {
         minSdkVersion 30
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
-        versionName "1.0.0-dev01"
+        versionName "1.0.0-dev02"
     }
 
     buildFeatures {
