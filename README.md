@@ -42,7 +42,7 @@ It's built to replace whatever you're using now, and to take your notes with you
 
 Whatever you come from, everything goes back out again: export the lot as Markdown with images, any time.
 
-**It works with no connection.** The Android app runs fully offline, either standalone or syncing to your server when it can reach it. The installed web app opens offline too, and you can keep writing: edits, new notes, ticks, labels, and reminders wait in an outbox and go up when you're back, merged the same way the phone's changes are.
+**It works with no connection.** The Android app runs fully offline, either standalone or syncing to your server when it can reach it. The PWA does too, once you've installed it: it opens with no connection, shows the notes, images, and voice notes it has already seen, and lets you keep writing. New notes, edits, ticks, colors, labels, and reminders wait in an outbox and go up when you're back, merged the same way the phone's changes are, and open tabs stay in step with each other. Adding an image, file, or recording needs a connection, as do sharing, version history, and imports; the app says so rather than failing quietly. That makes the PWA usable on iPhone, where there's no native app yet.
 
 It runs as a single Docker container on your own hardware, with a PWA for the browser and a native Android app for your phone. Fourth app in the Trace family alongside [NutriTrace](https://github.com/traceapps/nutritrace), [LiftTrace](https://github.com/traceapps/lifttrace), and [CookTrace](https://github.com/traceapps/cooktrace).
 
