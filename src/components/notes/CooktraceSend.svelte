@@ -80,6 +80,7 @@
   .cs-desc { font-size: 13px; color: var(--text-3); }
   .cs-list {
     list-style: none; display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow: auto;
+    list-style: none; display: flex; flex-direction: column; gap: 6px; max-height: 40dvh; overflow: auto;
     padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-md);
   }
   .cs-list li { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-1); min-width: 0; }

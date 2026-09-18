@@ -368,6 +368,7 @@
     display: block;
     background: #000;
     max-height: 60vh;
+    max-height: 60dvh;
   }
   .cam-footer {
     padding: 12px 14px;

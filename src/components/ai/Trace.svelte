@@ -1012,8 +1012,15 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
     left: 0; right: 0; bottom: 0;
     top: auto;
     width: 100%;
+    /* dvh, not vh: a phone browser's vh ignores the URL bar and the toolbar, so
+       an 88vh sheet anchored to the bottom pushed its own header off the top.
+       vh first for anything too old to know dvh. */
     height: 88vh;
+    height: 88dvh;
     max-height: 88vh;
+    max-height: 88dvh;
+    height: 88dvh;
+    max-height: 88dvh;
     background: var(--surface-1);
     border-top: 1px solid var(--border);
     border-radius: 20px 20px 0 0;
@@ -1033,6 +1040,9 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
       width: 420px;
       height: min(640px, 80vh);
       max-height: 80vh;
+      max-height: 80dvh;
+      height: min(640px, 80dvh);
+      max-height: 80dvh;
       border: 1px solid var(--border);
       border-radius: 16px;
       box-shadow: 0 12px 48px rgba(0,0,0,0.45);

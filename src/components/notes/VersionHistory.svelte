@@ -118,6 +118,7 @@
   .h-body { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 16px; min-height: 0; }
   @media (max-width: 640px) { .h-body { grid-template-columns: 1fr; } }
   .h-list { list-style: none; display: flex; flex-direction: column; gap: 2px; max-height: 60vh; overflow-y: auto; }
+  .h-list { list-style: none; display: flex; flex-direction: column; gap: 2px; max-height: 60dvh; overflow-y: auto; }
   .h-row {
     width: 100%; min-height: 44px; padding: 8px 12px;
     display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
@@ -134,6 +135,7 @@
     background: color-mix(in srgb, var(--text-1) 4%, transparent);
     border: 1px solid var(--border);
     max-height: 60vh; overflow-y: auto;
+    max-height: 60dvh; overflow-y: auto;
   }
   .h-preview h3 { font-family: var(--font-note-title); font-weight: 500; font-size: 22px; }
   .h-text { white-space: pre-line; font-size: 15px; line-height: 1.6; color: var(--text-2); overflow-wrap: anywhere; }

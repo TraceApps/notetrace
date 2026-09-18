@@ -110,6 +110,7 @@
   .ta-error { color: var(--danger); font-size: 13px; }
   .ta-result {
     max-height: 45vh; overflow: auto; padding: 10px 12px;
+    max-height: 45dvh; overflow: auto; padding: 10px 12px;
     background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-md);
     font-size: 14px; line-height: 1.5; color: var(--text-1); white-space: pre-line;
   }

@@ -335,6 +335,7 @@
     margin: 0 auto;
     padding: calc(var(--safe-top) + 24px) 24px calc(var(--safe-bottom) + 32px);
     min-height: 100vh;
+    min-height: 100dvh;
     display: flex;
     flex-direction: column;
   }

@@ -101,6 +101,7 @@
   .v-text {
     position: absolute; left: 50%; bottom: 44px; transform: translateX(-50%);
     width: min(560px, calc(100% - 32px)); max-height: 34vh; overflow: auto;
+    width: min(560px, calc(100% - 32px)); max-height: 34dvh; overflow: auto;
     padding: 12px 14px; border-radius: 14px;
     background: rgba(20, 20, 26, 0.92); color: #f1f1f4; border: 1px solid rgba(255,255,255,0.12);
   }
