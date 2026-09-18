@@ -158,3 +158,18 @@ test('the watch list can be narrowed, and defaults to everything', () => {
   assert.match(read('src/stores/settings.js'), /'watchNotes'/);
   assert.match(read('src/components/settings/SettingsNotes.svelte'), /watchNotes\.set/);
 });
+
+test('a refused token asks for a re-pair instead of failing forever', () => {
+  const store = read('android/wear/src/main/java/com/notetrace/app/wear/WearStore.kt');
+  // 401 or 403 means the token died, which is a different problem from being
+  // offline and needs a different answer on screen.
+  assert.match(store, /fun isRefused\(e: Exception\)[\s\S]*?401, 403/);
+  assert.match(store, /Pairing\.forget\(ctx\)/);
+  // Queued work survives it: those edits are still good once a token arrives.
+  assert.match(store, /if \(isRefused\(e\)\) \{[\s\S]*?return false/);
+  const pairing = read('android/wear/src/main/java/com/notetrace/app/wear/Pairing.kt');
+  // And the watch won't read the same dead token back off the phone.
+  assert.match(pairing, /KEY_REFUSED/);
+  assert.match(pairing, /if \(token == prefs\(ctx\)\.getString\(KEY_REFUSED, null\)\) continue/);
+  assert.match(pairing, /\.remove\(KEY_REFUSED\)/);
+});

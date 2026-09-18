@@ -31,6 +31,7 @@ object Pairing {
     private const val KEY_CACHE = "cache"
     private const val KEY_CACHE_AT = "cache_at"
     private const val KEY_OUTBOX = "outbox"
+    private const val KEY_REFUSED = "refused_token"
 
     private fun prefs(ctx: Context): SharedPreferences =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -64,10 +65,10 @@ object Pairing {
                 val map = DataMapItem.fromDataItem(item).dataMap
                 val url = map.getString("serverUrl").orEmpty()
                 val token = map.getString("token").orEmpty()
-                if (url.isNotBlank() && token.isNotBlank()) {
-                    save(ctx, url, token)
-                    found = Config(url.trimEnd('/'), token)
-                }
+                if (url.isBlank() || token.isBlank()) continue
+                if (token == prefs(ctx).getString(KEY_REFUSED, null)) continue
+                save(ctx, url, token)
+                found = Config(url.trimEnd('/'), token)
             }
             items.release()
             found ?: existing
@@ -81,12 +82,28 @@ object Pairing {
         prefs(ctx).edit()
             .putString(KEY_URL, serverUrl.trim().trimEnd('/'))
             .putString(KEY_TOKEN, token.trim())
+            // A fresh token: whatever was refused before is history.
+            .remove(KEY_REFUSED)
             .apply()
+    }
+
+    /**
+     * The token stopped working. The address, the cached lists and anything
+     * waiting in the outbox are kept: the wearer hasn't signed out, and the
+     * phone will hand over a fresh token the next time it's opened.
+     */
+    fun forget(ctx: Context) {
+        // Remember which token was refused. The phone's data item still holds
+        // it until the phone is next opened, and reading it back would put the
+        // watch straight into the same refusal.
+        val refused = prefs(ctx).getString(KEY_TOKEN, null).orEmpty()
+        prefs(ctx).edit().remove(KEY_TOKEN).putString(KEY_REFUSED, refused).apply()
     }
 
     /** The phone says the account signed out, or the watch was unpaired. */
     fun clear(ctx: Context) {
-        prefs(ctx).edit().remove(KEY_URL).remove(KEY_TOKEN).remove(KEY_CACHE).remove(KEY_OUTBOX).apply()
+        prefs(ctx).edit().remove(KEY_URL).remove(KEY_TOKEN).remove(KEY_REFUSED)
+            .remove(KEY_CACHE).remove(KEY_OUTBOX).apply()
     }
 
     // ── The last lists the watch saw ─────────────────────────────────────

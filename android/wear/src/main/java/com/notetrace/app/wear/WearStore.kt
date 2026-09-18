@@ -79,6 +79,14 @@ class WearStore(private val ctx: Context) {
             }
             save()
         } catch (e: Exception) {
+            if (isRefused(e)) {
+                // The token expired or was revoked. Saying "pair from your phone"
+                // is the only useful thing here, and the phone re-pairs the next
+                // time it's opened. The outbox is kept: those edits are still good.
+                Pairing.forget(ctx)
+                _state.value = _state.value.copy(paired = false, loading = false, error = null)
+                return
+            }
             _state.value = _state.value.copy(
                 loading = false,
                 offline = isOffline(e),
@@ -195,6 +203,12 @@ class WearStore(private val ctx: Context) {
                     _state.value = _state.value.copy(offline = true, pending = queue.size)
                     return false
                 }
+                if (isRefused(e)) {
+                    // Not this token's fault to fix: keep the work and stop, so a
+                    // re-pair sends it rather than losing it.
+                    _state.value = _state.value.copy(pending = queue.size)
+                    return false
+                }
                 // The item is gone, or the server said no: drop it and carry on.
             }
             queue = queue.drop(1)
@@ -212,6 +226,10 @@ class WearStore(private val ctx: Context) {
             },
         )
     }
+
+    /** The server answered, and said no to this token. */
+    private fun isRefused(e: Exception): Boolean =
+        (e as? NoteApi.ApiError)?.status in setOf(401, 403)
 
     private fun isOffline(e: Exception): Boolean =
         e is java.io.IOException || (e as? NoteApi.ApiError)?.status in setOf(0, 502, 503, 504)
