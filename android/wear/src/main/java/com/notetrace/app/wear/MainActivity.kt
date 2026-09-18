@@ -72,6 +72,10 @@ fun WearApp(store: WearStore) {
                 val id = entry.arguments?.getString("noteId")?.toLongOrNull() ?: 0L
                 ChecklistScreen(store, id)
             }
+            composable("note/{noteId}") { entry ->
+                val id = entry.arguments?.getString("noteId")?.toLongOrNull() ?: 0L
+                NoteScreen(store, id)
+            }
         }
     }
 }
@@ -114,13 +118,15 @@ private fun HomeScreen(store: WearStore, nav: NavHostController) {
             }
             items(state.checklists, key = { it.id }) { note ->
                 TitleCard(
-                    onClick = {
-                        nav.navigate("list/${note.id}")
-                    },
+                    onClick = { nav.navigate((if (note.isChecklist) "list/" else "note/") + note.id) },
                     title = { Text(note.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(if (note.open == 0) "All done" else "${note.open} left")
+                    if (note.isChecklist) {
+                        Text(if (note.open == 0) "All done" else "${note.open} left")
+                    } else if (note.excerpt.isNotBlank()) {
+                        Text(note.excerpt.replace('\n', ' '), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
             if (state.checklists.isEmpty() && state.shopping.isEmpty()) {
@@ -161,6 +167,39 @@ private fun ChecklistScreen(store: WearStore, noteId: Long) {
                     label = { Text(item.text, maxLines = 3, overflow = TextOverflow.Ellipsis) },
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+        }
+    }
+}
+
+/** A text note, to read. Writing one belongs on a phone. */
+@Composable
+private fun NoteScreen(store: WearStore, noteId: Long) {
+    val state by store.state.collectAsStateWithLifecycle()
+    val listState = rememberScalingLazyListState()
+    val note = state.checklists.firstOrNull { it.id == noteId }
+
+    ScreenScaffold(scrollState = listState) {
+        ScalingLazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+            item { ListHeader { Text(note?.title ?: "Note", maxLines = 2, overflow = TextOverflow.Ellipsis) } }
+            item {
+                Text(
+                    note?.excerpt?.ifBlank { "This note has no text." } ?: "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+            }
+            // The server sends the first stretch of a long note; the rest is on the phone.
+            if ((note?.excerpt?.length ?: 0) >= 1200) {
+                item {
+                    Text(
+                        "Longer than this. Open it on your phone for the rest.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                    )
+                }
             }
         }
     }

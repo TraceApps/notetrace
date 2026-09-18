@@ -60,7 +60,7 @@ class WearStore(private val ctx: Context) {
             // Both at once: on a watch connection, two round trips in a row is
             // most of the wait.
             coroutineScope {
-                val listsJob = async { NoteApi.checklists(cfg) }
+                val listsJob = async { NoteApi.notes(cfg) }
                 val shopJob = async { NoteApi.shopping(cfg) }
                 val (lists, items) = listsJob.await()
                 val shop = shopJob.await()
@@ -151,7 +151,10 @@ class WearStore(private val ctx: Context) {
         val s = _state.value
         val snap = JSONObject()
             .put("checklists", JSONArray().apply {
-                s.checklists.forEach { put(JSONObject().put("id", it.id).put("title", it.title).put("open", it.open).put("done", it.done)) }
+                s.checklists.forEach {
+                    put(JSONObject().put("id", it.id).put("title", it.title).put("kind", it.kind)
+                        .put("excerpt", it.excerpt).put("open", it.open).put("done", it.done))
+                }
             })
             .put("shopping", JSONArray().apply {
                 s.shopping.forEach {
@@ -171,7 +174,10 @@ class WearStore(private val ctx: Context) {
 
     private fun readNotes(arr: JSONArray?): List<NoteApi.Note> = (0 until (arr?.length() ?: 0)).map {
         val o = arr!!.getJSONObject(it)
-        NoteApi.Note(o.optLong("id"), o.optString("title"), o.optInt("open"), o.optInt("done"))
+        NoteApi.Note(
+            o.optLong("id"), o.optString("title"), o.optString("kind").ifBlank { "text" },
+            o.optString("excerpt"), o.optInt("open"), o.optInt("done"),
+        )
     }
 
     private fun readShopping(arr: JSONArray?): List<NoteApi.ShopItem> = (0 until (arr?.length() ?: 0)).map {

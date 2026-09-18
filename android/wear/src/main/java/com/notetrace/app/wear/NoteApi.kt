@@ -22,7 +22,16 @@ object NoteApi {
 
     class ApiError(message: String, val status: Int = 0) : Exception(message)
 
-    data class Note(val id: Long, val title: String, val open: Int, val done: Int)
+    data class Note(
+        val id: Long,
+        val title: String,
+        val kind: String,
+        val excerpt: String,
+        val open: Int,
+        val done: Int,
+    ) {
+        val isChecklist: Boolean get() = kind == "checklist"
+    }
     data class Item(val uuid: String, val text: String, val checked: Boolean)
     data class ShopItem(val id: Long, val name: String, val amount: String, val aisle: String?, val checked: Boolean)
 
@@ -32,8 +41,8 @@ object NoteApi {
      * and none of them fit on a watch. Opening a list then needs no second
      * request at all.
      */
-    suspend fun checklists(cfg: Pairing.Config): Pair<List<Note>, Map<Long, List<Item>>> {
-        val arr = asArray(get(cfg, "/api/notes?kind=checklist&slim=1"), "notes")
+    suspend fun notes(cfg: Pairing.Config): Pair<List<Note>, Map<Long, List<Item>>> {
+        val arr = asArray(get(cfg, "/api/notes?slim=1"), "notes")
         val notes = mutableListOf<Note>()
         val items = mutableMapOf<Long, List<Item>>()
         for (i in 0 until arr.length()) {
@@ -45,9 +54,16 @@ object NoteApi {
                 Item(it.optString("uuid"), it.optString("text"), it.optBoolean("checked"))
             }
             items[id] = list
+            val excerpt = n.optString("excerpt")
+            val title = n.optString("title").ifBlank {
+                // An untitled note shows its first line, the way a card does.
+                excerpt.lineSequence().firstOrNull()?.trim().orEmpty().ifBlank { "Untitled" }
+            }
             notes += Note(
                 id = id,
-                title = n.optString("title").ifBlank { "Untitled" },
+                title = title,
+                kind = n.optString("kind").ifBlank { "text" },
+                excerpt = excerpt,
                 open = list.count { !it.checked },
                 done = list.count { it.checked },
             )

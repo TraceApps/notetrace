@@ -6,6 +6,7 @@ import { Router } from 'express';
 import { wrap } from '../logger.js';
 import { requireAuth, userMgmtActive } from '../middleware/auth.js';
 import * as Notes from '../lib/notes.js';
+import { plainExcerpt } from '../lib/note-excerpt.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -36,6 +37,9 @@ router.get('/', wrap((req, res) => {
       title: n.title,
       kind: n.kind,
       updated_at: n.updated_at,
+      // Enough of a text note to read on a wrist, with the Markdown marks
+      // taken out; the phone has the whole thing.
+      excerpt: n.kind === 'checklist' ? '' : plainExcerpt(n.body_md, 1200),
       items: (n.items || []).map(i => ({ uuid: i.uuid, text: i.text, checked: !!i.checked })),
     })));
   }
