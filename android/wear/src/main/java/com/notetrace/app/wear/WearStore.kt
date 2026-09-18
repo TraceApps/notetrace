@@ -180,6 +180,9 @@ class WearStore(private val ctx: Context) {
                 }
             })
         Pairing.putCache(ctx, snap)
+        // The tile draws from this snapshot, so redraw it now rather than leaving
+        // yesterday's count on the watch face.
+        ListTileService.refresh(ctx)
     }
 
     private fun readNotes(arr: JSONArray?): List<NoteApi.Note> = (0 until (arr?.length() ?: 0)).map {

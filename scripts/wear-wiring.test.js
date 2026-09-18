@@ -61,6 +61,18 @@ test('the watch asks for the slim list, and the server can answer it', () => {
   }
 });
 
+test('the tile is registered and draws from the saved snapshot', () => {
+  const manifest = read('android/wear/src/main/AndroidManifest.xml');
+  assert.match(manifest, /androidx\.wear\.tiles\.action\.BIND_TILE_PROVIDER/);
+  assert.match(manifest, /BIND_TILE_PROVIDER"/);
+  const tile = read('android/wear/src/main/java/com/notetrace/app/wear/ListTileService.kt');
+  // No network on the tile path: it reads what the app already saved.
+  assert.match(tile, /Pairing\.cache\(this\)/);
+  assert.doesNotMatch(tile, /NoteApi\./);
+  // And the app asks for a redraw when that snapshot changes.
+  assert.match(read('android/wear/src/main/java/com/notetrace/app/wear/WearStore.kt'), /ListTileService\.refresh\(ctx\)/);
+});
+
 test('a reminder notification carries icons for its actions', () => {
   // On a watch, an action without an icon shows as an empty circle.
   const receiver = read('android/app/src/main/java/com/notetrace/app/NoteReminderReceiver.java');
