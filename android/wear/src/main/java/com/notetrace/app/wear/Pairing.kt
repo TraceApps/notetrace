@@ -2,6 +2,11 @@ package com.notetrace.app.wear
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.Uri
+import android.util.Log
+import com.google.android.gms.wearable.DataMapItem
+import com.google.android.gms.wearable.Wearable
+import kotlinx.coroutines.tasks.await
 import org.json.JSONObject
 
 /**
@@ -19,6 +24,7 @@ object Pairing {
 
     data class Config(val serverUrl: String, val token: String)
 
+    private const val TAG = "NoteTraceWear"
     private const val PREFS = "notetrace.wear"
     private const val KEY_URL = "server_url"
     private const val KEY_TOKEN = "token"
@@ -35,6 +41,40 @@ object Pairing {
         val url = p.getString(KEY_URL, null)?.takeIf { it.isNotBlank() }
         val token = p.getString(KEY_TOKEN, null)?.takeIf { it.isNotBlank() }
         return if (url != null && token != null) Config(url, token) else null
+    }
+
+    /**
+     * Read whatever the phone has already published, rather than only waiting
+     * for onDataChanged. A listener only fires on a change, so an app opened
+     * after the phone published would sit there saying "pair from your phone"
+     * with the pairing sitting right there unread.
+     */
+    suspend fun pullFromPhone(ctx: Context): Config? {
+        val existing = config(ctx)
+        return try {
+            // Everything the phone has published, filtered here: a URI query
+            // needs an authority to match, and "any node" is easy to get wrong.
+            val items = Wearable.getDataClient(ctx).getDataItems().await()
+            Log.i(TAG, "data items: " + items.count)
+            var found: Config? = null
+            for (item in items) {
+                val path = item.uri.path.orEmpty()
+                Log.i(TAG, "item: " + path)
+                if (!path.startsWith(PairingService.PATH)) continue
+                val map = DataMapItem.fromDataItem(item).dataMap
+                val url = map.getString("serverUrl").orEmpty()
+                val token = map.getString("token").orEmpty()
+                if (url.isNotBlank() && token.isNotBlank()) {
+                    save(ctx, url, token)
+                    found = Config(url.trimEnd('/'), token)
+                }
+            }
+            items.release()
+            found ?: existing
+        } catch (e: Exception) {
+            Log.w(TAG, "couldn't read the pairing: " + e.message)
+            existing
+        }
     }
 
     fun save(ctx: Context, serverUrl: String, token: String) {

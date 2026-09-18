@@ -6,6 +6,8 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
+import android.util.Log;
+
 import com.google.android.gms.wearable.DataClient;
 import com.google.android.gms.wearable.PutDataMapRequest;
 import com.google.android.gms.wearable.PutDataRequest;
@@ -24,18 +26,21 @@ import com.google.android.gms.wearable.Wearable;
 public class WearPairingPlugin extends Plugin {
 
     private static final String PATH = "/notetrace/pairing";
+    private static final String TAG = "WearPairing";
 
     /** True when a watch is paired with this phone, so the UI can say so. */
     @PluginMethod
     public void hasWatch(PluginCall call) {
         Wearable.getNodeClient(getContext()).getConnectedNodes()
             .addOnSuccessListener(nodes -> {
+                Log.i(TAG, "connected nodes: " + (nodes == null ? 0 : nodes.size()));
                 JSObject ret = new JSObject();
                 ret.put("paired", nodes != null && !nodes.isEmpty());
                 ret.put("count", nodes == null ? 0 : nodes.size());
                 call.resolve(ret);
             })
             .addOnFailureListener(e -> {
+                Log.w(TAG, "couldn't list nodes: " + e.getMessage());
                 JSObject ret = new JSObject();
                 ret.put("paired", false);
                 ret.put("count", 0);
@@ -63,6 +68,7 @@ public class WearPairingPlugin extends Plugin {
         DataClient client = Wearable.getDataClient(getContext());
         client.putDataItem(put)
             .addOnSuccessListener(item -> {
+                Log.i(TAG, "sent the link to the watch");
                 JSObject ret = new JSObject();
                 ret.put("sent", true);
                 call.resolve(ret);

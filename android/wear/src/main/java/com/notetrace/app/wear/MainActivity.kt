@@ -115,7 +115,6 @@ private fun HomeScreen(store: WearStore, nav: NavHostController) {
             items(state.checklists, key = { it.id }) { note ->
                 TitleCard(
                     onClick = {
-                        scope.launch { store.openList(note.id) }
                         nav.navigate("list/${note.id}")
                     },
                     title = { Text(note.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },

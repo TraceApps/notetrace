@@ -23,12 +23,19 @@ android {
         compose true
     }
 
+    // The watch app and the phone app must be signed with the same key, or the
+    // Wearable Data Layer silently carries nothing between them (and that is
+    // how the watch gets the server address and token).
+    def keystorePropertiesFile = rootProject.file("keystore.properties")
+    def hasReleaseKeystore = keystorePropertiesFile.exists()
+    def keystoreProperties = new Properties()
+    if (hasReleaseKeystore) {
+        keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+    }
+
     signingConfigs {
-        release {
-            def keystorePropertiesFile = rootProject.file("keystore.properties")
-            if (keystorePropertiesFile.exists()) {
-                def keystoreProperties = new Properties()
-                keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+        if (hasReleaseKeystore) {
+            release {
                 storeFile file(keystoreProperties['storeFile'])
                 storePassword keystoreProperties['storePassword']
                 keyAlias keystoreProperties['keyAlias']
@@ -38,9 +45,16 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (hasReleaseKeystore) {
+                signingConfig signingConfigs.release
+            }
+        }
         release {
             minifyEnabled false
-            signingConfig signingConfigs.release
+            if (hasReleaseKeystore) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 
@@ -64,6 +78,7 @@ dependencies {
     implementation "androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4"
     implementation "androidx.lifecycle:lifecycle-runtime-compose:2.9.4"
     implementation "com.google.android.gms:play-services-wearable:19.0.0"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.8.1"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
     // HttpURLConnection can't send PATCH, which ticking an item off needs.
     implementation "com.squareup.okhttp3:okhttp:4.12.0"

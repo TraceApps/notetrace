@@ -26,38 +26,33 @@ object NoteApi {
     data class Item(val uuid: String, val text: String, val checked: Boolean)
     data class ShopItem(val id: Long, val name: String, val amount: String, val aisle: String?, val checked: Boolean)
 
-    /** Checklists, newest first, with how many items are left. */
-    suspend fun checklists(cfg: Pairing.Config): List<Note> = get(cfg, "/api/notes?kind=checklist").let { body ->
-        val arr = asArray(body, "notes")
-        (0 until arr.length()).map { i ->
+    /**
+     * Checklists and their items in one slim request: `slim=1` leaves out note
+     * bodies, attachments, labels and previews, which are most of the payload
+     * and none of them fit on a watch. Opening a list then needs no second
+     * request at all.
+     */
+    suspend fun checklists(cfg: Pairing.Config): Pair<List<Note>, Map<Long, List<Item>>> {
+        val arr = asArray(get(cfg, "/api/notes?kind=checklist&slim=1"), "notes")
+        val notes = mutableListOf<Note>()
+        val items = mutableMapOf<Long, List<Item>>()
+        for (i in 0 until arr.length()) {
             val n = arr.getJSONObject(i)
-            val items = n.optJSONArray("items") ?: JSONArray()
-            var open = 0
-            var done = 0
-            for (j in 0 until items.length()) {
-                if (items.getJSONObject(j).optBoolean("checked")) done++ else open++
+            val id = n.getLong("id")
+            val raw = n.optJSONArray("items") ?: JSONArray()
+            val list = (0 until raw.length()).map { j ->
+                val it = raw.getJSONObject(j)
+                Item(it.optString("uuid"), it.optString("text"), it.optBoolean("checked"))
             }
-            Note(
-                id = n.getLong("id"),
+            items[id] = list
+            notes += Note(
+                id = id,
                 title = n.optString("title").ifBlank { "Untitled" },
-                open = open,
-                done = done,
-            )
-        }.filter { !it.title.isBlank() }
-    }
-
-    /** One checklist's items, in the order the phone shows them. */
-    suspend fun items(cfg: Pairing.Config, noteId: Long): List<Item> {
-        val note = JSONObject(get(cfg, "/api/notes/$noteId"))
-        val arr = note.optJSONArray("items") ?: JSONArray()
-        return (0 until arr.length()).map { i ->
-            val it = arr.getJSONObject(i)
-            Item(
-                uuid = it.optString("uuid"),
-                text = it.optString("text"),
-                checked = it.optBoolean("checked"),
+                open = list.count { !it.checked },
+                done = list.count { it.checked },
             )
         }
+        return notes to items
     }
 
     /** Tick an item off, or back on. */

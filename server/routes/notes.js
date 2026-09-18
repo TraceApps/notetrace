@@ -21,12 +21,25 @@ const notFound = res => res.status(404).json({ error: 'Note not found' });
 router.get('/', wrap((req, res) => {
   const view = ['notes', 'archive', 'trash', 'reminders', 'shared'].includes(req.query.view) ? req.query.view : 'notes';
   const label = parseInt(req.query.label, 10);
-  res.json(Notes.listNotes(uid(req), {
+  const notes = Notes.listNotes(uid(req), {
     view,
     labelId: Number.isFinite(label) ? label : null,
     q: typeof req.query.q === 'string' ? req.query.q : '',
     kind: typeof req.query.kind === 'string' ? req.query.kind : null,
-  }));
+  });
+  // slim=1: what a watch needs and nothing else. Note bodies, attachments,
+  // labels and previews are most of the payload and none of them fit on a
+  // 1.2 inch screen, and the connection they arrive over is slow.
+  if (req.query.slim === '1') {
+    return res.json(notes.map(n => ({
+      id: n.id,
+      title: n.title,
+      kind: n.kind,
+      updated_at: n.updated_at,
+      items: (n.items || []).map(i => ({ uuid: i.uuid, text: i.text, checked: !!i.checked })),
+    })));
+  }
+  res.json(notes);
 }));
 
 router.post('/', wrap((req, res) => {

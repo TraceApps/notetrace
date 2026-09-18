@@ -1,6 +1,8 @@
 package com.notetrace.app.wear
 
 import android.content.Context
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
@@ -46,19 +48,29 @@ class WearStore(private val ctx: Context) {
     }
 
     suspend fun refresh() {
-        val cfg = Pairing.config(ctx) ?: run {
+        // Ask the phone's data item first: it may have been published while
+        // this app wasn't running, which no listener would tell us about.
+        val cfg = Pairing.pullFromPhone(ctx) ?: run {
             _state.value = _state.value.copy(paired = false)
             return
         }
         _state.value = _state.value.copy(paired = true, loading = true, error = null)
         flush(cfg)
         try {
-            val lists = NoteApi.checklists(cfg)
-            val shop = NoteApi.shopping(cfg)
-            _state.value = _state.value.copy(
-                loading = false, offline = false, error = null,
-                checklists = lists, shopping = shop,
-            )
+            // Both at once: on a watch connection, two round trips in a row is
+            // most of the wait.
+            coroutineScope {
+                val listsJob = async { NoteApi.checklists(cfg) }
+                val shopJob = async { NoteApi.shopping(cfg) }
+                val (lists, items) = listsJob.await()
+                val shop = shopJob.await()
+                _state.value = _state.value.copy(
+                    loading = false, offline = false, error = null,
+                    checklists = lists, shopping = shop,
+                    // The slim list carries the items, so opening one is instant.
+                    items = items,
+                )
+            }
             save()
         } catch (e: Exception) {
             _state.value = _state.value.copy(
@@ -69,20 +81,12 @@ class WearStore(private val ctx: Context) {
         }
     }
 
-    /** Open a checklist: show what's cached, then ask the server. */
-    suspend fun openList(noteId: Long) {
-        val cfg = Pairing.config(ctx) ?: return
-        _state.value = _state.value.copy(loading = true)
-        try {
-            val fetched = NoteApi.items(cfg, noteId)
-            _state.value = _state.value.copy(
-                loading = false, offline = false,
-                items = _state.value.items + (noteId to fetched),
-            )
-            save()
-        } catch (e: Exception) {
-            _state.value = _state.value.copy(loading = false, offline = isOffline(e))
-        }
+    /**
+     * Opening a list needs no request: the slim list already carried its items,
+     * and anything ticked offline is already laid over them.
+     */
+    fun openList(noteId: Long) {
+        // Kept as a hook for a future per-list refresh; nothing to do today.
     }
 
     suspend fun setItemChecked(noteId: Long, uuid: String, checked: Boolean) {

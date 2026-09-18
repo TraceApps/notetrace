@@ -467,7 +467,12 @@
         // Leaving the app: the widget gets edits made since the last change signal.
         App.addListener('appStateChange', ({ isActive }) => {
           if (!isActive) refreshHomeWidget({ locked: !!$appLockEnabled, now: true });
+          // Coming back is a good moment to top up the watch's token, and it
+          // catches a watch paired after this app was last opened.
+          else import('./lib/wear-pairing.js').then(({ pairWatch }) => pairWatch()).catch(() => {});
         });
+        // And on launch, once auth has settled.
+        setTimeout(() => import('./lib/wear-pairing.js').then(({ pairWatch }) => pairWatch()).catch(() => {}), 2500);
         // Deep link callbacks: notetrace://oidc-callback?token=…
         // A home screen shortcut that cold-starts the app arrives as the launch URL.
         App.getLaunchUrl?.().then((r) => {
