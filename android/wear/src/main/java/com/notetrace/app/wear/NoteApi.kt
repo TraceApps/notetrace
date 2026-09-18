@@ -87,6 +87,28 @@ object NoteApi {
         send(cfg, "POST", "/api/notes", JSONObject().put("title", title).put("body_md", body).put("kind", "text"))
     }
 
+    /**
+     * Clear a note's reminder. A repeating one keeps its rule on the server, so
+     * this is the same "done with this occurrence" the notification's Done does.
+     */
+    suspend fun clearReminder(cfg: Pairing.Config, noteId: Long) {
+        send(cfg, "PATCH", "/api/notes/$noteId", JSONObject().put("reminder_at", JSONObject.NULL))
+    }
+
+    /** A new item on a checklist, from what the wearer said. */
+    suspend fun addItem(cfg: Pairing.Config, noteId: Long, text: String) {
+        val clean = text.trim()
+        if (clean.isBlank()) return
+        send(cfg, "POST", "/api/notes/$noteId/items", JSONObject().put("text", clean))
+    }
+
+    /** A new item on the CookTrace shopping list. */
+    suspend fun addShopping(cfg: Pairing.Config, text: String) {
+        val clean = text.trim()
+        if (clean.isBlank()) return
+        send(cfg, "POST", "/api/integrations/cooktrace/shopping", JSONObject().put("items", org.json.JSONArray().put(clean)))
+    }
+
     /** Tick an item off, or back on. */
     suspend fun setChecked(cfg: Pairing.Config, noteId: Long, uuid: String, checked: Boolean) {
         send(cfg, "PATCH", "/api/notes/$noteId/items/$uuid", JSONObject().put("checked", checked))

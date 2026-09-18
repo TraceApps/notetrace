@@ -114,6 +114,36 @@ class WearStore(private val ctx: Context) {
         if (flush(cfg)) refresh()
     }
 
+    /** Done with a reminder, from the watch rather than from its notification. */
+    suspend fun reminderDone(noteId: Long) {
+        _state.value = _state.value.copy(reminders = _state.value.reminders.filterNot { it.id == noteId })
+        Pairing.queue(ctx, Pairing.Op.reminderDone(noteId))
+        _state.value = _state.value.copy(pending = Pairing.outbox(ctx).size)
+        save()
+        val cfg = Pairing.config(ctx) ?: return
+        flush(cfg)
+    }
+
+    /** Said while looking at a checklist: a new item on it. */
+    suspend fun addSpokenItem(noteId: Long, text: String) {
+        val clean = text.trim()
+        if (clean.isBlank()) return
+        Pairing.queue(ctx, Pairing.Op.newItem(noteId, clean))
+        _state.value = _state.value.copy(pending = Pairing.outbox(ctx).size)
+        val cfg = Pairing.config(ctx) ?: return
+        if (flush(cfg)) refresh()
+    }
+
+    /** Said while looking at the shopping list: a new thing to buy. */
+    suspend fun addSpokenShopping(text: String) {
+        val clean = text.trim()
+        if (clean.isBlank()) return
+        Pairing.queue(ctx, Pairing.Op.newShopping(clean))
+        _state.value = _state.value.copy(pending = Pairing.outbox(ctx).size)
+        val cfg = Pairing.config(ctx) ?: return
+        if (flush(cfg)) refresh()
+    }
+
     suspend fun setShoppingChecked(id: Long, checked: Boolean) {
         _state.value = _state.value.copy(
             shopping = _state.value.shopping.map { if (it.id == id) it.copy(checked = checked) else it },
@@ -134,6 +164,9 @@ class WearStore(private val ctx: Context) {
                     "item" -> NoteApi.setChecked(cfg, op.noteId, op.uuid, op.checked)
                     "shopping" -> NoteApi.checkShopping(cfg, op.id, op.checked)
                     "note" -> NoteApi.createNote(cfg, op.text)
+                    "add_item" -> NoteApi.addItem(cfg, op.noteId, op.text)
+                    "add_shopping" -> NoteApi.addShopping(cfg, op.text)
+                    "reminder_done" -> NoteApi.clearReminder(cfg, op.noteId)
                 }
             } catch (e: Exception) {
                 if (isOffline(e)) {
@@ -195,6 +228,7 @@ class WearStore(private val ctx: Context) {
         // The tile draws from this snapshot, so redraw it now rather than leaving
         // yesterday's count on the watch face.
         ListTileService.refresh(ctx)
+        ListComplicationService.refresh(ctx)
     }
 
     private fun readNotes(arr: JSONArray?): List<NoteApi.Note> = (0 until (arr?.length() ?: 0)).map {

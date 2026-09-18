@@ -87,19 +87,44 @@ fun WearApp(store: WearStore) {
     }
 }
 
+/** Press, speak, and hand back what was heard. The system does the listening. */
+@Composable
+private fun rememberSpeech(prompt: String, onHeard: (String) -> Unit): () -> Unit {
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val said = result.data
+            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+            ?.firstOrNull()
+            .orEmpty()
+        if (said.isNotBlank()) onHeard(said)
+    }
+    return {
+        launcher.launch(
+            Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_PROMPT, prompt)
+            },
+        )
+    }
+}
+
+/** The row that starts it, sized for a thumb on a small screen. */
+@Composable
+private fun SpeakButton(label: String, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        label = { Text(label) },
+        icon = { Icon(painter = painterResource(R.drawable.ic_mic), contentDescription = null) },
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
 @Composable
 private fun HomeScreen(store: WearStore, nav: NavHostController) {
     val state by store.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val listState = rememberScalingLazyListState()
     val is24h = WhenText.is24Hour(LocalContext.current)
-    val speak = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        val said = result.data
-            ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-            ?.firstOrNull()
-            .orEmpty()
-        if (said.isNotBlank()) scope.launch { store.addSpokenNote(said) }
-    }
+    val speak = rememberSpeech("Say your note") { said -> scope.launch { store.addSpokenNote(said) } }
 
     ScreenScaffold(scrollState = listState) {
         if (!state.paired) {
@@ -120,21 +145,7 @@ private fun HomeScreen(store: WearStore, nav: NavHostController) {
             if (state.pending > 0 || state.offline) {
                 item { StatusLine(state) }
             }
-            item {
-                Button(
-                    onClick = {
-                        speak.launch(
-                            Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                                putExtra(RecognizerIntent.EXTRA_PROMPT, "Say your note")
-                            },
-                        )
-                    },
-                    label = { Text("Speak a note") },
-                    icon = { Icon(painter = painterResource(R.drawable.ic_mic), contentDescription = null) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+            item { SpeakButton("Speak a note", speak) }
             if (state.reminders.isNotEmpty()) {
                 val due = state.reminders.count { WhenText.isOverdue(it.reminderAt) }
                 item {
@@ -195,10 +206,12 @@ private fun ChecklistScreen(store: WearStore, noteId: Long) {
     val listState = rememberScalingLazyListState()
     val note = state.checklists.firstOrNull { it.id == noteId }
     val items = state.items[noteId].orEmpty()
+    val speak = rememberSpeech("Say the item") { said -> scope.launch { store.addSpokenItem(noteId, said) } }
 
     ScreenScaffold(scrollState = listState) {
         ScalingLazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
             item { ListHeader { Text(note?.title ?: "Checklist", maxLines = 2, overflow = TextOverflow.Ellipsis) } }
+            item { SpeakButton("Add an item", speak) }
             if (items.isEmpty()) {
                 item { Message(title = if (state.loading) "Loading" else "Empty list", body = "") }
             }
@@ -224,6 +237,7 @@ private fun ChecklistScreen(store: WearStore, noteId: Long) {
 @Composable
 private fun RemindersScreen(store: WearStore, nav: NavHostController) {
     val state by store.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
     val listState = rememberScalingLazyListState()
     val is24h = WhenText.is24Hour(LocalContext.current)
     val sorted = state.reminders.sortedBy { it.reminderAt }
@@ -233,16 +247,22 @@ private fun RemindersScreen(store: WearStore, nav: NavHostController) {
             item { ListHeader { Text("Reminders") } }
             items(sorted, key = { it.id }) { note ->
                 val overdue = WhenText.isOverdue(note.reminderAt)
-                TitleCard(
-                    onClick = { nav.navigate((if (note.isChecklist) "list/" else "note/") + note.id) },
-                    title = { Text(note.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                // Tap the row to open the note, the tick to be done with it.
+                SplitCheckboxButton(
+                    checked = false,
+                    onCheckedChange = { scope.launch { store.reminderDone(note.id) } },
+                    toggleContentDescription = "Done with " + note.title,
+                    onContainerClick = { nav.navigate((if (note.isChecklist) "list/" else "note/") + note.id) },
+                    containerClickLabel = note.title,
+                    label = { Text(note.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                    secondaryLabel = {
+                        Text(
+                            WhenText.due(note.reminderAt, is24h) + (if (note.repeats) ", repeats" else ""),
+                            color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        WhenText.due(note.reminderAt, is24h) + (if (note.repeats) ", repeats" else ""),
-                        color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                )
             }
             if (sorted.isEmpty()) {
                 item {
@@ -293,6 +313,7 @@ private fun ShoppingScreen(store: WearStore) {
     val state by store.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val listState = rememberScalingLazyListState()
+    val speak = rememberSpeech("Say what to buy") { said -> scope.launch { store.addSpokenShopping(said) } }
     // Grouped by aisle, the way the phone and CookTrace show it.
     val open = state.shopping.filter { !it.checked }
     val byAisle = open.groupBy { it.aisle ?: "Other" }.toSortedMap(compareBy { it == "Other" })
@@ -301,6 +322,7 @@ private fun ShoppingScreen(store: WearStore) {
         ScalingLazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
             item { ListHeader { Text("Shopping List") } }
             if (state.pending > 0 || state.offline) item { StatusLine(state) }
+            item { SpeakButton("Add to the list", speak) }
             byAisle.forEach { (aisle, items) ->
                 item { ListHeader { Text(aisle) } }
                 items(items, key = { it.id }) { item ->

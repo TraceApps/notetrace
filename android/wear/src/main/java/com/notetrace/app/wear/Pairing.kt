@@ -130,8 +130,11 @@ object Pairing {
 
             fun item(noteId: Long, uuid: String, checked: Boolean) = Op("item", noteId, uuid, 0, checked)
             fun shopping(id: Long, checked: Boolean) = Op("shopping", 0, "", id, checked)
-            /** Spoken with no connection: the note waits here rather than being lost. */
+            /** Spoken with no connection: these wait here rather than being lost. */
             fun note(text: String) = Op("note", 0, "", 0, false, text)
+            fun newItem(noteId: Long, text: String) = Op("add_item", noteId, "", 0, false, text)
+            fun newShopping(text: String) = Op("add_shopping", 0, "", 0, false, text)
+            fun reminderDone(noteId: Long) = Op("reminder_done", noteId, "", 0, false, "")
         }
     }
 
@@ -144,7 +147,8 @@ object Pairing {
     fun queue(ctx: Context, op: Op) {
         // The last word on an item wins, so a double tap doesn't send twice.
         // Spoken notes always queue: two of them are two notes, not a correction.
-        val kept = if (op.kind == "note") outbox(ctx) else outbox(ctx).filterNot {
+        val adds = setOf("note", "add_item", "add_shopping")
+        val kept = if (op.kind in adds) outbox(ctx) else outbox(ctx).filterNot {
             it.kind == op.kind && it.noteId == op.noteId && it.uuid == op.uuid && it.id == op.id
         }
         writeOutbox(ctx, kept + op)

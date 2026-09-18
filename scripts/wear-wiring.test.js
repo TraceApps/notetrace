@@ -74,7 +74,31 @@ test('a spoken note is recognised by the system, and waits when offline', () => 
   const store = read('android/wear/src/main/java/com/notetrace/app/wear/WearStore.kt');
   assert.match(store, /"note" -> NoteApi\.createNote/);
   // Two spoken notes are two notes: only ticks collapse in the outbox.
-  assert.match(pairing, /if \(op\.kind == "note"\) outbox\(ctx\)/);
+  assert.match(pairing, /if \(op\.kind in adds\) outbox\(ctx\)/);
+});
+
+test('the complication reads the snapshot and is redrawn when it changes', () => {
+  const manifest = read('android/wear/src/main/AndroidManifest.xml');
+  assert.match(manifest, /BIND_COMPLICATION_PROVIDER/);
+  assert.match(manifest, /SUPPORTED_TYPES"\s*\n?\s*android:value="SHORT_TEXT"/);
+  const comp = read('android/wear/src/main/java/com/notetrace/app/wear/ListComplicationService.kt');
+  assert.match(comp, /Pairing\.cache\(this\)/);
+  assert.doesNotMatch(comp, /NoteApi\./);
+  assert.match(read('android/wear/src/main/java/com/notetrace/app/wear/WearStore.kt'), /ListComplicationService\.refresh\(ctx\)/);
+});
+
+test('anything added or finished on the watch survives no connection', () => {
+  const store = read('android/wear/src/main/java/com/notetrace/app/wear/WearStore.kt');
+  // Every action queues first and sends second, so none of them need a network.
+  for (const kind of ['"note"', '"add_item"', '"add_shopping"', '"reminder_done"']) {
+    assert.ok(store.includes(kind + ' ->'), `the outbox can't send ${kind}`);
+  }
+  const pairing = read('android/wear/src/main/java/com/notetrace/app/wear/Pairing.kt');
+  for (const fn of ['fun note(', 'fun newItem(', 'fun newShopping(', 'fun reminderDone(']) {
+    assert.ok(pairing.includes(fn), `${fn} is missing from the outbox`);
+  }
+  // Adds never collapse into each other; two spoken items are two items.
+  assert.match(pairing, /val adds = setOf\("note", "add_item", "add_shopping"\)/);
 });
 
 test('the tile is registered and draws from the saved snapshot', () => {
