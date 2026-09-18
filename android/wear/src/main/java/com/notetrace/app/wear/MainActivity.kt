@@ -84,10 +84,16 @@ private fun HomeScreen(store: WearStore, nav: NavHostController) {
 
     ScreenScaffold(scrollState = listState) {
         if (!state.paired) {
-            Message(
-                title = "Open NoteTrace on your phone",
-                body = "Sign in there and the watch pairs itself. Nothing to type here.",
-            )
+            // A round screen cuts corners off, and the clock owns the top strip.
+            Box(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 28.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Message(
+                    title = "Pair from your phone",
+                    body = "Open NoteTrace on your phone and sign in. The watch pairs itself.",
+                )
+            }
             return@ScreenScaffold
         }
         ScalingLazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
@@ -120,10 +126,12 @@ private fun HomeScreen(store: WearStore, nav: NavHostController) {
             }
             if (state.checklists.isEmpty() && state.shopping.isEmpty()) {
                 item {
-                    Message(
-                        title = if (state.loading) "Loading" else "Nothing to tick off",
-                        body = if (state.loading) "" else "Checklists you make on your phone show up here.",
-                    )
+                    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)) {
+                        Message(
+                            title = if (state.loading) "Loading" else "Nothing to tick off",
+                            body = if (state.loading) "" else "Checklists you make on your phone show up here.",
+                        )
+                    }
                 }
             }
         }

@@ -131,6 +131,9 @@ async function _fetchAuthFromServer() {
     currentUser.set(user);
     if (user) localStorage.setItem('wl:userId', String(user.id));
     else       localStorage.removeItem('wl:userId');
+    // A paired watch talks to the server itself, so hand it this account's
+    // address and token. Does nothing off Android or with no watch.
+    if (user && isNative) import('../lib/wear-pairing.js').then(({ pairWatch }) => pairWatch()).catch(() => {});
     if (meData.csrf) localStorage.setItem('note:csrf', meData.csrf);
     else             localStorage.removeItem('note:csrf');
     // Cache for offline fallback
@@ -297,6 +300,8 @@ export async function logout() {
     } catch {}
   }
   if (isNative) import('../lib/home-widget.js').then(({ clearHomeWidget }) => clearHomeWidget()).catch(() => {});
+  // The watch shouldn't keep a working token after a sign-out.
+  if (isNative) import('../lib/wear-pairing.js').then(({ unpairWatch }) => unpairWatch()).catch(() => {});
   // This account's offline copy of its notes stays behind on a shared computer otherwise.
   else { try { await (await import('../lib/offline-api.js')).clearOfflineData(); } catch { /* nothing stored */ } }
   localStorage.removeItem('wl:userId');
