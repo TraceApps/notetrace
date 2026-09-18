@@ -29,7 +29,18 @@ No accounts, no telemetry, no cloud sync unless you opt in.</p>
 
 ## What NoteTrace is
 
-NoteTrace is a self-hosted alternative to Google Keep. Open it and start typing: notes, checklists, and reminders in a clean card grid, with the polish and a few of the advanced features that simple note apps leave out.
+NoteTrace is a self-hosted home for everyday notes: open it and start typing, with notes, checklists, and reminders in a clean card grid, plus the polish and a few of the advanced features that simple note apps leave out.
+
+It's built to replace whatever you're using now, and to take your notes with you when you move:
+
+- **Google Keep**, if you want the same card grid, checklists, colors, labels, and reminders without Google. Import straight from Takeout, photos included.
+- **Evernote**, if you only ever used the everyday part of it. Import your `.enex` files with their images and tags.
+- **Apple Notes** and **OneNote**, through Markdown, so the notes land as notes rather than as a wall of text.
+- **Memos** and **Blinko**, if you want real checklists, reminders, and a grid instead of a timeline. Import straight from your server or a backup.
+- **Obsidian**, **Joplin**, and other Markdown vaults, for the short notes and lists that don't belong in a knowledge base. NoteTrace stores Markdown too, with the same `[[links]]`, so nothing gets locked in.
+- **Simplenote**, **Standard Notes**, and the note app that came with your phone, if you want one place that syncs everywhere and is yours.
+
+Whatever you come from, everything goes back out again: export the lot as Markdown with images, any time.
 
 It runs as a single Docker container on your own hardware, with a PWA for the browser and a native Android app for your phone. Fourth app in the Trace family alongside [NutriTrace](https://github.com/traceapps/nutritrace), [LiftTrace](https://github.com/traceapps/lifttrace), and [CookTrace](https://github.com/traceapps/cooktrace).
 
