@@ -46,7 +46,7 @@ object NoteApi {
      * request at all.
      */
     suspend fun notes(cfg: Pairing.Config): Pair<List<Note>, Map<Long, List<Item>>> {
-        val arr = asArray(get(cfg, "/api/notes?slim=1"), "notes")
+        val arr = asArray(get(cfg, "/api/notes?slim=1&watch=1"), "notes")
         val notes = mutableListOf<Note>()
         val items = mutableMapOf<Long, List<Item>>()
         for (i in 0 until arr.length()) {

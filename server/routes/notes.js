@@ -3,6 +3,7 @@
  * Thin layer over server/lib/notes.js, which owns the rules.
  */
 import { Router } from 'express';
+import db from '../db.js';
 import { wrap } from '../logger.js';
 import { requireAuth, userMgmtActive } from '../middleware/auth.js';
 import * as Notes from '../lib/notes.js';
@@ -19,6 +20,21 @@ const idParam = req => {
 const notFound = res => res.status(404).json({ error: 'Note not found' });
 
 // GET /api/notes?view=notes|archive|trash|reminders|shared&label=<id>&q=<text>
+/**
+ * The notes a user chose to keep on their watch, or null for all of them.
+ * Stored by the app as the `watchNotes` setting: a list of note ids.
+ */
+function watchChoice(req) {
+  const u = uid(req);
+  if (u == null) return null;
+  const row = db.prepare("SELECT value FROM user_settings WHERE user_id = ? AND key = 'watchNotes' AND deleted_at IS NULL").get(u);
+  if (!row?.value) return null;
+  try {
+    const ids = JSON.parse(row.value);
+    return Array.isArray(ids) && ids.length ? new Set(ids.map(Number)) : null;
+  } catch { return null; }
+}
+
 router.get('/', wrap((req, res) => {
   const view = ['notes', 'archive', 'trash', 'reminders', 'shared'].includes(req.query.view) ? req.query.view : 'notes';
   const label = parseInt(req.query.label, 10);
@@ -32,7 +48,11 @@ router.get('/', wrap((req, res) => {
   // labels and previews are most of the payload and none of them fit on a
   // 1.2 inch screen, and the connection they arrive over is slow.
   if (req.query.slim === '1') {
-    return res.json(notes.map(n => ({
+    // watch=1: only what the user chose to keep on the watch, when they chose.
+    // A watch with a hundred notes on it is a list nobody scrolls.
+    const chosen = req.query.watch === '1' ? watchChoice(req) : null;
+    const wanted = chosen ? notes.filter(n => chosen.has(n.id)) : notes;
+    return res.json(wanted.map(n => ({
       id: n.id,
       title: n.title,
       kind: n.kind,

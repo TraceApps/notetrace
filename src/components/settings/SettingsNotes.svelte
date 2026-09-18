@@ -3,7 +3,9 @@
   // Notes section: how notes behave (density, order, gestures, shortcuts,
   // link previews) and what Tasks gathers. Appearance keeps the app's look.
   import { _ } from 'svelte-i18n';
-  import { linkPreviews, noteSort, labelOrder, keyboardShortcuts, cardDensity, swipeToArchive, tasksAllChecklists } from '../../stores/settings.js';
+  import { linkPreviews, noteSort, labelOrder, keyboardShortcuts, cardDensity, swipeToArchive, tasksAllChecklists, watchNotes } from '../../stores/settings.js';
+  import { onMount } from 'svelte';
+  import { NoteApi } from '../../lib/api.js';
   import { linkPreviewsAvailable } from '../../lib/link-preview.js';
   import ShortcutsHelp from '../notes/ShortcutsHelp.svelte';
   import { noteTemplates } from '../../stores/settings.js';
@@ -25,6 +27,36 @@
     const before = cleanTemplates($noteTemplates);
     noteTemplates.set(before.filter(x => x.id !== t.id));
     showUndo($_('templates.deleted'), () => noteTemplates.set(before), $_('common.undo'));
+  }
+
+  // What goes on a Wear OS watch. Nothing picked means everything, so this
+  // stays out of the way until someone with a lot of notes wants it.
+  let watchList = [];
+  let watchLoading = false;
+  $: picked = Array.isArray($watchNotes) ? $watchNotes : [];
+  $: watchMode = picked.length ? 'pick' : 'all';
+
+  async function loadWatchList() {
+    if (watchList.length || watchLoading) return;
+    watchLoading = true;
+    try {
+      const notes = await NoteApi.getNotes({ view: 'notes' });
+      watchList = (Array.isArray(notes) ? notes : notes.notes || [])
+        .map(n => ({
+          id: n.id,
+          title: String(n.title || '').trim() || (n.kind === 'checklist' ? 'Untitled list' : 'Untitled note'),
+          kind: n.kind,
+        }));
+    } catch {
+      watchList = [];
+    } finally {
+      watchLoading = false;
+    }
+  }
+  onMount(loadWatchList);
+
+  function toggleWatchNote(id) {
+    watchNotes.set(picked.includes(id) ? picked.filter(x => x !== id) : [...picked, id]);
   }
 
   let shortcutsOpen = false;
@@ -113,6 +145,41 @@
     {/if}
   </div>
 
+  <p class="settings-group-heading">{$_('settings_page.notes.watch')}</p>
+  <p class="settings-group-sub">{$_('settings_page.notes.watch_desc')}</p>
+  <div class="card settings-card">
+    <div class="setting-row">
+      <div>
+        <span class="setting-label">{$_('settings_page.notes.watch')}</span>
+        <div class="setting-desc">
+          {picked.length ? $_('settings_page.notes.watch_count', { values: { n: picked.length } }) : $_('settings_page.notes.watch_none_picked')}
+        </div>
+      </div>
+      <div class="select-wrap" style="width:180px">
+        <select aria-label={$_('settings_page.notes.watch')} class="select sel-sm" value={watchMode}
+          on:change={e => { if (e.target.value === 'all') watchNotes.set([]); }}>
+          <option value="all">{$_('settings_page.notes.watch_all')}</option>
+          <option value="pick">{$_('settings_page.notes.watch_pick')}</option>
+        </select>
+      </div>
+    </div>
+    {#if watchMode === 'pick' || picked.length}
+      {#each watchList as note (note.id)}
+        <div class="setting-divider"></div>
+        <div class="setting-row">
+          <span class="setting-label watch-title">
+            <span class="material-symbols-rounded watch-icon" aria-hidden="true">{note.kind === 'checklist' ? 'checklist' : 'notes'}</span>
+            {note.title}
+          </span>
+          <Toggle label={note.title} checked={picked.includes(note.id)} on:change={() => toggleWatchNote(note.id)} />
+        </div>
+      {:else}
+        <div class="setting-divider"></div>
+        <p class="setting-desc templates-note">{watchLoading ? $_('settings_page.notes.watch_loading') : $_('settings_page.notes.watch_empty')}</p>
+      {/each}
+    {/if}
+  </div>
+
   <p class="settings-group-heading">{$_('templates.title')}</p>
   <div class="card settings-card">
     <p class="setting-desc templates-note">{$_('templates.desc')}</p>
@@ -144,6 +211,8 @@
   .section-body { display: flex; flex-direction: column; }
   .templates-note { margin: 4px 0; }
   .template-row { gap: 8px; }
+  .watch-title { display: flex; align-items: center; gap: 8px; }
+  .watch-icon { font-size: 18px; color: var(--text-3); }
   .template-icon { color: var(--text-3); font-size: 20px; flex-shrink: 0; }
   .template-text { flex: 1; min-width: 0; }
   .template-text .setting-label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

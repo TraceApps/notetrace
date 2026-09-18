@@ -144,3 +144,17 @@ test('a reminder notification carries icons for its actions', () => {
     assert.ok(fs.existsSync(path.join(root, 'android/app/src/main/res/drawable', icon)), `${icon} is missing`);
   }
 });
+
+test('the watch list can be narrowed, and defaults to everything', () => {
+  const route = read('server/routes/notes.js');
+  // watch=1 filters to the chosen ids; with nothing chosen it stays the full list.
+  assert.match(route, /req\.query\.watch === '1' \? watchChoice\(req\) : null/);
+  assert.match(route, /const wanted = chosen \? notes\.filter\(n => chosen\.has\(n\.id\)\) : notes/);
+  assert.match(route, /key = 'watchNotes'/);
+  // Empty means everything, so the picker is optional.
+  assert.match(route, /Array\.isArray\(ids\) && ids\.length \? new Set/);
+  assert.match(read('android/wear/src/main/java/com/notetrace/app/wear/NoteApi.kt'), /slim=1&watch=1/);
+  // The setting syncs, so a phone and a tablet agree about the watch.
+  assert.match(read('src/stores/settings.js'), /'watchNotes'/);
+  assert.match(read('src/components/settings/SettingsNotes.svelte'), /watchNotes\.set/);
+});
