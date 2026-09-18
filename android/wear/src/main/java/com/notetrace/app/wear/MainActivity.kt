@@ -22,7 +22,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -215,16 +217,18 @@ private fun ChecklistScreen(store: WearStore, noteId: Long) {
             if (items.isEmpty()) {
                 item { Message(title = if (state.loading) "Loading" else "Empty list", body = "") }
             }
-            items(items, key = { it.uuid }) { item ->
-                SplitCheckboxButton(
-                    checked = item.checked,
-                    onCheckedChange = { scope.launch { store.setItemChecked(noteId, item.uuid, it) } },
-                    toggleContentDescription = item.text,
-                    onContainerClick = { scope.launch { store.setItemChecked(noteId, item.uuid, !item.checked) } },
-                    containerClickLabel = item.text,
-                    label = { Text(item.text, maxLines = 3, overflow = TextOverflow.Ellipsis) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+            val open = items.filter { !it.checked }
+            val done = items.filter { it.checked }
+            items(open, key = { it.uuid }) { item ->
+                ItemRow(item.text, false) { scope.launch { store.setItemChecked(noteId, item.uuid, true) } }
+            }
+            if (done.isNotEmpty()) {
+                // Ticked things sink here rather than vanishing: the tick is the
+                // confirmation that the right one was tapped.
+                item { ListHeader { Text(done.size.toString() + " done") } }
+                items(done, key = { it.uuid }) { item ->
+                    ItemRow(item.text, true) { scope.launch { store.setItemChecked(noteId, item.uuid, false) } }
+                }
             }
         }
     }
@@ -326,23 +330,47 @@ private fun ShoppingScreen(store: WearStore) {
             byAisle.forEach { (aisle, items) ->
                 item { ListHeader { Text(aisle) } }
                 items(items, key = { it.id }) { item ->
-                    SplitCheckboxButton(
-                        checked = item.checked,
-                        onCheckedChange = { scope.launch { store.setShoppingChecked(item.id, it) } },
-                        toggleContentDescription = item.name,
-                        onContainerClick = { scope.launch { store.setShoppingChecked(item.id, !item.checked) } },
-                        containerClickLabel = item.name,
-                        label = { Text(item.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                        secondaryLabel = { if (item.amount.isNotBlank()) Text(item.amount) },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    ItemRow(item.name, false, item.amount) { scope.launch { store.setShoppingChecked(item.id, true) } }
                 }
             }
             if (open.isEmpty()) {
                 item { Message(title = "Nothing to buy", body = "Everything on the list is checked off.") }
             }
+            val bought = state.shopping.filter { it.checked }
+            if (bought.isNotEmpty()) {
+                item { ListHeader { Text(bought.size.toString() + " in the basket") } }
+                items(bought, key = { it.id }) { item ->
+                    ItemRow(item.name, true, item.amount) { scope.launch { store.setShoppingChecked(item.id, false) } }
+                }
+            }
         }
     }
+}
+
+/**
+ * One thing to tick off. Ticked ones stay, dimmed and struck through, so the
+ * tap is confirmed rather than answered by the row disappearing.
+ */
+@Composable
+private fun ItemRow(text: String, checked: Boolean, amount: String = "", onToggle: () -> Unit) {
+    SplitCheckboxButton(
+        checked = checked,
+        onCheckedChange = { onToggle() },
+        toggleContentDescription = text,
+        onContainerClick = onToggle,
+        containerClickLabel = text,
+        label = {
+            Text(
+                text,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                textDecoration = if (checked) TextDecoration.LineThrough else null,
+                color = if (checked) MaterialTheme.colorScheme.onSurfaceVariant else Color.Unspecified,
+            )
+        },
+        secondaryLabel = { if (amount.isNotBlank()) Text(amount) },
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 @Composable
