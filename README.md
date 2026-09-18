@@ -2,7 +2,7 @@
 
 <p align="center"><b>Trace Every Thought</b></p>
 
-<p align="center">A self-hosted notes app: quick to capture, easy to find.<br/>
+<p align="center">A self-hosted notes app: quick to capture, easy to find, and it works offline.<br/>
 No accounts, no telemetry, no cloud sync unless you opt in.</p>
 
 <p align="center">
@@ -41,6 +41,8 @@ It's built to replace whatever you're using now, and to take your notes with you
 - **Simplenote**, **Standard Notes**, and the note app that came with your phone, if you want one place that syncs everywhere and is yours.
 
 Whatever you come from, everything goes back out again: export the lot as Markdown with images, any time.
+
+**It works with no connection.** The Android app runs fully offline, either standalone or syncing to your server when it can reach it. The installed web app opens offline too, and you can keep writing: edits, new notes, ticks, labels, and reminders wait in an outbox and go up when you're back, merged the same way the phone's changes are.
 
 It runs as a single Docker container on your own hardware, with a PWA for the browser and a native Android app for your phone. Fourth app in the Trace family alongside [NutriTrace](https://github.com/traceapps/nutritrace), [LiftTrace](https://github.com/traceapps/lifttrace), and [CookTrace](https://github.com/traceapps/cooktrace).
 
