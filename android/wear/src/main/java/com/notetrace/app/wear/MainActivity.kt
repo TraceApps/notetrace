@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -68,6 +69,7 @@ fun WearApp(store: WearStore) {
         SwipeDismissableNavHost(navController = nav, startDestination = "home") {
             composable("home") { HomeScreen(store, nav) }
             composable("shopping") { ShoppingScreen(store) }
+            composable("reminders") { RemindersScreen(store, nav) }
             composable("list/{noteId}") { entry ->
                 val id = entry.arguments?.getString("noteId")?.toLongOrNull() ?: 0L
                 ChecklistScreen(store, id)
@@ -83,8 +85,8 @@ fun WearApp(store: WearStore) {
 @Composable
 private fun HomeScreen(store: WearStore, nav: NavHostController) {
     val state by store.state.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
     val listState = rememberScalingLazyListState()
+    val is24h = WhenText.is24Hour(LocalContext.current)
 
     ScreenScaffold(scrollState = listState) {
         if (!state.paired) {
@@ -104,6 +106,21 @@ private fun HomeScreen(store: WearStore, nav: NavHostController) {
             item { ListHeader { Text("NoteTrace") } }
             if (state.pending > 0 || state.offline) {
                 item { StatusLine(state) }
+            }
+            if (state.reminders.isNotEmpty()) {
+                val due = state.reminders.count { WhenText.isOverdue(it.reminderAt) }
+                item {
+                    TitleCard(
+                        onClick = { nav.navigate("reminders") },
+                        title = { Text("Reminders") },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            if (due > 0) "$due due now"
+                            else WhenText.due(state.reminders.first().reminderAt, is24h),
+                        )
+                    }
+                }
             }
             if (state.shopping.isNotEmpty()) {
                 item {
@@ -167,6 +184,44 @@ private fun ChecklistScreen(store: WearStore, noteId: Long) {
                     label = { Text(item.text, maxLines = 3, overflow = TextOverflow.Ellipsis) },
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+        }
+    }
+}
+
+/**
+ * What's coming up. The reminder itself arrives as a notification from the
+ * phone, with Done and Snooze on it; this is for looking ahead.
+ */
+@Composable
+private fun RemindersScreen(store: WearStore, nav: NavHostController) {
+    val state by store.state.collectAsStateWithLifecycle()
+    val listState = rememberScalingLazyListState()
+    val is24h = WhenText.is24Hour(LocalContext.current)
+    val sorted = state.reminders.sortedBy { it.reminderAt }
+
+    ScreenScaffold(scrollState = listState) {
+        ScalingLazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+            item { ListHeader { Text("Reminders") } }
+            items(sorted, key = { it.id }) { note ->
+                val overdue = WhenText.isOverdue(note.reminderAt)
+                TitleCard(
+                    onClick = { nav.navigate((if (note.isChecklist) "list/" else "note/") + note.id) },
+                    title = { Text(note.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        WhenText.due(note.reminderAt, is24h) + (if (note.repeats) ", repeats" else ""),
+                        color = if (overdue) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            if (sorted.isEmpty()) {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp)) {
+                        Message(title = "Nothing scheduled", body = "Reminders you set on your phone show up here.")
+                    }
+                }
             }
         }
     }

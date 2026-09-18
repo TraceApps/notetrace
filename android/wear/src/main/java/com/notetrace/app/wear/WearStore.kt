@@ -25,6 +25,7 @@ class WearStore(private val ctx: Context) {
         val error: String? = null,
         val pending: Int = 0,
         val checklists: List<NoteApi.Note> = emptyList(),
+        val reminders: List<NoteApi.Note> = emptyList(),
         val shopping: List<NoteApi.ShopItem> = emptyList(),
         val items: Map<Long, List<NoteApi.Item>> = emptyMap(),
     )
@@ -41,6 +42,7 @@ class WearStore(private val ctx: Context) {
         val snap = Pairing.cache(ctx) ?: return
         _state.value = _state.value.copy(
             checklists = readNotes(snap.optJSONArray("checklists")),
+            reminders = readNotes(snap.optJSONArray("reminders")),
             shopping = readShopping(snap.optJSONArray("shopping")),
             items = readItems(snap.optJSONObject("items")),
             pending = Pairing.outbox(ctx).size,
@@ -62,11 +64,13 @@ class WearStore(private val ctx: Context) {
             coroutineScope {
                 val listsJob = async { NoteApi.notes(cfg) }
                 val shopJob = async { NoteApi.shopping(cfg) }
+                val remindJob = async { NoteApi.reminders(cfg) }
                 val (lists, items) = listsJob.await()
                 val shop = shopJob.await()
+                val upcoming = remindJob.await()
                 _state.value = _state.value.copy(
                     loading = false, offline = false, error = null,
-                    checklists = lists, shopping = shop,
+                    checklists = lists, shopping = shop, reminders = upcoming,
                     // The slim list carries the items, so opening one is instant.
                     items = items,
                 )
@@ -156,6 +160,12 @@ class WearStore(private val ctx: Context) {
                         .put("excerpt", it.excerpt).put("open", it.open).put("done", it.done))
                 }
             })
+            .put("reminders", JSONArray().apply {
+                s.reminders.forEach {
+                    put(JSONObject().put("id", it.id).put("title", it.title).put("kind", it.kind)
+                        .put("excerpt", it.excerpt).put("reminder_at", it.reminderAt).put("repeats", it.repeats))
+                }
+            })
             .put("shopping", JSONArray().apply {
                 s.shopping.forEach {
                     put(JSONObject().put("id", it.id).put("name", it.name).put("amount", it.amount)
@@ -177,6 +187,7 @@ class WearStore(private val ctx: Context) {
         NoteApi.Note(
             o.optLong("id"), o.optString("title"), o.optString("kind").ifBlank { "text" },
             o.optString("excerpt"), o.optInt("open"), o.optInt("done"),
+            o.optString("reminder_at"), o.optBoolean("repeats"),
         )
     }
 

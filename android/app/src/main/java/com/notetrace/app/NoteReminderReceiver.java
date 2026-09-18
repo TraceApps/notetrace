@@ -113,8 +113,10 @@ public class NoteReminderReceiver extends BroadcastReceiver {
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
             .setContentIntent(openPi)
-            .addAction(0, NoteReminderScheduler.label(ctx, "done", "Done"), actionIntent(ctx, noteId, NoteReminderScheduler.ACTION_DONE))
-            .addAction(0, NoteReminderScheduler.label(ctx, "snooze", "Snooze 1 Hour"), actionIntent(ctx, noteId, NoteReminderScheduler.ACTION_SNOOZE));
+            // Icons matter on a watch, where a notification action without one
+            // shows as an empty circle.
+            .addAction(R.drawable.ic_action_done, NoteReminderScheduler.label(ctx, "done", "Done"), actionIntent(ctx, noteId, NoteReminderScheduler.ACTION_DONE))
+            .addAction(R.drawable.ic_action_snooze, NoteReminderScheduler.label(ctx, "snooze", "Snooze 1 Hour"), actionIntent(ctx, noteId, NoteReminderScheduler.ACTION_SNOOZE));
         try {
             NotificationManagerCompat.from(ctx).notify(nid, b.build());
         } catch (SecurityException e) {

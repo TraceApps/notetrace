@@ -29,6 +29,9 @@ object NoteApi {
         val excerpt: String,
         val open: Int,
         val done: Int,
+        /** ISO time of the note's reminder, or empty. Repeating ones carry a rule too. */
+        val reminderAt: String = "",
+        val repeats: Boolean = false,
     ) {
         val isChecklist: Boolean get() = kind == "checklist"
     }
@@ -66,6 +69,8 @@ object NoteApi {
                 excerpt = excerpt,
                 open = list.count { !it.checked },
                 done = list.count { it.checked },
+                reminderAt = n.optString("reminder_at").takeIf { it.isNotBlank() && it != "null" }.orEmpty(),
+                repeats = n.optString("reminder_rrule").let { it.isNotBlank() && it != "null" },
             )
         }
         return notes to items
@@ -74,6 +79,28 @@ object NoteApi {
     /** Tick an item off, or back on. */
     suspend fun setChecked(cfg: Pairing.Config, noteId: Long, uuid: String, checked: Boolean) {
         send(cfg, "PATCH", "/api/notes/$noteId/items/$uuid", JSONObject().put("checked", checked))
+    }
+
+    /** Notes with a reminder, soonest first. */
+    suspend fun reminders(cfg: Pairing.Config): List<Note> {
+        val arr = asArray(get(cfg, "/api/notes?view=reminders&slim=1"), "notes")
+        return (0 until arr.length()).mapNotNull { i ->
+            val n = arr.getJSONObject(i)
+            val at = n.optString("reminder_at").takeIf { it.isNotBlank() && it != "null" } ?: return@mapNotNull null
+            val excerpt = n.optString("excerpt")
+            Note(
+                id = n.getLong("id"),
+                title = n.optString("title").ifBlank {
+                    excerpt.lineSequence().firstOrNull()?.trim().orEmpty().ifBlank { "Untitled" }
+                },
+                kind = n.optString("kind").ifBlank { "text" },
+                excerpt = excerpt,
+                open = 0,
+                done = 0,
+                reminderAt = at,
+                repeats = n.optString("reminder_rrule").let { it.isNotBlank() && it != "null" },
+            )
+        }
     }
 
     /** The CookTrace shopping list, as the phone shows it. Empty when CookTrace isn't linked. */
