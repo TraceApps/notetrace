@@ -103,5 +103,6 @@ Items marked ~~strikethrough~~ have been implemented.
 - ~~Reminder actions (Done, Snooze) on the notification, and finishing one in the app~~
 - ~~Tile and watch-face complication~~
 - ~~Works with no connection: the last lists, with an outbox for anything done offline~~
-- Voice capture that spots a time and sets the reminder with it
-- A "checklists I pinned to the watch" picker, for a watch with many notes
+- ~~Voice capture that spots a time and sets the reminder with it~~
+- ~~A picker for which notes go on the watch, for a library too big to scroll on a wrist~~
+- Wear OS APK published with each release, alongside the phone one
