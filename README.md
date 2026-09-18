@@ -99,7 +99,7 @@ What comes next, including the Wear OS companion, is in [ROADMAP.md](ROADMAP.md)
 
 - **Web (PWA).** Any modern browser. Add to home screen for a full-screen app-like experience.
 - **Android.** Signed APK on the [Releases page](https://github.com/traceapps/notetrace/releases/latest). Local mode is fully offline; connected mode syncs to your server.
-- **Wear OS.** Planned companion app for checklists, voice notes, and reminders.
+- **Wear OS.** A watch app for Wear OS 3 and up: notes, checklists, the shopping list, and reminders, with a tile and a watch face complication. It talks to your server itself, so it works with the phone out of range, and it pairs itself when you sign in on the phone.
 - **iOS.** Not currently available.
 
 ---

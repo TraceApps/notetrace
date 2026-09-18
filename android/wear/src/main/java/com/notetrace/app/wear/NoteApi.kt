@@ -32,6 +32,7 @@ object NoteApi {
         /** ISO time of the note's reminder, or empty. Repeating ones carry a rule too. */
         val reminderAt: String = "",
         val repeats: Boolean = false,
+        val pinned: Boolean = false,
     ) {
         val isChecklist: Boolean get() = kind == "checklist"
     }
@@ -71,9 +72,12 @@ object NoteApi {
                 done = list.count { it.checked },
                 reminderAt = n.optString("reminder_at").takeIf { it.isNotBlank() && it != "null" }.orEmpty(),
                 repeats = n.optString("reminder_rrule").let { it.isNotBlank() && it != "null" },
+                pinned = n.optBoolean("pinned"),
             )
         }
-        return notes to items
+        // Pinned first, as on the phone: on a watch, the top of the list is
+        // nearly all the list.
+        return notes.sortedByDescending { it.pinned } to items
     }
 
     /** A new text note, from what the wearer said. */

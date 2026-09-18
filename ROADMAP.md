@@ -95,8 +95,13 @@ Items marked ~~strikethrough~~ have been implemented.
 
 ## Wear OS Companion
 
-- Home screen with pinned checklists and upcoming reminders
-- Check off checklist items from the watch
-- Voice capture with optional reminder detection
-- Reminder actions (Done, Snooze)
-- Tile and watch-face complication
+- ~~Home screen with pinned notes, checklists, and upcoming reminders~~
+- ~~Check off checklist items from the watch~~
+- ~~Read a note on the watch~~
+- ~~The CookTrace shopping list, grouped by aisle, checked off as you shop~~
+- ~~Voice capture: a note, an item on a checklist, or something to buy~~
+- ~~Reminder actions (Done, Snooze) on the notification, and finishing one in the app~~
+- ~~Tile and watch-face complication~~
+- ~~Works with no connection: the last lists, with an outbox for anything done offline~~
+- Voice capture that spots a time and sets the reminder with it
+- A "checklists I pinned to the watch" picker, for a watch with many notes

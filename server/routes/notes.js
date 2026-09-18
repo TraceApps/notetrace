@@ -37,6 +37,7 @@ router.get('/', wrap((req, res) => {
       title: n.title,
       kind: n.kind,
       updated_at: n.updated_at,
+      pinned: !!n.pinned,
       reminder_at: n.reminder_at || null,
       reminder_rrule: n.reminder_rrule || null,
       // Enough of a text note to read on a wrist, with the Markdown marks

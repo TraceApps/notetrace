@@ -202,7 +202,8 @@ class WearStore(private val ctx: Context) {
             .put("checklists", JSONArray().apply {
                 s.checklists.forEach {
                     put(JSONObject().put("id", it.id).put("title", it.title).put("kind", it.kind)
-                        .put("excerpt", it.excerpt).put("open", it.open).put("done", it.done))
+                        .put("excerpt", it.excerpt).put("open", it.open).put("done", it.done)
+                        .put("pinned", it.pinned))
                 }
             })
             .put("reminders", JSONArray().apply {
@@ -236,7 +237,7 @@ class WearStore(private val ctx: Context) {
         NoteApi.Note(
             o.optLong("id"), o.optString("title"), o.optString("kind").ifBlank { "text" },
             o.optString("excerpt"), o.optInt("open"), o.optInt("done"),
-            o.optString("reminder_at"), o.optBoolean("repeats"),
+            o.optString("reminder_at"), o.optBoolean("repeats"), o.optBoolean("pinned"),
         )
     }
 
