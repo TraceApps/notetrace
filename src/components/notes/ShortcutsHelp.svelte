@@ -99,7 +99,7 @@
     display: flex; align-items: center; justify-content: center; padding: 16px;
   }
   .sh-panel {
-    width: 760px; max-width: 100%; max-height: calc(100dvh - 32px); overflow: auto;
+    width: 760px; max-width: 100%; max-height: min(calc(100dvh - 32px), calc(100dvh - 2 * var(--safe-top) - 16px)); overflow: auto;
     background: var(--surface-1); border: 1px solid var(--border-strong);
     border-radius: var(--radius-xl); box-shadow: var(--shadow-lg);
     padding: 20px 24px 24px;
