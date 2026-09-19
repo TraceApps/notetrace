@@ -1012,7 +1012,7 @@
         </div>
         <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
         <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-        <div class="list-resizer" role="separator" aria-orientation="vertical" aria-valuemin={LIST_W.min} aria-valuemax={LIST_W.max} aria-valuenow={listW}
+        <div class="list-resizer" role="separator" data-no-pull-sync aria-orientation="vertical" aria-valuemin={LIST_W.min} aria-valuemax={LIST_W.max} aria-valuenow={listW}
           aria-label={$_('list.resize')} title={$_('list.resize')} tabindex="0"
           on:pointerdown={startResize} on:pointermove={onResizeMove} on:pointerup={endResize} on:pointercancel={endResize}
           on:dblclick={() => listColumnWidth.set(LIST_W.default)} on:keydown={resizeKey}></div>

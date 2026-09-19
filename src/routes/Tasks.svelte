@@ -447,7 +447,7 @@
                 <span class="swipe-bg swipe-delete" aria-hidden="true"><span class="material-symbols-rounded">delete</span></span>
                 <div class="swipe-body">
                   {#if byList && task.editable}
-                    <span class="handle" use:dragHandle aria-label={$_('notes.drag_to_reorder')}>
+                    <span class="handle" use:dragHandle data-no-pull-sync aria-label={$_('notes.drag_to_reorder')}>
                       <span class="material-symbols-rounded">drag_indicator</span>
                     </span>
                   {/if}

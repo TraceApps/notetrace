@@ -137,7 +137,7 @@
       <div class="lm-row" class:lm-shadow={l[SHADOW_ITEM_MARKER_PROPERTY_NAME]} class:lm-settled={settledId === l.id}
         animate:flip={{ duration: flipMs, easing: cubicOut }}>
         {#if custom}
-          <span class="lm-handle" use:dragHandle aria-label={$_('labels.drag_to_reorder', { values: { name: l.name } })}>
+          <span class="lm-handle" use:dragHandle data-no-pull-sync aria-label={$_('labels.drag_to_reorder', { values: { name: l.name } })}>
             <span class="material-symbols-rounded">drag_indicator</span>
           </span>
         {/if}

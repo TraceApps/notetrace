@@ -186,7 +186,7 @@
     {#each open as item (item.id)}
       <li class="item">
         {#if editable}
-          <span class="handle" use:dragHandle aria-label={$_('notes.drag_to_reorder')}>
+          <span class="handle" use:dragHandle data-no-pull-sync aria-label={$_('notes.drag_to_reorder')}>
             <span class="material-symbols-rounded">drag_indicator</span>
           </span>
         {/if}
