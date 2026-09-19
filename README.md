@@ -12,8 +12,11 @@ No accounts, no telemetry, no cloud sync unless you opt in.</p>
 <p align="center">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-AGPL--3.0-blue"></a>
   <a href="https://github.com/traceapps/notetrace/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/traceapps/notetrace?label=release&color=blue"></a>
+  <a href="https://github.com/traceapps/notetrace/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/traceapps/notetrace/total?label=downloads&color=blue"></a>
+  <a href="https://traceapps.github.io/docs/notetrace/"><img alt="Documentation" src="https://img.shields.io/badge/docs-traceapps.github.io-4A90E2?logo=readthedocs&logoColor=white"></a>
   <a href="https://github.com/traceapps/notetrace/pkgs/container/notetrace"><img alt="GHCR" src="https://img.shields.io/badge/ghcr.io-traceapps%2Fnotetrace-2496ED?logo=docker&logoColor=white"></a>
   <a href="https://hub.docker.com/r/traceapps/notetrace"><img alt="Docker Hub pulls" src="https://img.shields.io/docker/pulls/traceapps/notetrace?logo=docker&logoColor=white&label=docker%20pulls"></a>
+  <a href="https://github.com/traceapps/notetrace/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/traceapps/notetrace?style=flat"></a>
 </p>
 
 <p align="center">
@@ -23,7 +26,7 @@ No accounts, no telemetry, no cloud sync unless you opt in.</p>
 
 ---
 
-**Jump to:** [What it is](#what-notetrace-is) · [Status](#status) · [Install](#install) · [Env vars](#env-vars)
+**Jump to:** [What it is](#what-notetrace-is) · [Status](#status) · [Install](#install) · [Env vars](#env-vars) · [Docs](https://traceapps.github.io/docs/notetrace/)
 
 ---
 
@@ -52,6 +55,10 @@ It runs as a single Docker container on your own hardware, with a PWA for the br
 - **No trackers, no analytics, no telemetry.** NoteTrace doesn't phone home; your usage is invisible to anyone but you.
 - **Your data stays on your hardware.** No central server, no cloud sync that can read it; nothing leaves your network unless you opt into a third-party integration (an AI provider, a push service).
 - **Open source under AGPL-3.0.** Every line that touches your data is readable.
+
+---
+
+![NoteTrace notes grid: pinned notes and checklists with reminders and labels, the sidebar with labels, and the Capture a thought bar](docs/screenshots/01-notes.png)
 
 ---
 
