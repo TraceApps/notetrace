@@ -28,7 +28,7 @@ First stable release. NoteTrace is a self-hosted home for everyday notes: notes,
 
 - `npm audit --omit=dev` reports 0 vulnerabilities for the app and the server. Tokens for linked apps are stored encrypted and never reach the browser, outbound links and webhooks go through an SSRF guard, and uploads are stored under their real type and served with a sandboxing policy.
 
-NoteTrace is free and always will be. The [iOS fund](https://traceapps.github.io/docs/support/) is raising $1,300 toward a Mac and an iPhone, so the Trace apps can run properly on iPhone.
+NoteTrace is free and always will be. The [iOS fund](https://ko-fi.com/traceapps) is raising $1,300 toward a Mac and an iPhone, so the Trace apps can run properly on iPhone.
 
 ---
 
@@ -63,4 +63,4 @@ Second dev pre-release of the 1.0.0 major. Adds the Wear OS app: your notes, che
 
 **Watch testers:** the watch app has had one wrist on it so far. If something feels slow or awkward, or a phrase you say doesn't set the time you meant, open an issue with the watch model and, for a spoken time, what you said.
 
-NoteTrace is free and always will be. The [iOS fund](https://traceapps.github.io/docs/support/) is raising $1,300 toward a Mac and an iPhone, so the Trace apps can run properly on iPhone.
+NoteTrace is free and always will be. The [iOS fund](https://ko-fi.com/traceapps) is raising $1,300 toward a Mac and an iPhone, so the Trace apps can run properly on iPhone.
