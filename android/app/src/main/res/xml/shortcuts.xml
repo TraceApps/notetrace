@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the app icon: start a voice note, a note, or a list. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="voice"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_mic"
+        android:shortcutShortLabel="@string/shortcut_voice">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.notetrace.app"
+            android:targetClass="com.notetrace.app.MainActivity"
+            android:data="notetrace://new/voice" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="note"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_note"
+        android:shortcutShortLabel="@string/shortcut_note">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.notetrace.app"
+            android:targetClass="com.notetrace.app.MainActivity"
+            android:data="notetrace://new/text" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="list"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_list"
+        android:shortcutShortLabel="@string/shortcut_list">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.notetrace.app"
+            android:targetClass="com.notetrace.app.MainActivity"
+            android:data="notetrace://new/checklist" />
+    </shortcut>
+</shortcuts>

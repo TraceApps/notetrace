@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
+        android:theme="@style/AppTheme">
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
+
+            <!-- Share sheet: text, links, and files of any kind shared from other apps open
+                 as a new note. Pictures go in the note's images, audio becomes a voice note,
+                 and anything else (a PDF, a document) is attached as a file. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+
+            <!-- Deep links: notetrace://oidc-callback for OIDC SSO,
+                 notetrace://callback for any future OAuth integrations. -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="notetrace" android:host="callback" />
+                <data android:scheme="notetrace" android:host="oidc-callback" />
+                <!-- notetrace://new/voice, /text, /checklist: home screen shortcuts -->
+                <data android:scheme="notetrace" android:host="new" />
+            </intent-filter>
+
+        </activity>
+
+        <!-- Home screen widgets: Quick Note (start a note, list, voice note, or drawing)
+             and Notes (pinned and latest notes, from a snapshot the app sends). -->
+        <receiver android:name=".QuickNoteWidgetProvider" android:exported="true" android:label="@string/widget_quick_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_quick_info" />
+        </receiver>
+        <receiver android:name=".NotesWidgetProvider" android:exported="true" android:label="@string/widget_notes_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_notes_info" />
+        </receiver>
+        <service android:name=".NotesWidgetService" android:exported="false" android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <!-- Quick Settings tile: New Note. -->
+        <service
+            android:name=".NewNoteTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_widget_note"
+            android:label="@string/tile_new_note"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data android:name="android.service.quicksettings.ACTIVE_TILE" android:value="false" />
+        </service>
+
+        <!-- Voice notes record here, so recording keeps going with the screen off. -->
+        <service android:name=".VoiceRecorderService" android:exported="false" android:foregroundServiceType="microphone" />
+
+        <!-- Note reminders: exact alarms fire here; Done and Snooze buttons too. -->
+        <receiver android:name=".NoteReminderReceiver" android:exported="false" />
+
+        <!-- Re-arm reminder alarms after a reboot, an app update, or a clock or time zone change. -->
+        <receiver android:name=".BootReceiver" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+
+    </application>
+
+    <!-- Permissions -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Microphone — Trace FAB hold-to-record voice input. The WebView's
+         Web Speech API requires this manifest entry before it can request
+         runtime grant, even though audio is sent to Google's speech
+         service rather than recorded locally. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Voice notes keep recording with the screen off: a microphone foreground service and a wake lock. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Capacitor's BridgeWebChromeClient.onPermissionRequest() (in
+         node_modules/@capacitor/android/...) demands BOTH of these
+         permissions before it'll grant an AUDIO_CAPTURE WebView request.
+         MODIFY_AUDIO_SETTINGS is normal-level (no runtime prompt) but
+         must be declared, otherwise the permission launcher returns
+         "denied" and the speech recognition call fails as
+         "not-allowed" / "service-not-allowed". -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+
+    <!-- Package visibility for the system Speech Recognizer. Android 11+
+         requires this <queries> block so the WebView's
+         webkitSpeechRecognition can resolve the RecognitionService
+         provider (Google Speech Services). Without it the API returns
+         "not-allowed" / "service-not-allowed" even when RECORD_AUDIO is
+         granted at runtime. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
+
+</manifest>

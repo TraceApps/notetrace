@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">NoteTrace</string>
+    <string name="title_activity_main">NoteTrace</string>
+    <string name="package_name">com.notetrace.app</string>
+    <string name="custom_url_scheme">com.notetrace.app</string>
+    <string name="shortcut_voice">Voice Note</string>
+    <string name="shortcut_note">New Note</string>
+    <string name="shortcut_list">New List</string>
+    <string name="shortcut_drawing">New Drawing</string>
+    <string name="widget_take_note">Capture a thought…</string>
+    <string name="widget_quick_label">Quick Note</string>
+    <string name="widget_quick_desc">Start a note, list, voice note, or drawing</string>
+    <string name="widget_notes_label">Notes</string>
+    <string name="widget_notes_desc">Your pinned and latest notes</string>
+    <string name="widget_empty">No notes yet</string>
+    <string name="widget_waiting">Open NoteTrace once to show your notes here</string>
+    <string name="widget_locked">App Lock is on. Open NoteTrace to see your notes.</string>
+    <string name="widget_untitled">Untitled note</string>
+    <string name="tile_new_note">New Note</string>
+</resources>

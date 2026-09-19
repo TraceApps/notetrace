@@ -1,0 +1,109 @@
+services:
+  notetrace:
+    image: ghcr.io/traceapps/notetrace:latest
+    container_name: notetrace
+    ports:
+      - "3004:3004"
+    volumes:
+      - ${DATA_DB_PATH}:/data/db
+      - ${DATA_UPLOADS_PATH}:/data/uploads
+    # Forward every variable from .env into the container. Without this, only
+    # variables explicitly named in the `environment:` block below reach the
+    # app, so .env settings like INSECURE_COOKIES would be silently ignored
+    # (NutriTrace #41 lesson). The explicit `environment:` block stays as
+    # live documentation of the common options; .env values override
+    # defaults declared there.
+    env_file:
+      - .env
+    environment:
+      # Do not change — container-internal paths tied to volume mounts above
+      - DB_PATH=/data/db/notetrace.db
+      - UPLOADS_PATH=/data/uploads
+      # Required if using user management — set a long random secret
+      - JWT_SECRET=${JWT_SECRET}
+      # Or mount a Swarm/Docker secret and set JWT_SECRET_FILE=/run/secrets/<name>
+      # Optional — at-rest encryption key for OIDC client secrets and
+      # webhook secrets. Defaults to a key derived from
+      # JWT_SECRET, which means rotating JWT_SECRET also invalidates every
+      # encrypted secret. Set this explicitly if you want to rotate session
+      # tokens independently.
+      # - TOKEN_ENC_KEY=${TOKEN_ENC_KEY:-}
+      # Optional — lockout recovery token (required for login page recovery)
+      - RECOVERY_TOKEN=${RECOVERY_TOKEN:-}
+      # Optional — set to 1 ONLY when running on plain HTTP (no TLS in front).
+      # Without TLS, auth cookies default to Secure and the browser silently
+      # drops them after login, so every request 401s and the login screen
+      # keeps re-appearing. Common gotcha for first-time self-hosters on a
+      # LAN. Cookies travel in cleartext when this is on, so use only on a
+      # trusted network; for anything internet-facing put TLS in front (Caddy,
+      # nginx with Let's Encrypt, Cloudflare Tunnel, Tailscale Funnel, etc.).
+      # - INSECURE_COOKIES=${INSECURE_COOKIES:-}
+      # Optional — mount at a subpath instead of root (for reverse-proxy setups)
+      # - BASE_URL=/notetrace
+      # Optional — log level: error | warn | info (default) | debug
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # Optional — SMTP email (for password reset & invites). Can also be set in Settings UI.
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_SECURE=${SMTP_SECURE:-false}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      # Optional — AI Assistant (shared key for all users). When set, AI calls
+      # are proxied through the server (key never reaches the browser) and the
+      # provider/model/key fields are locked in Settings for all users.
+      # Supports every provider the app supports — cloud (claude / openai /
+      # gemini) and OpenAI-compatible local endpoints (Ollama, LM Studio,
+      # LocalAI, vLLM, etc.). Set AI_PROVIDER=oai-compat + AI_BASE_URL +
+      # AI_MODEL to point at a private-network LLM the browser can't reach
+      # directly (e.g. an Ollama sidecar on this compose network).
+      # - AI_PROVIDER=${AI_PROVIDER:-}            # claude | openai | gemini | oai-compat
+      # - AI_API_KEY=${AI_API_KEY:-}              # required for cloud; optional for oai-compat
+      # - AI_MODEL=${AI_MODEL:-}                  # optional for cloud; REQUIRED for oai-compat
+      # - AI_BASE_URL=${AI_BASE_URL:-}            # REQUIRED for oai-compat, e.g. http://ollama:11434
+      # - AI_ENABLED=${AI_ENABLED:-}
+      # Optional — Scheduled auto-backup policy. Setting any of these locks
+      # the corresponding UI fields in Settings → Backup for admins so the
+      # policy stays in compose / k8s instead of drifting at runtime.
+      # - BACKUP_SCHEDULE=${BACKUP_SCHEDULE:-}    # off | daily | weekly | monthly
+      # - BACKUP_TIME=${BACKUP_TIME:-}            # HH:MM in container timezone
+      # - BACKUP_RETENTION=${BACKUP_RETENTION:-}  # backups to keep (older purged)
+      # Optional — Cap session length in hours (default 8760 = 1 year)
+      # - MAX_SESSION_HOURS=${MAX_SESSION_HOURS:-}
+      # Optional — Model Context Protocol server at /api/mcp, for external AI
+      # agents (Claude Desktop, Cursor, Codex). Off by default. Mint a token
+      # under Settings → API Tokens (multi-user mode, admin) after enabling.
+      # See https://traceapps.github.io/docs/notetrace/mcp/
+      # - MCP_ENABLED=${MCP_ENABLED:-}
+      # - MCP_WRITE_ENABLED=${MCP_WRITE_ENABLED:-}
+      # - MCP_DESTROY_ENABLED=${MCP_DESTROY_ENABLED:-}
+      # - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}    # only needed for browser-based MCP clients
+      # Optional: Send to CookTrace when CookTrace is on your LAN or the same Docker network
+      # - ALLOW_PRIVATE_COOKTRACE_URLS=${ALLOW_PRIVATE_COOKTRACE_URLS:-}
+      # Optional: link previews for links to LAN or Docker network addresses
+      # - ALLOW_PRIVATE_LINK_PREVIEWS=${ALLOW_PRIVATE_LINK_PREVIEWS:-}
+      # Optional — OIDC Single Sign-On declared in env instead of the Settings UI.
+      # Single-provider shorthand (`OIDC_*` is an alias for `OIDC_PROVIDER_1_*`):
+      # - OIDC_ISSUER=${OIDC_ISSUER:-}
+      # - OIDC_CLIENT_ID=${OIDC_CLIENT_ID:-}
+      # - OIDC_CLIENT_SECRET=${OIDC_CLIENT_SECRET:-}
+      # - OIDC_DISPLAY_NAME=${OIDC_DISPLAY_NAME:-}
+      # - OIDC_REDIRECT_URIS=${OIDC_REDIRECT_URIS:-}        # comma-separated for multi
+      # - OIDC_SCOPE=${OIDC_SCOPE:-}
+      # - OIDC_ADMIN_GROUP_CLAIM=${OIDC_ADMIN_GROUP_CLAIM:-}
+      # - OIDC_ADMIN_GROUP_VALUE=${OIDC_ADMIN_GROUP_VALUE:-}
+      # - OIDC_AUTO_LINK=${OIDC_AUTO_LINK:-1}
+      # - OIDC_AUTO_REGISTER=${OIDC_AUTO_REGISTER:-0}
+      # Multi-provider — repeat with the numbered prefix:
+      # - OIDC_PROVIDER_2_ISSUER=${OIDC_PROVIDER_2_ISSUER:-}
+      # - OIDC_PROVIDER_2_CLIENT_ID=${OIDC_PROVIDER_2_CLIENT_ID:-}
+      # - OIDC_PROVIDER_2_CLIENT_SECRET=${OIDC_PROVIDER_2_CLIENT_SECRET:-}
+      # - OIDC_PROVIDER_2_DISPLAY_NAME=${OIDC_PROVIDER_2_DISPLAY_NAME:-}
+      # Env-defined providers show with a lock badge in Settings → Authentication
+      # and are read-only there — edit via .env / docker-compose / k8s secrets.
+      # Any server env var may also be supplied via <NAME>_FILE, for example:
+      # - SMTP_PASS_FILE=/run/secrets/notetrace_smtp_pass
+      # - AI_API_KEY_FILE=/run/secrets/notetrace_ai_api_key
+      # - TOKEN_ENC_KEY_FILE=/run/secrets/notetrace_token_enc_key
+      # - RECOVERY_TOKEN_FILE=/run/secrets/notetrace_recovery_token
+    restart: unless-stopped

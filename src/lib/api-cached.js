@@ -1,0 +1,71 @@
+/**
+ * api-cached.js — NoteTrace API impl for native + server-connected mode.
+ *
+ * Architecture: every read hits the LOCAL SQLite database (same impl as
+ * NoteApiNative). Every write goes to local SQLite first (marking rows
+ * sync_status='pending') and schedules a background push to the
+ * server via sync.js. The result is offline-first behavior — the UI
+ * never blocks on the network, and the server eventually converges.
+ *
+ * Bootstraps in main.js after dbInit() when isNative + getServerUrl() is
+ * set. Migrates over from local-only by simply choosing this impl in
+ * the api.js Proxy dispatch.
+ */
+
+import { NoteApiNative } from './api-native.js';
+import { fullSync, startSyncLoop } from './sync.js';
+
+// Cheap debounce so we don't fire 50 push attempts during a bulk
+// import. Last write wins; 600ms after the last write triggers a sync.
+let _pushTimer = null;
+function _schedulePush() {
+  if (_pushTimer) clearTimeout(_pushTimer);
+  _pushTimer = setTimeout(() => {
+    _pushTimer = null;
+    fullSync(true);
+  }, 600);
+}
+
+// Wrap every NoteApiNative method. Writes (anything that isn't a `get*`
+// or returns a fixed-shape no-op) trigger _schedulePush() after the
+// local write returns. Reads pass through untouched.
+const WRITE_METHODS = new Set([
+  'createNote', 'updateNote', 'convertNote', 'trashNote', 'restoreNote',
+  'deleteNoteForever', 'emptyTrash',
+  'addItem', 'updateItem', 'deleteItem', 'reorderItems',
+  'restoreVersion', 'importNotes', 'addAttachments', 'deleteAttachment', 'updateAttachment',
+  'createLabel', 'updateLabel', 'deleteLabel', 'reorderLabels',
+  'appendAiChat', 'clearAiChat',
+  'uploadImage', 'uploadFile',
+]);
+
+const wrapped = {};
+for (const [key, value] of Object.entries(NoteApiNative)) {
+  if (typeof value !== 'function') { wrapped[key] = value; continue; }
+  if (WRITE_METHODS.has(key)) {
+    wrapped[key] = async function (...args) {
+      const r = await NoteApiNative[key](...args);
+      _schedulePush();
+      return r;
+    };
+  } else {
+    wrapped[key] = NoteApiNative[key].bind(NoteApiNative);
+  }
+}
+
+// Kick off the periodic background sync the first time anything calls
+// into the cached impl. Safe to call repeatedly (startSyncLoop is
+// idempotent).
+let _bootstrapped = false;
+function _bootstrap() {
+  if (_bootstrapped) return;
+  _bootstrapped = true;
+  startSyncLoop();
+}
+
+export const NoteApiCached = new Proxy(wrapped, {
+  get(target, prop) {
+    _bootstrap();
+    return target[prop];
+  },
+});
