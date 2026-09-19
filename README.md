@@ -57,7 +57,7 @@ It runs as a single Docker container on your own hardware, with a PWA for the br
 
 ## Status
 
-NoteTrace is feature complete and in testing toward v1.0.0. Working today:
+Stable since v1.0.0. What it does today:
 
 - **Notes and checklists.** Card grid with a pinned section and quick capture, checklists with drag to reorder, images on any note, labels with colors and icons, sixteen note colors, archive, trash with a 30-day purge, full-text search (Ctrl+K), and version history.
 - **A real editor.** Markdown underneath, with bold, italic, underline, highlight, links, headings, quotes, code, lists that indent, and checkboxes inside a text note. Select text and a small bar offers the common ones; slash commands and keyboard shortcuts cover the rest. Undo for deleted items and attachments.

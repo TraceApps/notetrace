@@ -15,8 +15,8 @@ android {
         // Wear OS 3 and up. Older watches run a different app model entirely.
         minSdkVersion 30
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0.0-dev02"
+        versionCode 2
+        versionName "1.0.0"
     }
 
     buildFeatures {
