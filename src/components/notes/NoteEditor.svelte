@@ -61,6 +61,7 @@
   import { isAudioFile, prepareAudioFile } from '../../lib/voice-files.js';
   import { pendingVoice, queueVoiceNote, flushPendingVoice, discardPendingVoice, hasPendingFor } from '../../lib/pending-voice.js';
   import { sharingAvailable } from '../../lib/note-sharing.js';
+  import { onBack } from '../../lib/back-stack.js';
 
   /** Existing note, or null to create one. */
   export let note = null;
@@ -1018,7 +1019,13 @@
     window.visualViewport?.removeEventListener('resize', onViewport);
     window.visualViewport?.removeEventListener('scroll', onViewport);
     clearTimeout(textTimer);
+    releaseBack();
   });
+  // Android back closes the note the same way its close button does (saving
+  // first). Registered as the editor starts, before anything inside it opens,
+  // so a drawing or menu opened from the note closes before the note does.
+  // The List layout's side pane isn't a layer, so back leaves it alone.
+  const releaseBack = inline ? () => {} : onBack(() => close());
 
   function openColor(e) { colorAnchor = e.currentTarget.getBoundingClientRect(); colorOpen = true; }
   function openLabels(e) { labelsAnchor = e.currentTarget.getBoundingClientRect(); labelsOpen = true; }

@@ -450,8 +450,10 @@
       import('@capacitor/app').then(({ App }) => {
         let lastBack = 0;
         App.addListener('backButton', ({ canGoBack }) => {
-          // A full-screen layer (a drawing, a file) closes before the page goes back.
+          // An open layer (a note, a drawing, a file, a sheet or dialog) closes
+          // first, then the slide-out sidebar, and only then does the page go back.
           if (handleBack()) return;
+          if (sidebarOpen && !sidebarPinned) { sidebarOpen = false; return; }
           if (canGoBack) {
             window.history.back();
           } else {

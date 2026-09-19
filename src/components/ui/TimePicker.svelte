@@ -1,4 +1,5 @@
 <script>
+  import { closeOnBack } from '../../lib/back-stack.js';
   import { dialogFocus } from '../../lib/dialog-focus.js';
   import { _ } from 'svelte-i18n';
   import { createEventDispatcher } from 'svelte';
@@ -75,7 +76,7 @@
 </button>
 
 {#if open}
-  <div use:portal class="tp-backdrop" role="presentation"
+  <div use:portal class="tp-backdrop" role="presentation" use:closeOnBack={() => open = false}
     on:click|self={() => open = false}>
     <!-- svelte-ignore a11y_click_events_have_key_events (keys: dialogFocus) -->
     <div class="tp-sheet" role="dialog" aria-modal="true" aria-label={label || undefined} tabindex="-1"

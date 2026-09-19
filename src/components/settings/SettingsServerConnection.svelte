@@ -13,6 +13,7 @@
       Sync Now, Push All, and Disconnect.
 -->
 <script>
+  import { closeOnBack } from '../../lib/back-stack.js';
   import { fade } from 'svelte/transition';
   import { onMount, onDestroy } from 'svelte';
   import {
@@ -332,7 +333,7 @@
 
 <!-- ── Merge dialog ───────────────────────────────────────────────── -->
 {#if mergeStep === 'ask-settings'}
-  <div class="merge-overlay" use:portal transition:fade={{ duration: 150 }}>
+  <div class="merge-overlay" use:portal use:closeOnBack={() => {}} transition:fade={{ duration: 150 }}>
     <div class="merge-dialog">
       <h3 class="merge-title">{$_('settings_server_conn.sync_options')}</h3>
       <p class="merge-sub">
@@ -374,7 +375,7 @@
     </div>
   </div>
 {:else if mergeStep === 'syncing'}
-  <div class="merge-overlay" use:portal transition:fade={{ duration: 150 }}>
+  <div class="merge-overlay" use:portal use:closeOnBack={() => {}} transition:fade={{ duration: 150 }}>
     <div class="merge-dialog merge-syncing">
       <span class="material-symbols-rounded sync-spin">sync</span>
       <p class="syncing-title">Syncing…</p>
@@ -387,7 +388,7 @@
     </div>
   </div>
 {:else if mergeStep === 'summary' && migrationSummary}
-  <div class="merge-overlay" use:portal transition:fade={{ duration: 150 }}>
+  <div class="merge-overlay" use:portal use:closeOnBack={() => {}} transition:fade={{ duration: 150 }}>
     <div class="merge-dialog">
       <h3 class="merge-title">
         {migrationSummary.errors.length === 0 ? 'Upload complete' : 'Upload finished with issues'}

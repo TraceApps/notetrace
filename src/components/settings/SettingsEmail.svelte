@@ -1,4 +1,5 @@
 <script>
+  import { closeOnBack } from '../../lib/back-stack.js';
   import { dialogFocus } from '../../lib/dialog-focus.js';
   /**
    * SettingsEmail — SMTP form. Layout / verbiage / classes match
@@ -281,7 +282,7 @@
 </div>
 
 {#if showTestDialog}
-  <div class="test-dialog-overlay" role="presentation" on:click={closeTestDialog}
+  <div class="test-dialog-overlay" role="presentation" on:click={closeTestDialog} use:closeOnBack={closeTestDialog}
     on:keydown={(e) => e.key === 'Escape' && closeTestDialog()}>
     <!-- svelte-ignore a11y_click_events_have_key_events (keys: dialogFocus) -->
     <div class="test-dialog" role="dialog" aria-modal="true" aria-labelledby="test-dialog-title" tabindex="-1"
