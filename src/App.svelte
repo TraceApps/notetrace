@@ -1,6 +1,7 @@
 <script>
   import { viewport, sizeClass, contentWidth } from './stores/window-size.js';
   import { initFold } from './lib/fold.js';
+  import { isPullSyncExempt } from './lib/pull-sync.js';
   import { onMount }   from 'svelte';
   import { fade, fly, slide } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
@@ -114,8 +115,9 @@
   let _pullStartT = 0;
   function _startPullSync(event) {
     if (!_pullEnabled || _pullRefreshing || sidebarOpen || showNativeSetup) return;
-    if (event.target?.closest?.('.editor-backdrop, .bulk-bar, .pop-backdrop, .fab, .fab-menu, .fab-scrim')) return;
-    if (event.target?.closest?.('[role="dialog"], .sheet-backdrop, .sidebar-panel, .sidebar-backdrop, .bottom-nav')) return;
+    // Dialogs, sheets, the editor, floating buttons and anything draggable
+    // keep their own touch handling. See src/lib/pull-sync.js.
+    if (isPullSyncExempt(event.target)) return;
     // Walk up from the touch target to the nearest scrolling ancestor.
     // Handles both editor pages (their own `.page-shell.editor-page`
     // becomes the scroller because it's position: fixed + overflow-y: auto)
@@ -448,8 +450,10 @@
       import('@capacitor/app').then(({ App }) => {
         let lastBack = 0;
         App.addListener('backButton', ({ canGoBack }) => {
-          // A full-screen layer (a drawing, a file) closes before the page goes back.
+          // An open layer (a note, a drawing, a file, a sheet or dialog) closes
+          // first, then the slide-out sidebar, and only then does the page go back.
           if (handleBack()) return;
+          if (sidebarOpen && !sidebarPinned) { sidebarOpen = false; return; }
           if (canGoBack) {
             window.history.back();
           } else {

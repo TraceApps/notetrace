@@ -1,4 +1,5 @@
 <script>
+  import { closeOnBack } from '../lib/back-stack.js';
   /**
    * Notes: the notes grid and its sibling views.
    *   /            notes (pinned + others, with capture)
@@ -1012,7 +1013,7 @@
         </div>
         <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
         <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-        <div class="list-resizer" role="separator" aria-orientation="vertical" aria-valuemin={LIST_W.min} aria-valuemax={LIST_W.max} aria-valuenow={listW}
+        <div class="list-resizer" role="separator" data-no-pull-sync aria-orientation="vertical" aria-valuemin={LIST_W.min} aria-valuemax={LIST_W.max} aria-valuenow={listW}
           aria-label={$_('list.resize')} title={$_('list.resize')} tabindex="0"
           on:pointerdown={startResize} on:pointermove={onResizeMove} on:pointerup={endResize} on:pointercancel={endResize}
           on:dblclick={() => listColumnWidth.set(LIST_W.default)} on:keydown={resizeKey}></div>
@@ -1122,7 +1123,7 @@
 {#if fabMenu}
   <!-- One host on body for both layers: two portalled siblings in one block
        don't reliably both leave the page, and the menu then sat under its scrim. -->
-  <div class="fab-layer" use:portal role="dialog" aria-modal="true" aria-label={$_('notes.new_note')}>
+  <div class="fab-layer" use:portal use:closeOnBack={() => fabMenu = false} role="dialog" aria-modal="true" aria-label={$_('notes.new_note')}>
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
   <div class="fab-scrim" on:click={() => fabMenu = false} transition:fade|global={{ duration: 150 }}></div>

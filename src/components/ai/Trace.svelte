@@ -14,6 +14,7 @@
   import { tick, onMount } from 'svelte';
   import { fly, fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
+  import { closeOnBack } from '../../lib/back-stack.js';
   import { _ } from 'svelte-i18n';
   import TraceFace from './TraceFace.svelte';
   import {
@@ -673,6 +674,7 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
     <div
       class="panel-backdrop"
       use:portal
+      use:closeOnBack={() => panelOpen = false}
       transition:fade={{ duration: 200 }}
       on:click={() => panelOpen = false}
       on:keydown={() => {}}

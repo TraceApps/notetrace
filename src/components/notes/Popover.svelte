@@ -1,4 +1,5 @@
 <script>
+  import { closeOnBack } from '../../lib/back-stack.js';
   /**
    * Popover: small floating panel anchored to a trigger. On phones it
    * becomes a bottom sheet, which is easier to reach than a tiny menu.
@@ -78,7 +79,7 @@
 {#if open}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div use:portal class="pop-backdrop" class:narrow on:click|self={close} transition:fade={{ duration: 120 }}>
+  <div use:portal class="pop-backdrop" class:narrow on:click|self={close} use:closeOnBack={close} transition:fade={{ duration: 120 }}>
     <div class="pop-panel" class:sheet={narrow} bind:this={panel} {style}
       role="dialog" aria-modal="true" aria-label={label || undefined} tabindex="-1" use:dialogFocus
       in:fly={{ y: narrow ? 40 : 6, duration: 160 }}>

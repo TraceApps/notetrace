@@ -191,7 +191,7 @@
             <span class="material-symbols-rounded fill">{playing === a.uuid ? 'pause' : 'play_arrow'}</span>
           </button>
           <!-- svelte-ignore a11y-no-noninteractive-tabindex -->
-          <div class="vn-wave" role="slider" tabindex="0" aria-label={$_('voice.position')}
+          <div class="vn-wave" role="slider" tabindex="0" data-no-pull-sync aria-label={$_('voice.position')}
             aria-valuemin="0" aria-valuemax={Math.round(len)} aria-valuenow={Math.round(at)} aria-valuetext={formatDuration(at * 1000)}
             on:pointerdown={(e) => scrubStart(e, a)} on:pointermove={(e) => scrubMove(e, a)}
             on:pointerup={scrubEnd} on:pointercancel={scrubEnd} on:keydown={(e) => scrubKey(e, a)}>

@@ -373,6 +373,13 @@
     if (busy) return;
     dispatch('done', { drawing: { ...doc, strokes }, changed: dirty });
   }
+  // Escape and Android back: close the palette or sheet first, then drop the
+  // selection, then finish the drawing.
+  function stepBack() {
+    if (sheetOpen || paletteOpen) { sheetOpen = false; paletteOpen = false; }
+    else if (selection.length) selection = [];
+    else done();
+  }
   function pickTool(key) { tool = key; if (key !== 'lasso') selection = []; paletteOpen = false; redraw(); }
 
   function onKey(e) {
@@ -383,9 +390,7 @@
     if (e.key === ' ') { spaceHeld = true; if (canvas) canvas.style.cursor = 'grab'; e.preventDefault(); return; }
     if (e.key === 'Escape') {
       e.preventDefault(); e.stopPropagation();
-      if (sheetOpen || paletteOpen) { sheetOpen = false; paletteOpen = false; }
-      else if (selection.length) selection = [];
-      else done();
+      stepBack();
       return;
     }
     if ((e.key === 'Delete' || e.key === 'Backspace') && selection.length) { e.preventDefault(); deleteSelection(); return; }
@@ -406,7 +411,7 @@
     resize();
     window.addEventListener('keydown', onKey, true);
     window.addEventListener('keyup', onKeyUp, true);
-    releaseBack = onBack(done);
+    releaseBack = onBack(stepBack);
   });
   onDestroy(() => {
     observer?.disconnect();

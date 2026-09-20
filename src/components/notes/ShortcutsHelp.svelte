@@ -1,4 +1,5 @@
 <script>
+  import { closeOnBack } from '../../lib/back-stack.js';
   /** ShortcutsHelp: the keyboard shortcut sheet, opened with ? or from Settings. */
   import { fade, scale } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
@@ -63,7 +64,7 @@
 {#if open}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div use:portal class="sh-backdrop" on:click={() => open = false} transition:fade={{ duration: 160 }}>
+  <div use:portal class="sh-backdrop" on:click={() => open = false} use:closeOnBack={() => open = false} transition:fade={{ duration: 160 }}>
     <div class="sh-panel" role="dialog" aria-modal="true" aria-labelledby="sh-title" tabindex="-1" use:dialogFocus on:click|stopPropagation
       in:scale={{ start: 0.94, duration: 220, easing: cubicOut }} out:scale={{ start: 0.96, duration: 140 }}>
       <header>
@@ -98,7 +99,7 @@
     display: flex; align-items: center; justify-content: center; padding: 16px;
   }
   .sh-panel {
-    width: 760px; max-width: 100%; max-height: calc(100dvh - 32px); overflow: auto;
+    width: 760px; max-width: 100%; max-height: min(calc(100dvh - 32px), calc(100dvh - 2 * var(--safe-top) - 16px)); overflow: auto;
     background: var(--surface-1); border: 1px solid var(--border-strong);
     border-radius: var(--radius-xl); box-shadow: var(--shadow-lg);
     padding: 20px 24px 24px;
