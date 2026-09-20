@@ -1613,6 +1613,12 @@
   .title-input::placeholder { color: var(--text-3); }
 
   .editor-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 32px 20px; display: flex; flex-direction: column; gap: 16px; }
+  /* The scroller is a flex column, so its children would otherwise shrink
+     when the note is taller than the panel. The editor's own box would end
+     up shorter than its text, the text would spill out of it, and whatever
+     follows (labels, reminder, share, backlinks) would be drawn over the
+     middle of the note (#8). */
+  .editor-scroll > :global(*) { flex-shrink: 0; }
   .narrow .editor-scroll { padding: 8px 20px calc(88px + var(--safe-bottom) + var(--kb, 0px)); }
 
   .editor-chips { display: flex; flex-wrap: wrap; gap: 8px; }
