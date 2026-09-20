@@ -11,8 +11,12 @@ NoteTrace's source code is licensed under [AGPL-3.0](LICENSE). This file lists a
 | Asset | License | Where |
 | ----- | ------- | ----- |
 | **Inter** (UI typeface) | [SIL Open Font License 1.1][ofl] | `public/fonts/inter-*.woff2` |
-| **Newsreader** (note title typeface) | [SIL Open Font License 1.1][ofl] | `public/fonts/newsreader-medium.woff2` |
+| **Newsreader** (note title typeface) | [SIL Open Font License 1.1][ofl] | `public/fonts/newsreader-*.woff2` |
 | **Material Symbols Rounded** | [Apache License 2.0][apache] | `public/fonts/material-symbols-rounded.woff2` |
+
+Fonts are served by your own instance, never from a CDN. One file per script
+subset, so a browser downloads only the scripts a page needs. Regenerate them
+with `scripts/fetch-fonts.mjs`.
 
 [ofl]: https://openfontlicense.org/
 [apache]: https://www.apache.org/licenses/LICENSE-2.0

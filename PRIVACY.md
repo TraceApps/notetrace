@@ -25,6 +25,7 @@ NoteTrace is a self-hosted notes app. Your data is stored on **your own server**
 - We do not serve advertisements
 - We do not sell, share, or transmit your data to third parties
 - We do not use tracking cookies or fingerprinting
+- We do not load fonts, scripts, or styles from a CDN; the page is served entirely by your instance
 
 ## Third-Party Services
 
