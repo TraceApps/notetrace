@@ -38,7 +38,7 @@ NoteTrace connects to the following external services **only when you explicitly
 - **Linked websites (link previews).** On by default, and can be turned off in Settings, Appearance. When a note contains a link, your NoteTrace server fetches that page once to show its title, image, and site name on the card, and caches it for a week. The site sees a request from your server, not from your browser or phone, and nothing about you or the note is sent. Links to private addresses are skipped unless an admin allows them.
 - **CookTrace.** Optional. If you link a CookTrace server, the checklist items you send go to it. The CookTrace token is stored encrypted on your NoteTrace server and is never sent to your browser or phone.
 - **Webhooks.** Optional and off by default. If an admin enables them, event payloads are sent to the URLs you configure.
-- **GitHub Releases.** The in-app update check reads public release information from GitHub. No account data is sent.
+- **GitHub.** Update checks, off until you turn them on: setup asks, and Settings, Updates can change it at any time. When on, your server asks github.com for the latest release every few hours, and the Android app asks for the latest app version, so you hear about new features, fixes and security updates. Nothing about you, your instance or your data is sent. Set `UPDATE_CHECK=off` to keep it off whatever the setting says.
 
 Google Keep (Takeout), Evernote, Blinko, and Markdown imports are read on your own device or browser and saved only to your own server or on-device database. A Memos import connects from your browser or phone directly to the Memos server you enter, using the access token you paste; the token isn't stored.
 

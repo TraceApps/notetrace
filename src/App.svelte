@@ -342,6 +342,10 @@
   }
 
   onMount(async () => {
+    // Update checks: a device that was already using the app keeps checking,
+    // a fresh one stays quiet until setup asks. Runs first so nothing above
+    // can skip it (see lib/updates.js).
+    import('./lib/updates.js').then(({ migrateAutoCheck }) => migrateAutoCheck()).catch(() => {});
     initFold();
     import('./lib/pending-voice.js').then(m => m.startPendingVoice()).catch(() => {});
     // Start Page: only when the app opens on the default route, never over a
