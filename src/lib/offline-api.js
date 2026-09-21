@@ -31,8 +31,10 @@ function _backoff() { const ms = _retryMs; _retryMs = Math.min(RETRY_MAX_MS, _re
 const NEEDS_SERVER = new Set([
   'convertNote', 'deleteNoteForever', 'emptyTrash', 'importNotes', 'restoreVersion', 'getVersions',
   'createLabel', 'updateLabel', 'deleteLabel', 'reorderLabels',
-  'addAttachments', 'deleteAttachment', 'updateAttachment', 'getAttachmentDrawing',
-  'uploadImage', 'uploadFile', 'uploadAudio',
+  // Pictures and the notes they hang on are handled above, with no
+  // connection as well as with one; the rest of this is still the server's.
+  'deleteAttachment', 'updateAttachment', 'getAttachmentDrawing',
+  'uploadAudio',
   'getMembers', 'addMember', 'updateMember', 'removeMember',
 ]);
 
