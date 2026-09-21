@@ -168,3 +168,17 @@ test('server ids come back for notes made offline', () => {
   assert.deepEqual(createdIds({ tables: { notes: [{ client_id: -7, server_id: 42 }, { client_id: 3, server_id: 3 }] } }), { '-7': 42 });
   assert.deepEqual(createdIds({}), {});
 });
+
+// ── What the other Trace apps taught us ─────────────────────────────
+
+test('a picture attached with no connection belongs to the note at once', () => {
+  const ops = [{ type: 'create', id: -5, at: 1, note: { title: 'Snap', kind: 'text', attachments: [{ uuid: 'a1', url: 'data:image/jpeg;base64,x', mime: 'image/jpeg' }] } }];
+  const note = applyOps([], ops).get(-5);
+  assert.equal(note.attachments.length, 1);
+  assert.equal(note.attachments[0].url, 'data:image/jpeg;base64,x');
+});
+
+test('a note made offline with no picture still carries an empty list', () => {
+  const note = applyOps([], [{ type: 'create', id: -6, at: 1, note: { title: 'Plain', kind: 'text' } }]).get(-6);
+  assert.deepEqual(note.attachments, []);
+});

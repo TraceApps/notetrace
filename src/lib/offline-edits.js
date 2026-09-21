@@ -55,7 +55,11 @@ export function applyOp(byId, op) {
         uuid: i.uuid, text: i.text || '', checked: !!i.checked, position: i.position ?? idx + 1,
         due_date: i.due_date ?? null, due_repeat: i.due_repeat ?? null, checked_at: i.checked ? at : null,
       })),
-      attachments: [], share_role: 'owner', share_owner: null, share_count: 0,
+      // A picture attached with no connection belongs to the note from the
+      // moment it is taken, so it shows on the card and in the editor while
+      // it waits. It goes up as its own request once the note has a real id.
+      attachments: (n.attachments || []).map(a => ({ ...a })),
+      share_role: 'owner', share_owner: null, share_count: 0,
       offline: true,
     });
     return;

@@ -303,7 +303,33 @@ export async function logout() {
   // The watch shouldn't keep a working token after a sign-out.
   if (isNative) import('../lib/wear-pairing.js').then(({ unpairWatch }) => unpairWatch()).catch(() => {});
   // This account's offline copy of its notes stays behind on a shared computer otherwise.
-  else { try { await (await import('../lib/offline-api.js')).clearOfflineData(); } catch { /* nothing stored */ } }
+  else {
+    // Anything written offline goes up before the session ends, and if it
+    // cannot (signing out in a dead zone) the caller is asked first:
+    // clearing it would destroy work the user never saw fail. The guard
+    // lives here rather than on one button, so every way of signing out
+    // gets it.
+    try {
+      const { flushOutbox, pendingCount, clearOfflineData } = await import('../lib/offline-api.js');
+      const sent = await flushOutbox().catch(() => false);
+      if (!sent && (await pendingCount()) > 0) {
+        const waiting = await pendingCount();
+        const { confirmDialog } = await import('./confirmDialog.js');
+        const { get: getStore } = await import('svelte/store');
+        const { _: t } = await import('svelte-i18n');
+        const say = getStore(t);
+        const ok = await confirmDialog({
+          title: say('offline.logout_title'),
+          message: say('offline.logout_message', { values: { n: waiting } }),
+          confirmText: say('offline.logout_confirm'),
+          cancelText: say('common.cancel'),
+          dangerous: true,
+        });
+        if (!ok) return false;
+      }
+      await clearOfflineData();
+    } catch { /* nothing stored */ }
+  }
   localStorage.removeItem('wl:userId');
   localStorage.removeItem('note:cachedUser');
   localStorage.removeItem('note:csrf');
@@ -328,4 +354,5 @@ export async function logout() {
       window.location.href = logoutUrl;
     }
   }
+  return true;
 }

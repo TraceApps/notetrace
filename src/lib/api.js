@@ -228,6 +228,11 @@ const _NoteApiHttp = {
   getAppConfig()                 { return this.get('/api/app-config'); },
 
   // Upload
+  // Your own profile. Through here rather than a raw fetch, so the offline
+  // layer sees it and a picture chosen with no connection is kept until
+  // there is one. Same shape in NutriTrace, LiftTrace and CookTrace.
+  updateProfile(data)            { return this.put('/api/auth/profile', data); },
+
   async uploadImage(file) {
     const form = new FormData();
     form.append('file', file);

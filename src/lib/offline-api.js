@@ -41,15 +41,76 @@ export const offlineState = writable({ online: typeof navigator === 'undefined' 
 
 // ── IndexedDB ────────────────────────────────────────────────────────
 let _dbPromise = null;
+// Whose queue this is. The app clears `wl:userId` whenever it cannot confirm
+// who is signed in, so the last id this browser saw is kept here too:
+// without it the queue would be orphaned in a database nothing reads, and
+// the work would never go up. LiftTrace lost work exactly that way.
+const _USER_KEY = 'note:offline-user';
 function _dbName() {
   let user = null;
-  try { user = localStorage.getItem('wl:userId'); } catch { /* private mode */ }
+  try {
+    user = localStorage.getItem('wl:userId');
+    if (user) localStorage.setItem(_USER_KEY, user);
+    else user = localStorage.getItem(_USER_KEY);
+  } catch { /* private mode */ }
   return `notetrace-offline-${user || 'single'}`;
 }
+const _STORES = ['notes', 'outbox', 'meta'];
+
+/** Move everything from an old database into this one, then drop it. */
+async function _absorb(oldName, db) {
+  if (!db) return;
+  const old = await new Promise((resolve) => {
+    const req = indexedDB.open(oldName);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = req.onblocked = () => resolve(null);
+  });
+  if (!old) return;
+  for (const store of _STORES) {
+    if (!old.objectStoreNames.contains(store) || !db.objectStoreNames.contains(store)) continue;
+    const rows = await new Promise((resolve) => {
+      try {
+        const s = old.transaction(store, 'readonly').objectStore(store);
+        const q = store === 'meta' ? s.getAllKeys() : s.getAll();
+        q.onsuccess = () => resolve(q.result || []);
+        q.onerror = () => resolve([]);
+      } catch { resolve([]); }
+    });
+    if (!rows.length) continue;
+    await new Promise((resolve) => {
+      try {
+        const tx = db.transaction(store, 'readwrite');
+        const s = tx.objectStore(store);
+        if (store === 'meta') {
+          const from = old.transaction(store, 'readonly').objectStore(store);
+          for (const key of rows) {
+            const g = from.get(key);
+            g.onsuccess = () => { try { s.put(g.result, key); } catch {} };
+          }
+        } else {
+          // The outbox is keyed by a running number, so queued work is
+          // re-added and given a new one rather than landing on something.
+          for (const row of rows) { if (store === 'outbox') { const { seq, ...rest } = row; s.add(rest); } else s.put(row); }
+        }
+        tx.oncomplete = tx.onerror = tx.onabort = () => resolve();
+      } catch { resolve(); }
+    });
+  }
+  old.close();
+  try { indexedDB.deleteDatabase(oldName); } catch { /* another tab has it open */ }
+  _ops = null;
+  await _loadOps();
+  _publish();
+}
+
 function _db() {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null);
   const name = _dbName();
   if (_dbPromise && _dbPromise.name === name) return _dbPromise;
+  // The first reads of a page happen before the app knows who is signed in,
+  // so they are filed under the anonymous name. Once the id turns up, bring
+  // what was kept with it rather than leaving it where nothing reads it.
+  const leaving = _dbPromise?.name && _dbPromise.name !== name ? _dbPromise.name : null;
   const p = new Promise((resolve) => {
     const req = indexedDB.open(name, 1);
     req.onupgradeneeded = () => {
@@ -64,6 +125,7 @@ function _db() {
   });
   p.name = name;
   _dbPromise = p;
+  if (leaving) p.then(db => _absorb(leaving, db));
   return p;
 }
 function _tx(store, mode, fn) {
@@ -140,6 +202,25 @@ async function queue(op) {
   return (await _localNotes()).find(n => n.id === op.id) || null;
 }
 
+/**
+ * A write that isn't a note edit: a setting, your profile, a picture
+ * attached to a note. It is kept as the request the app tried to make and
+ * repeated as it was when the connection returns, before the notes go up.
+ * `noteId` is rewritten to the real id first, for a note made offline.
+ */
+export async function queueRequest({ kind, key, method, path, body, noteId = null }) {
+  const ops = await _loadOps();
+  const op = { type: 'request', kind, key, method, path, body, noteId, at: Date.now() };
+  const seq = await _tx('outbox', 'readwrite', s => s.add(op));
+  if (seq == null) throw _offlineError();
+  op.seq = seq;
+  ops.push(op);
+  _publish();
+  _channel?.postMessage({ type: 'outbox' });
+  _scheduleFlush(_online() ? 0 : _retryMs);
+  return op;
+}
+
 // ── Sending the outbox ───────────────────────────────────────────────
 let _http = null;
 let _retry = null;
@@ -173,10 +254,50 @@ async function _flushOnce() {
   if (!ops.length) { _publish({ syncing: false, error: null }); return true; }
   if (!_online() || !_http) { _scheduleFlush(_backoff()); return false; }
   _publish({ syncing: true });
+
+  // Plain requests first: a setting, a profile, a picture. One per thing, so
+  // a setting changed three times offline goes up once. A picture waits for
+  // its note to have a real id, which the note push just below gives it, so
+  // anything still pointing at a temporary id is left for the next round.
+  const requests = [...new Map(ops.filter(o => o.type === 'request').map(o => [o.key, o])).values()];
+  if (requests.length) {
+    const map = await _idMap();
+    const done = new Set();
+    for (const op of requests) {
+      const noteId = op.noteId == null ? null : _mapId(map, op.noteId);
+      if (noteId != null && isTempId(noteId)) continue;   // its note hasn't gone up yet
+      const path = noteId == null ? op.path : op.path.replace('{id}', String(noteId));
+      try {
+        await _http[(op.method || 'POST').toLowerCase() === 'put' ? 'put' : 'post'](path, op.body);
+        done.add(op.key);
+      } catch (err) {
+        if (isOfflineError(err)) { _publish({ syncing: false, online: false }); _scheduleFlush(_backoff()); return false; }
+        console.error(`[offline] your server refused ${op.kind}: ${err.message}`);
+        _publish({ syncing: false, error: err.message || 'failed', online: true });
+        _scheduleFlush(_backoff());
+        return false;
+      }
+    }
+    if (done.size) {
+      const sent = new Set(ops.filter(o => o.type === 'request' && done.has(o.key)).map(o => o.seq));
+      await _tx('outbox', 'readwrite', s => { for (const seq of sent) s.delete(seq); });
+      _ops = null;
+      await _loadOps();
+    }
+  }
+
+  const noteOps = (await _loadOps()).filter(o => o.type !== 'request');
+  if (!noteOps.length) {
+    _publish({ syncing: false, error: null, online: true });
+    _channel?.postMessage({ type: 'outbox', synced: true });
+    // A picture waiting on a note that has just gone up goes next.
+    if ((await _loadOps()).length) _scheduleFlush(0);
+    return !(await _loadOps()).length;
+  }
   const mirror = await _all('notes');
   const base = new Map(mirror.map(n => [n.id, n]));
-  const final = applyOps(mirror, ops);
-  const payload = buildPush(ops, base, final);
+  const final = applyOps(mirror, noteOps);
+  const payload = buildPush(noteOps, base, final);
   let response;
   try {
     response = await _http.post('/api/sync/push', payload);
@@ -187,6 +308,10 @@ async function _flushOnce() {
   }
   const failed = Object.values(response?.tables || {}).find(r => r && !Array.isArray(r) && r.error);
   if (failed) {
+    // Your server answered and said no. A badge on its own tells nobody
+    // why, so say it, and write it to the log behind Settings, Diagnostics
+    // for anyone who was not looking when the toast went by.
+    console.error(`[offline] your server refused what was waiting: ${failed.error}`);
     _publish({ syncing: false, error: failed.error, online: true });
     _scheduleFlush(_backoff());
     return false;
@@ -196,7 +321,7 @@ async function _flushOnce() {
   const created = createdIds(response);
   const map = { ...(await _idMap()), ...created };
   await _setMeta('idMap', map);
-  const sent = new Set(ops.map(o => o.seq));
+  const sent = new Set(noteOps.map(o => o.seq));
   await _tx('outbox', 'readwrite', s => { for (const seq of sent) s.delete(seq); });
   // Edits made while the push was out still point at the old ids.
   const rest = (await _all('outbox')).filter(o => !sent.has(o.seq));
@@ -206,8 +331,8 @@ async function _flushOnce() {
   await _loadOps();
 
   // Fresh copies from the server replace the offline ones.
-  const ids = [...touchedIds(ops)].map(id => _mapId(map, id));
-  await _tx('notes', 'readwrite', s => { for (const id of touchedIds(ops)) if (isTempId(id)) s.delete(id); });
+  const ids = [...touchedIds(noteOps)].map(id => _mapId(map, id));
+  await _tx('notes', 'readwrite', s => { for (const id of touchedIds(noteOps)) if (isTempId(id)) s.delete(id); });
   for (const id of ids) {
     try { await remember(await _http.get(`/api/notes/${id}`)); }
     catch { /* gone on the server: the next list refresh drops it */ }
@@ -297,6 +422,76 @@ export function createOfflineApi(http) {
   }
 
   const api = {
+    /**
+     * A picture with no server to send it to. Rather than refusing (the one
+     * thing people do with a note), it is scaled down and handed back as a
+     * data URL, so it travels inside the attachment and the server turns it
+     * into a file when it arrives. Same shape in the other Trace apps.
+     */
+    async uploadImage(file) {
+      if (_online() && !(await _loadOps()).length) {
+        try {
+          return await http.uploadImage(file);
+        } catch (err) {
+          if (!isOfflineError(err)) throw err;
+          _publish({ online: false });
+        }
+      }
+      // The same shape the real one answers with: a url string.
+      const { embeddableDataUrl } = await import('./image-embed.js');
+      return embeddableDataUrl(file);
+    },
+
+    /** A file for a note, kept the same way when there is no connection. */
+    async uploadFile(file) {
+      if (_online() && !(await _loadOps()).length) {
+        try {
+          return await http.uploadFile(file);
+        } catch (err) {
+          if (!isOfflineError(err)) throw err;
+          _publish({ online: false });
+        }
+      }
+      // Only pictures are small enough to carry inside a row; anything else
+      // says plainly that it needs a connection.
+      if (!String(file?.type || '').startsWith('image/')) throw _offlineError();
+      const { embeddableDataUrl } = await import('./image-embed.js');
+      return { url: await embeddableDataUrl(file), mime: file.type || 'image/jpeg', size: file.size ?? null };
+    },
+
+    /** Your own profile, including a picture chosen with no connection. */
+    async updateProfile(data) {
+      if (_online() && !(await _loadOps()).length) {
+        try {
+          return await http.updateProfile(data);
+        } catch (err) {
+          if (!isOfflineError(err)) throw err;
+          _publish({ online: false });
+        }
+      }
+      await queueRequest({ kind: 'your profile', key: 'profile', method: 'PUT', path: '/api/auth/profile', body: data });
+      return { user: { ...data }, queued: true, offline: true };
+    },
+
+    /** Pictures and drawings added to a note, kept until there is a server. */
+    async addAttachments(id, attachments) {
+      const real = _mapId(await _idMap(), id);
+      if (_online() && !(await _loadOps()).length && !isTempId(real)) {
+        try {
+          return await http.addAttachments(real, attachments);
+        } catch (err) {
+          if (!isOfflineError(err)) throw err;
+          _publish({ online: false });
+        }
+      }
+      await queueRequest({
+        kind: 'a picture you added', key: `attach:${real}:${Date.now()}`,
+        method: 'POST', path: '/api/notes/{id}/attachments', body: { attachments }, noteId: real,
+      });
+      const note = (await _localNotes()).find(n => n.id === real);
+      return { ...(note || { id: real }), attachments: [...(note?.attachments || []), ...attachments], queued: true, offline: true };
+    },
+
     async getNotes(query = {}) {
       return read(
         async () => {
@@ -348,9 +543,20 @@ export function createOfflineApi(http) {
     },
 
     async createNote(data = {}) {
-      if (Array.isArray(data.attachments) && data.attachments.length) return http.createNote(data);
       const id = -(Date.now() * 100 + Math.floor(Math.random() * 100));
-      return write({ type: 'create', id, note: data }, () => http.createNote(data));
+      const note = await write({ type: 'create', id, note: data }, () => http.createNote(data));
+      // The note push carries the note, its items and its labels, not its
+      // pictures, so a picture on a note made offline follows as its own
+      // request once that note has a real id.
+      const pictures = Array.isArray(data.attachments) ? data.attachments : [];
+      if (pictures.length && isTempId(note?.id)) {
+        await queueRequest({
+          kind: 'a picture you added', key: `attach:${note.id}`,
+          method: 'POST', path: '/api/notes/{id}/attachments',
+          body: { attachments: pictures }, noteId: note.id,
+        });
+      }
+      return note;
     },
     async updateNote(id, patch = {}) {
       const real = _mapId(await _idMap(), id);

@@ -50,20 +50,11 @@
   $: if (!rail) tip = null;
 
   async function handleLogout() {
-    // Edits made offline in this browser go with the sign-out: try sending them first, then ask.
-    if (!isNative) {
-      const { flushOutbox, pendingCount } = await import('../../lib/offline-api.js');
-      await flushOutbox().catch(() => {});
-      const n = await pendingCount();
-      if (n && !await confirmDialog({
-        title: $_('offline.logout_title'),
-        message: $_('offline.logout_message', { values: { n } }),
-        confirmText: $_('offline.logout_confirm'),
-        cancelText: $_('common.cancel'),
-        dangerous: true,
-      })) return;
-    }
-    await logout();
+    // Edits written offline go with the sign-out: logout() sends them first
+    // and asks before discarding anything it could not send, so every way
+    // of signing out is covered, not just this button. It answers false
+    // when the question was declined.
+    if (await logout() === false) return;
     open = false;
     dispatch('close');
     if (isNative) {

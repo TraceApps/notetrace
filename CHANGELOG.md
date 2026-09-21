@@ -7,7 +7,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Pictures work offline.** A picture added to a note with no connection, or a drawing made there, used to need the server: the note simply would not save. The picture now travels inside the note and becomes an ordinary file on your server the moment the queue goes up, so it shows on the card and in the editor straight away, and nothing waits on a signal. A picture too large to keep says so rather than being lost quietly. Other files still need a connection.
+- **Settings changed offline are kept.** A setting changed with no connection was applied here and never reached your server, so another device kept the old value. It now goes up with everything else.
+- **Your profile works offline, picture included.** Choose a picture and change your name in a dead zone; both travel with the queue, and the picture becomes a file on your server when it lands. This is the same shape NutriTrace, LiftTrace and CookTrace use.
+
 ### Fixed
+
+- **Signing out can no longer discard edits that never left this browser.** The check lived on the sidebar's sign-out button, so any other way of signing out cleared the queue without asking. It now lives in the sign-out itself: anything waiting is sent first, and if it cannot be sent you are asked before it goes.
+- **The queue can no longer be stranded.** The offline copy is named after the account, and the app clears that name whenever it cannot confirm who is signed in, which is exactly what a reload with no connection looks like. The last account this browser saw is remembered, and anything kept before sign-in is brought across, so nothing is left in a copy that nothing reads.
+- **A profile saved before the app had finished checking your server no longer goes to the wrong place.** The Profile screen decided once, as it opened, whether this was a single-user instance, and if the check had not answered yet it wrote your name and picture to local settings instead of your account.
+- **When your server refuses something that was waiting, the reason is written to the log** behind Settings, Diagnostics, rather than only flashing past.
 
 - **Update checks are off until you turn them on, and your server does the asking.** Every browser and phone used to ask GitHub directly every 4 hours, whether or not anyone had asked for that. Setup now asks, and skipping the question leaves checks off, so a new install contacts nothing on its own. When checks are on, your server asks GitHub for the latest release and the Android app asks for the latest app version, and nothing about you or your instance is sent. If checks are off, the app says so once, so nobody assumes it will tell them about a release that fixes a security problem. Existing installs keep checking exactly as before; this is the new default for fresh installs. `UPDATE_CHECK=off` keeps checks off whatever the setting says. Reported on r/selfhosted.
 - **Fonts are served by your own instance.** The app loaded Inter and the icon font from Google's font servers on every page load, so Google saw the address of everyone who opened the app, before anything was turned on and regardless of settings. The fonts now come from your own server. They are split by script, the same way Google splits them, so a page still downloads only the alphabets it needs, and a new translation needs no font work. Text at medium weight also renders correctly in the Android app for the first time, since the file it needed was missing. Reported on r/selfhosted.

@@ -17,6 +17,7 @@
  *   - reminders, trash, and permanent delete stay with the owner
  */
 import { randomUUID } from 'crypto';
+import { localizeDataUrl } from './image-localizer.js';
 import db from '../db.js';
 import { dispatchWebhookEvent } from './webhooks.js';
 import { cleanLabelIcon } from './label-icons.js';
@@ -691,6 +692,16 @@ export function cleanFileName(v) {
 /** Only files this server stored (or a data-free relative uploads path) may be attached. */
 export function cleanAttachmentUrl(v) {
   const s = String(v ?? '').trim();
+  // A picture taken with no connection arrives embedded in the row, since
+  // there was nowhere to upload it to. It becomes a file here, so a row
+  // still only ever holds a path: every caller (the REST routes and the
+  // sync push alike) gets that for free, because they all come through here.
+  if (s.startsWith('data:image/')) {
+    try {
+      const saved = localizeDataUrl(s);
+      return saved && saved !== s ? cleanAttachmentUrl(saved) : null;
+    } catch { return null; }
+  }
   return /^\/?uploads\/[A-Za-z0-9._-]+$/.test(s) ? (s.startsWith('/') ? s : `/${s}`) : null;
 }
 

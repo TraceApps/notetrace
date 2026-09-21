@@ -118,6 +118,14 @@ export function scheduleSave(key, value) {
       }
     } catch (e) {
       console.warn(`[settings] direct push failed for ${key}:`, e.message);
+      // With no connection the change is kept and goes up with everything
+      // else, rather than staying local while the server keeps the old value.
+      if (!isNative) {
+        try {
+          const { queueRequest } = await import('../lib/offline-api.js');
+          await queueRequest({ kind: `the "${key}" setting`, key: `setting:${key}`, method: 'PUT', path: '/api/settings', body: { key, value } });
+        } catch { /* no database to queue into */ }
+      }
     }
   }, 600);
 }
