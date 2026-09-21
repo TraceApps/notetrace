@@ -186,12 +186,27 @@ async function _localNotes() {
   return [...applyOps(mirror, ops).values()];
 }
 
+/**
+ * Add to the outbox, making room if the database is full: what you have
+ * written matters more than a copy of a note you can read again.
+ */
+async function _addOp(op) {
+  let seq = await _tx('outbox', 'readwrite', s => s.add(op));
+  if (seq == null) {
+    const waiting = touchedIds(await _loadOps());
+    const spare = (await _all('notes')).filter(n => !waiting.has(n.id)).map(n => n.id);
+    if (spare.length) await _tx('notes', 'readwrite', s => { for (const id of spare) s.delete(id); });
+    seq = await _tx('outbox', 'readwrite', s => s.add(op));
+  }
+  return seq;
+}
+
 async function queue(op) {
   op.at = Date.now();
   // Loaded before the add, so the new op isn't read back and then pushed twice.
   const ops = await _loadOps();
   if (op.type !== 'create' && !applyOps(await _all('notes'), ops).has(op.id)) throw _offlineError();
-  const seq = await _tx('outbox', 'readwrite', s => s.add(op));
+  const seq = await _addOp(op);
   if (seq == null) throw _offlineError();
   op.seq = seq;
   ops.push(op);
@@ -211,7 +226,7 @@ async function queue(op) {
 export async function queueRequest({ kind, key, method, path, body, noteId = null }) {
   const ops = await _loadOps();
   const op = { type: 'request', kind, key, method, path, body, noteId, at: Date.now() };
-  const seq = await _tx('outbox', 'readwrite', s => s.add(op));
+  const seq = await _addOp(op);
   if (seq == null) throw _offlineError();
   op.seq = seq;
   ops.push(op);

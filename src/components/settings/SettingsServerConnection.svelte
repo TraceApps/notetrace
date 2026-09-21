@@ -221,7 +221,9 @@
     if (!ok) return;
     busy = true;
     try {
-      await logout();
+      // logout() answers false when it asked about unsent edits and the
+      // answer was no. Saying "logged out" and reloading then would be a lie.
+      if (await logout() === false) return;
       showSuccess($_('settings_server_conn.toast.logged_out_reloading'));
       setTimeout(() => window.location.reload(), 300);
     } finally { busy = false; }

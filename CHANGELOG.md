@@ -14,6 +14,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Your profile works offline, picture included.** Choose a picture and change your name in a dead zone; both travel with the queue, and the picture becomes a file on your server when it lands. This is the same shape NutriTrace, LiftTrace and CookTrace use.
 
 ### Fixed
+- **The copy this browser keeps now has a ceiling**, and if storage ever does run out, what you have changed is kept and the copy makes way for it. A full database would otherwise have started refusing the very thing that matters, leaving you unable to log anything offline.
+
 - **A picture kept offline holds its transparency, and an unusual camera format is converted rather than lost.** A drawing or a screenshot re-encoded on its way into the queue could come back with a black background, and a format this browser could only read, not write (an iPhone's HEIC, for instance), would have been refused on arrival without saying so. A picture with any see-through pixel is now kept as a PNG, anything unusual is converted first, and one that cannot be read at all says it needs a connection instead of disappearing.
 
 
