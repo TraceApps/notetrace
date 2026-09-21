@@ -14,6 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Your profile works offline, picture included.** Choose a picture and change your name in a dead zone; both travel with the queue, and the picture becomes a file on your server when it lands. This is the same shape NutriTrace, LiftTrace and CookTrace use.
 
 ### Fixed
+- **The Trace button no longer covers what's on top of it.** It floated above every sheet and dialog, so wherever you had dragged it, it could sit over a title or a button. It now stays above the page but underneath anything opened on top of it, and it still moves where you put it. Same fix as NutriTrace [#233](https://github.com/TraceApps/nutritrace/issues/233).
 - **Something deleted while online stays deleted when the connection goes.** A copy of the old list could be carried over from before you signed in, after the deletion had already tidied things up, so what you removed came back the moment you were offline. Reported in testing.
 
 - **A photo kept with no connection is scaled to something a request comfortably carries**, so your server never turns it away with "request entity too large" after you have been told it was saved, and the routes that accept one allow room for it.

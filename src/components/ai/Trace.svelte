@@ -825,7 +825,9 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
     backdrop-filter: blur(12px) saturate(180%);
     -webkit-backdrop-filter: blur(12px) saturate(180%);
     cursor: pointer;
-    z-index: 400;
+    /* Below the lowest sheet (100) and above the bottom bar (50), so the
+       button never draws over an open sheet or dialog. Same as NutriTrace #233. */
+    z-index: 80;
     display: flex;
     align-items: center;
     justify-content: center;
