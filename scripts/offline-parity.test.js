@@ -66,3 +66,12 @@ test('a picture on a note survives with no connection, and becomes a file on arr
 test('a refusal from the server is said in words, not just a red badge', () => {
   assert.match(offline, /console\.error\(`\[offline\] your server refused/);
 });
+
+test('nothing the offline path needs is fetched at the moment it is needed', () => {
+  // A picture is kept exactly when there is no connection to fetch a
+  // separate file with, and an installed app whose service worker has not
+  // taken the newest build yet has no copy of one. Reported from a real
+  // install as "Failed to fetch dynamically imported module".
+  assert.match(offline, /^import \{ embeddableDataUrl \} from '\.\/image-embed\.js';$/m);
+  assert.ok(!/await import\('\.\/image-embed\.js'\)/.test(offline), 'the helper is bundled, not fetched');
+});

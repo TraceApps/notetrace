@@ -21,6 +21,12 @@ import {
   applyOps, overlayList, listView, buildPush, createdIds, isOfflineError, isTempId,
   tasksDueCount, touchedIds, NOTE_FIELDS,
 } from './offline-edits.js';
+// Loaded with everything else, never fetched on demand: a picture is kept
+// exactly when there is no connection to fetch a separate file with, and a
+// browser whose service worker has not taken the newest build yet would have
+// no copy of it. This is what "Failed to fetch dynamically imported module"
+// looked like from the outside.
+import { embeddableDataUrl } from './image-embed.js';
 
 // Retries while the server can't be reached: 3 s, doubling up to 30 s.
 const RETRY_MIN_MS = 3_000;
@@ -455,7 +461,6 @@ export function createOfflineApi(http) {
         }
       }
       // The same shape the real one answers with: a url string.
-      const { embeddableDataUrl } = await import('./image-embed.js');
       return embeddableDataUrl(file);
     },
 
@@ -472,7 +477,6 @@ export function createOfflineApi(http) {
       // Only pictures are small enough to carry inside a row; anything else
       // says plainly that it needs a connection.
       if (!String(file?.type || '').startsWith('image/')) throw _offlineError();
-      const { embeddableDataUrl } = await import('./image-embed.js');
       return { url: await embeddableDataUrl(file), mime: file.type || 'image/jpeg', size: file.size ?? null };
     },
 
