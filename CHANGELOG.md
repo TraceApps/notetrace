@@ -14,6 +14,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Your profile works offline, picture included.** Choose a picture and change your name in a dead zone; both travel with the queue, and the picture becomes a file on your server when it lands. This is the same shape NutriTrace, LiftTrace and CookTrace use.
 
 ### Fixed
+- **A picture kept offline holds its transparency, and an unusual camera format is converted rather than lost.** A drawing or a screenshot re-encoded on its way into the queue could come back with a black background, and a format this browser could only read, not write (an iPhone's HEIC, for instance), would have been refused on arrival without saying so. A picture with any see-through pixel is now kept as a PNG, anything unusual is converted first, and one that cannot be read at all says it needs a connection instead of disappearing.
+
 
 - **Signing out can no longer discard edits that never left this browser.** The check lived on the sidebar's sign-out button, so any other way of signing out cleared the queue without asking. It now lives in the sign-out itself: anything waiting is sent first, and if it cannot be sent you are asked before it goes.
 - **The queue can no longer be stranded.** The offline copy is named after the account, and the app clears that name whenever it cannot confirm who is signed in, which is exactly what a reload with no connection looks like. The last account this browser saw is remembered, and anything kept before sign-in is brought across, so nothing is left in a copy that nothing reads.
