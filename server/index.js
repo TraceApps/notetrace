@@ -83,6 +83,15 @@ router.use('/api/ai/read-image', express.json({ limit: '12mb' }));
 // repeated large requests. Anything above belongs on a per-route opt-in.
 // A drawing's strokes travel with its attachment and can run to a few MB.
 router.use(/^\/api\/notes(\/\d+\/attachments(\/[^/]+)?)?$/, express.json({ limit: '6mb' }));
+// A picture taken with no connection travels inside the note it belongs to,
+// since there is nowhere to upload it to, and is turned into a file on
+// arrival. The web app keeps those well under a megabyte; these routes allow
+// headroom so one is never refused for its size after the person has already
+// been told it was saved.
+const EMBEDDED_PHOTO_LIMIT = '6mb';
+for (const path of ['/api/notes', '/api/auth/profile']) {
+  router.use(path, express.json({ limit: EMBEDDED_PHOTO_LIMIT }));
+}
 router.use(express.json({ limit: '1mb' }));
 router.use(cookieParser());
 
