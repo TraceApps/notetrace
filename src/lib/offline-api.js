@@ -74,7 +74,12 @@ async function _absorb(oldName, db) {
     req.onerror = req.onblocked = () => resolve(null);
   });
   if (!old) return;
-  for (const store of _STORES) {
+  // The work waiting to go up and what each temporary id became always come
+  // across. The copy of the notes only comes if nothing has been changed yet
+  // in this session: this runs late, after a change may already have tidied
+  // up, and bringing a stale note back resurrects what was deleted.
+  const stores = _changedSomething ? ['outbox', 'meta'] : _STORES;
+  for (const store of stores) {
     if (!old.objectStoreNames.contains(store) || !db.objectStoreNames.contains(store)) continue;
     const rows = await new Promise((resolve) => {
       try {
@@ -198,7 +203,12 @@ async function _localNotes() {
  * Add to the outbox, making room if the database is full: what you have
  * written matters more than a copy of a note you can read again.
  */
+// Has anything been changed since this page opened? Decides whether the
+// copy kept before the account was known is still safe to carry over.
+let _changedSomething = false;
+
 async function _addOp(op) {
+  _changedSomething = true;
   let seq = await _tx('outbox', 'readwrite', s => s.add(op));
   if (seq == null) {
     const waiting = touchedIds(await _loadOps());
@@ -430,6 +440,7 @@ export function createOfflineApi(http) {
   // A note edit: straight to the server, or into the outbox when it can't be reached
   // (or when earlier edits are still waiting, so they go up in order).
   async function write(op, send) {
+    _changedSomething = true;
     const ops = await _loadOps();
     if (!ops.length && _online()) {
       try {

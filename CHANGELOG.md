@@ -14,6 +14,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Your profile works offline, picture included.** Choose a picture and change your name in a dead zone; both travel with the queue, and the picture becomes a file on your server when it lands. This is the same shape NutriTrace, LiftTrace and CookTrace use.
 
 ### Fixed
+- **Something deleted while online stays deleted when the connection goes.** A copy of the old list could be carried over from before you signed in, after the deletion had already tidied things up, so what you removed came back the moment you were offline. Reported in testing.
+
 - **A photo kept with no connection is scaled to something a request comfortably carries**, so your server never turns it away with "request entity too large" after you have been told it was saved, and the routes that accept one allow room for it.
 
 - **Adding a photo with no connection no longer fails on an installed app.** The part of the app that keeps a photo was fetched from your server the moment it was needed, which is exactly the moment there is nothing to fetch from, so an installed app that had not yet taken the newest version reported "Failed to fetch dynamically imported module". Everything a photo needs is part of the app itself now.
