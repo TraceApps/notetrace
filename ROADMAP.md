@@ -67,6 +67,7 @@ Items marked ~~strikethrough~~ have been implemented.
 - ~~Note webhook events~~
 - ~~MCP note tools~~
 - ~~CookTrace integration: send a checklist to a CookTrace shopping list~~
+- Word-by-word highlighting while a voice note plays. The line being spoken is already highlighted; this follows the words inside it. Ask Whisper-style providers for word timings (`timestamp_granularities[]=word`) and fall back to spreading a segment's words across its span, so every note behaves the same whichever provider transcribed it.
 
 ## Polish
 
