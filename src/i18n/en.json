@@ -462,6 +462,7 @@
     "checked_items":           "{count, plural, one {# checked item} other {# checked items}}",
     "check_item":              "Check item",
     "uncheck_item":            "Uncheck item",
+    "uncheck_all":            "Uncheck All",
     "remove_item":             "Remove item",
     "drag_to_reorder":         "Drag to reorder",
     "pin":                     "Pin",

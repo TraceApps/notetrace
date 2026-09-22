@@ -119,6 +119,25 @@
     dispatch('update', { uuid: item.uuid, patch: { checked: !item.checked, today } });
   }
 
+  /**
+   * Everything ticked, put back at once.
+   *
+   * A shopping list is the same list next week, and tapping twenty items to
+   * start it again is the work this saves. One operation per item, the same
+   * one a tap sends, so it queues with no connection and merges the way every
+   * other tick does rather than needing a rule of its own.
+   */
+  function uncheckAll() {
+    if (!editable) return;
+    const back = list.filter(i => i.checked);
+    if (!back.length) return;
+    const today = todayStr();
+    list = list.map(i => (i.checked ? { ...i, checked: false } : i));
+    // Unchecking never moves a repeating task on: that rule is for ticking
+    // one off, and itemAfterPatch applies it in the same one direction.
+    for (const item of back) dispatch('update', { uuid: item.uuid, patch: { checked: false, today } });
+  }
+
   async function addAfter(item) {
     const position = positionAfter(item.uuid);
     const fresh = { uuid: uuid(), id: null, text: '', checked: false, position };
@@ -232,10 +251,17 @@
   {/if}
 
   {#if done.length}
-    <button type="button" class="checked-toggle" on:click={() => showChecked = !showChecked} aria-expanded={showChecked}>
-      <span class="material-symbols-rounded chevron" class:collapsed={!showChecked}>expand_more</span>
-      {$_('notes.checked_items', { values: { count: done.length } })}
-    </button>
+    <div class="checked-bar">
+      <button type="button" class="checked-toggle" on:click={() => showChecked = !showChecked} aria-expanded={showChecked}>
+        <span class="material-symbols-rounded chevron" class:collapsed={!showChecked}>expand_more</span>
+        {$_('notes.checked_items', { values: { count: done.length } })}
+      </button>
+      {#if editable}
+        <button type="button" class="uncheck-all" on:click={uncheckAll}>
+          {$_('notes.uncheck_all')}
+        </button>
+      {/if}
+    </div>
     {#if showChecked}
       <ul class="items" transition:slide={{ duration: 160 }}>
         {#each done as item (item.uuid)}
@@ -342,14 +368,29 @@
   .done .item-text { color: var(--text-3); text-decoration: line-through; }
   .done { padding-left: 14px; }
 
+  /* The count and the way to undo it sit on one rule, so the heading keeps
+     its line and the action is at the end where a thumb already is. */
+  .checked-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    margin-top: 8px; padding-top: 4px;
+    border-top: 1px solid var(--border);
+  }
   .checked-toggle {
     display: flex; align-items: center; gap: 6px;
-    margin-top: 8px; padding: 10px 0 6px;
-    border-top: 1px solid var(--border);
+    padding: 6px 0;
     color: var(--text-2);
     font-size: 14px; font-weight: 500;
     text-align: left;
   }
+  .uncheck-all {
+    flex: 0 0 auto;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    color: var(--accent);
+    font-size: 13px; font-weight: 600;
+    white-space: nowrap;
+  }
+  .uncheck-all:hover { background: var(--accent-dim); }
   .chevron { font-size: 20px; transition: transform var(--dur-fast); }
   .chevron.collapsed { transform: rotate(-90deg); }
 </style>
