@@ -287,6 +287,16 @@ private fun ChecklistScreen(store: WearStore, noteId: Long) {
                 // Ticked things sink here rather than vanishing: the tick is the
                 // confirmation that the right one was tapped.
                 item { ListHeader { Text(done.size.toString() + " done") } }
+                // The same list next week, without tapping every line of it.
+                // Deleting items belongs on the phone, where a mistake can be
+                // undone; this one only puts them back.
+                item {
+                    Button(
+                        onClick = { scope.launch { store.uncheckAll(noteId) } },
+                        label = { Text("Uncheck all") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 items(done, key = { it.uuid }) { item ->
                     ItemRow(item.text, true) { scope.launch { store.setItemChecked(noteId, item.uuid, false) } }
                 }

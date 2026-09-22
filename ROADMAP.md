@@ -24,7 +24,7 @@ Items marked ~~strikethrough~~ have been implemented.
 - ~~Labels with colors, note colors~~
 - ~~Full-text search across titles, bodies, and checklist items~~
 - ~~Version history with one-tap restore~~
-- Uncheck All and Delete Checked on a checklist, from the checked-items bar, with Undo, on the web, Android, and the watch ([#7](https://github.com/TraceApps/notetrace/issues/7))
+- ~~Uncheck All and Delete Checked on a checklist, from the checked-items bar, with Undo, on the web, Android, and the watch~~ ([#7](https://github.com/TraceApps/notetrace/issues/7))
 
 ## Android and Sync
 

@@ -131,11 +131,36 @@
     if (!editable) return;
     const back = list.filter(i => i.checked);
     if (!back.length) return;
-    const today = todayStr();
     list = list.map(i => (i.checked ? { ...i, checked: false } : i));
-    // Unchecking never moves a repeating task on: that rule is for ticking
-    // one off, and itemAfterPatch applies it in the same one direction.
-    for (const item of back) dispatch('update', { uuid: item.uuid, patch: { checked: false, today } });
+    // One event for the lot, so what comes back is one line of "put that
+    // back" rather than twenty. Unchecking never moves a repeating task on:
+    // that rule is for ticking one off, and itemAfterPatch applies it in the
+    // same one direction.
+    dispatch('uncheck-all', { uuids: back.map(i => i.uuid) });
+  }
+
+  /**
+   * Clear out what is done.
+   *
+   * The other half of putting a list back: some lists are reused and some are
+   * emptied. This one destroys, so it comes back as an undo rather than a
+   * confirmation, which is the same bargain a single item's delete makes.
+   */
+  function deleteChecked() {
+    if (!editable) return;
+    const gone = list.filter(i => i.checked);
+    if (!gone.length) return;
+    list = list.filter(i => !i.checked);
+    dispatch('delete-checked', { items: gone.map(i => ({ ...i })) });
+  }
+
+  /** Put back exactly what an undo asked for, without telling anyone again. */
+  export function restoreChecked(items) {
+    const known = new Set(list.map(i => i.uuid));
+    const back = items.filter(i => !known.has(i.uuid)).map(i => ({ ...i, id: i.uuid }));
+    if (back.length) list = [...list, ...back].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    const again = new Set(items.map(i => i.uuid));
+    list = list.map(i => (again.has(i.uuid) ? { ...i, checked: true } : i));
   }
 
   async function addAfter(item) {
@@ -257,9 +282,14 @@
         {$_('notes.checked_items', { values: { count: done.length } })}
       </button>
       {#if editable}
-        <button type="button" class="uncheck-all" on:click={uncheckAll}>
-          {$_('notes.uncheck_all')}
-        </button>
+        <div class="checked-actions">
+          <button type="button" class="uncheck-all" on:click={uncheckAll}>
+            {$_('notes.uncheck_all')}
+          </button>
+          <button type="button" class="delete-checked" on:click={deleteChecked}>
+            {$_('notes.delete_checked')}
+          </button>
+        </div>
       {/if}
     </div>
     {#if showChecked}
@@ -382,7 +412,8 @@
     font-size: 14px; font-weight: 500;
     text-align: left;
   }
-  .uncheck-all {
+  .uncheck-all,
+  .delete-checked {
     flex: 0 0 auto;
     padding: 6px 8px;
     border-radius: var(--radius-sm);
@@ -391,6 +422,9 @@
     white-space: nowrap;
   }
   .uncheck-all:hover { background: var(--accent-dim); }
+  .delete-checked { color: var(--danger); }
+  .delete-checked:hover { background: color-mix(in srgb, var(--danger) 14%, transparent); }
+  .checked-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
   .chevron { font-size: 20px; transition: transform var(--dur-fast); }
   .chevron.collapsed { transform: rotate(-90deg); }
 </style>
