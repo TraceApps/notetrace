@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [1.1.0-dev01] - 2026-09-24 (pre-release)
+
 ### Added
 - **Clear a checklist in one tap, either way** ([#7](https://github.com/TraceApps/notetrace/issues/7), requested by @bonsairobo). A shopping list is the same list next week, and starting it again meant tapping every item you had ticked off. The bar that counts what is checked now offers **Uncheck All**, which puts them all back on the list, and **Delete Checked**, which clears them out. Each is one line of undo rather than one per item, and the undo puts back exactly what went: the items that were unchecked, re-checked, or the deleted ones returned where they were, still ticked, with their dates. Both work with no connection and wait with everything else, and a repeating task keeps its date rather than being moved on, since that only happens when you tick one off. Uncheck All is on the watch too, under the list of what is done.
 
@@ -28,16 +32,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **A picture kept offline holds its transparency, and an unusual camera format is converted rather than lost.** A drawing or a screenshot re-encoded on its way into the queue could come back with a black background, and a format this browser could only read, not write (an iPhone's HEIC, for instance), would have been refused on arrival without saying so. A picture with any see-through pixel is now kept as a PNG, anything unusual is converted first, and one that cannot be read at all says it needs a connection instead of disappearing.
 
-
 - **Signing out can no longer discard edits that never left this browser.** The check lived on the sidebar's sign-out button, so any other way of signing out cleared the queue without asking. It now lives in the sign-out itself: anything waiting is sent first, and if it cannot be sent you are asked before it goes.
 - **The queue can no longer be stranded.** The offline copy is named after the account, and the app clears that name whenever it cannot confirm who is signed in, which is exactly what a reload with no connection looks like. The last account this browser saw is remembered, and anything kept before sign-in is brought across, so nothing is left in a copy that nothing reads.
 - **A profile saved before the app had finished checking your server no longer goes to the wrong place.** The Profile screen decided once, as it opened, whether this was a single-user instance, and if the check had not answered yet it wrote your name and picture to local settings instead of your account.
 - **When your server refuses something that was waiting, the reason is written to the log** behind Settings, Diagnostics, rather than only flashing past.
 
+---
+
+### Security
+
 - **Update checks are off until you turn them on, and your server does the asking.** Every browser and phone used to ask GitHub directly every 4 hours, whether or not anyone had asked for that. Setup now asks, and skipping the question leaves checks off, so a new install contacts nothing on its own. When checks are on, your server asks GitHub for the latest release and the Android app asks for the latest app version, and nothing about you or your instance is sent. If checks are off, the app says so once, so nobody assumes it will tell them about a release that fixes a security problem. Existing installs keep checking exactly as before; this is the new default for fresh installs. `UPDATE_CHECK=off` keeps checks off whatever the setting says. Reported on r/selfhosted.
 - **Fonts are served by your own instance.** The app loaded Inter and the icon font from Google's font servers on every page load, so Google saw the address of everyone who opened the app, before anything was turned on and regardless of settings. The fonts now come from your own server. They are split by script, the same way Google splits them, so a page still downloads only the alphabets it needs, and a new translation needs no font work. Text at medium weight also renders correctly in the Android app for the first time, since the file it needed was missing. Reported on r/selfhosted.
-
----
+- No dependency changes. `npm audit --omit=dev` reports 0 vulnerabilities for the app and the server.
 
 ## [1.0.1] - 2026-09-20
 
