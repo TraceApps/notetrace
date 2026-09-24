@@ -41,8 +41,6 @@ A dev pre-release of the 1.1.0 minor. Pictures, settings and your profile now wo
 - **Fonts are served by your own instance.** The app loaded Inter and the icon font from Google's font servers on every page load, so Google saw the address of everyone who opened the app, before anything was turned on and regardless of settings. The fonts now come from your own server. They are split by script, the same way Google splits them, so a page still downloads only the alphabets it needs, and a new translation needs no font work. Text at medium weight also renders correctly in the Android app for the first time, since the file it needed was missing. Reported on r/selfhosted.
 - No dependency changes. `npm audit --omit=dev` reports 0 vulnerabilities for the app and the server.
 
-NoteTrace is free and always will be. The [iOS fund](https://ko-fi.com/traceapps) is for a Mac and an iPhone, so the Trace apps can run properly on iPhone.
-
 ---
 
 ## [1.0.1] - 2026-09-20
@@ -59,8 +57,6 @@ A fix-only release. One editor fix for everyone, three for the Android app.
 ### Security
 
 - No dependency changes. `npm audit --omit=dev` reports 0 vulnerabilities for the app and the server.
-
-NoteTrace is free and always will be. The [iOS fund](https://ko-fi.com/traceapps) is raising $1,300 toward a Mac and an iPhone, so the Trace apps can run properly on iPhone.
 
 ---
 
@@ -82,8 +78,6 @@ First stable release. NoteTrace is a self-hosted home for everyday notes: notes,
 ### Security
 
 - `npm audit --omit=dev` reports 0 vulnerabilities for the app and the server. Tokens for linked apps are stored encrypted and never reach the browser, outbound links and webhooks go through an SSRF guard, and uploads are stored under their real type and served with a sandboxing policy.
-
-NoteTrace is free and always will be. The [iOS fund](https://ko-fi.com/traceapps) is raising $1,300 toward a Mac and an iPhone, so the Trace apps can run properly on iPhone.
 
 ---
 
@@ -118,4 +112,3 @@ Second dev pre-release of the 1.0.0 major. Adds the Wear OS app: your notes, che
 
 **Watch testers:** the watch app has had one wrist on it so far. If something feels slow or awkward, or a phrase you say doesn't set the time you meant, open an issue with the watch model and, for a spoken time, what you said.
 
-NoteTrace is free and always will be. The [iOS fund](https://ko-fi.com/traceapps) is raising $1,300 toward a Mac and an iPhone, so the Trace apps can run properly on iPhone.
