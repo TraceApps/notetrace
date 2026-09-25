@@ -9,6 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 
 const css = readFileSync(new URL('../src/styles/fold.css', import.meta.url), 'utf8');
 
@@ -37,4 +38,18 @@ test('the rules use the reported crease, never a guess at where it is', () => {
   assert.doesNotMatch(css, /50vw|50dvw|50%\s*\)/);
   assert.match(css, /var\(--fold-start\)/);
   assert.match(css, /var\(--fold-end\)/);
+});
+
+test('the rules name classes this app actually has', () => {
+  // A rule written against another Trace app's class names would be silently
+  // dead here, which is the one failure a stylesheet never reports.
+  const used = [...css.matchAll(/html\.fold-(?:book|tabletop) ([^{]+)\{/g)]
+    .flatMap(m => m[1].split(',').map(x => x.trim()))
+    .flatMap(sel => sel.match(/\.[a-z-]+/g) || []);
+  const src = ['src/components', 'src/routes', 'src/styles']
+    .map(d => new URL(`../${d}/`, import.meta.url).pathname);
+  for (const sel of new Set(used)) {
+    const hits = execSync(`grep -rl "${sel.slice(1)}" ${src.join(' ')} || true`, { encoding: 'utf8' }).trim();
+    assert.ok(hits, `${sel} is not used anywhere in this app`);
+  }
 });
