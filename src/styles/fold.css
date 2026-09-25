@@ -20,10 +20,14 @@ html.fold-book .viewer .v-prev { left: calc(var(--fold-end) + 12px) !important; 
 html.fold-book .viewer .v-count,
 html.fold-book .viewer .v-text { left: calc(var(--fold-end) + (100vw - var(--fold-end)) / 2) !important; }
 
-/* Drawing: a stroke should never have to cross the crease, so the canvas keeps
-   to the panel right of it. The stage is watched by a ResizeObserver, so the
-   canvas re-fits itself when the phone is folded or opened. */
-html.fold-book .dw-stage { margin-left: var(--fold-end) !important; }
+/* Trace: the chat fills the panel right of the crease rather than being a card
+   that happens to straddle it. Its own width rules are a phone sheet or a
+   420px desktop card, and neither knows where a hinge is. */
+html.fold-book .panel {
+  left: calc(var(--fold-end) + 16px) !important;
+  right: 16px !important;
+  width: auto !important;
+}
 
 /* ── Tabletop ─────────────────────────────────────────────────────── */
 /* Full-screen editor on a phone: the note above the fold, its toolbar and the keyboard below. */
@@ -44,7 +48,18 @@ html.fold-tabletop .dialog-backdrop { padding-bottom: calc(100dvh - var(--fold-s
 /* Images above the fold; the count and any read text below it. */
 html.fold-tabletop .viewer { padding-top: 16px !important; padding-bottom: calc(100dvh - var(--fold-start) + 12px) !important; }
 html.fold-tabletop .viewer .v-prev,
-html.fold-tabletop .viewer .v-next { top: calc(var(--fold-start) / 2) !important; }
-/* Drawing: the sheet and its tools stay above the crease, the same as the
-   editor does, rather than the canvas running under it. */
-html.fold-tabletop .dw { padding-bottom: calc(100dvh - var(--fold-start)) !important; }
+html.fold-tabletop .viewer .v-next { top: calc(var(--fold-start) / 2) !important; }/* Trace: laptop posture puts the conversation and the box you type in on the
+   flat half, where your hands already are, and leaves your notes readable on
+   the half standing up. */
+html.fold-tabletop .panel {
+  height: calc(100dvh - var(--fold-start)) !important;
+  max-height: calc(100dvh - var(--fold-start)) !important;
+  border-radius: 0 !important;
+  border-top: 1px solid var(--border) !important;
+}
+
+/* Drawing is deliberately not confined to one panel. The rules here are for
+   surfaces the reader cannot move: a dialog, a menu, a chat card. A canvas is
+   a workspace you pan and zoom, and a foldable opened out is a bigger sheet to
+   draw on, which is the point of having one. Same reasoning as the lists,
+   which are free to scroll under the crease. */
