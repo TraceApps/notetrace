@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Foldables use the crease.** Half open like a book, notes are dealt into columns either side of the fold instead of across it, Settings puts its section list on one side and the section on the other, and menus and pickers slide clear rather than being split by it. Trace takes the panel beside the crease; in laptop posture it sits on the flat half, leaving your notes readable on the half standing up. Drawing still gets the whole screen, since an opened foldable is a bigger sheet to draw on.
+
 ---
 
 ## [1.1.0-dev01] - 2026-09-24 (pre-release)
