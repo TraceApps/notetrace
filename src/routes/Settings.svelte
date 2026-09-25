@@ -18,7 +18,6 @@
 
   import { currentUser, userMgmtActive } from '../stores/auth.js';
   import { fold } from '../lib/fold.js';
-  import { contentWidth, viewport } from '../stores/window-size.js';
   import { isNative, getServerUrl, resolveAssetUrl } from '../lib/platform.js';
   import {
     bannerStyle, disableAnimations, accentColor, appearance,
@@ -381,11 +380,28 @@
   // yet; add when the surface exists.
   // Half open like a book, the section list fills the panel on the left of
   // the crease and the section itself the panel on the right, with the crease
-  // as the divider. The fold is reported in screen coordinates, so the page's
-  // own left edge comes off first. Same rule as the notes workspace: it only
-  // snaps when both panels are left usable.
-  $: foldRailW = $fold?.posture === 'book' ? $fold.start - ($viewport.width - $contentWidth) : null;
-  $: railSnap = foldRailW != null && foldRailW >= 200 && $contentWidth - foldRailW >= 320;
+  // as the divider. It only snaps when both panels are left usable.
+  //
+  // The fold is reported in screen coordinates, so the page's own left edge
+  // comes off first, and that edge is measured rather than worked out from the
+  // sidebar's width: a pinned sidebar is 280px, a rail is 76, an overlay is
+  // none, and a page that is ever centred would be none of those.
+  let paneEl, paneLeft = 0, paneW = 0;
+  function measurePane() {
+    const box = paneEl?.getBoundingClientRect();
+    paneLeft = box?.left ?? 0;
+    paneW = box?.width ?? 0;
+  }
+  onMount(() => {
+    measurePane();
+    const ro = new ResizeObserver(measurePane);
+    if (paneEl) ro.observe(paneEl);
+    return () => ro.disconnect();
+  });
+  // Folding moves the crease without resizing the page.
+  $: if ($fold !== undefined && paneEl) measurePane();
+  $: foldRailW = $fold?.posture === 'book' && paneW > 0 ? $fold.start - paneLeft : null;
+  $: railSnap = foldRailW != null && foldRailW >= 200 && paneW - foldRailW >= 320;
   $: hingeW = railSnap ? Math.max(0, $fold.end - $fold.start) : 0;
 
 </script>
@@ -558,7 +574,7 @@
 
   <div class="page-content settings-content" class:subpage-view={!!currentSection}>
 
-    <div class="settings-two-pane" class:fold-snap={railSnap}
+    <div class="settings-two-pane" bind:this={paneEl} class:fold-snap={railSnap}
       style={railSnap ? `--rail-w:${foldRailW}px; --hinge:${hingeW}px` : ''}>
 
       <!-- Left rail (two panes only, html.wide-content). Always shows the full
