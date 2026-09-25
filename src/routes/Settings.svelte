@@ -17,6 +17,8 @@
   import { slide, fade } from 'svelte/transition';
 
   import { currentUser, userMgmtActive } from '../stores/auth.js';
+  import { fold } from '../lib/fold.js';
+  import { contentWidth, viewport } from '../stores/window-size.js';
   import { isNative, getServerUrl, resolveAssetUrl } from '../lib/platform.js';
   import {
     bannerStyle, disableAnimations, accentColor, appearance,
@@ -377,6 +379,15 @@
   // renders a state-gated "Get Set Up" grid (Server / Goals / Wellness
   // / Appearance). NoteTrace doesn't have equivalent state gates ready
   // yet; add when the surface exists.
+  // Half open like a book, the section list fills the panel on the left of
+  // the crease and the section itself the panel on the right, with the crease
+  // as the divider. The fold is reported in screen coordinates, so the page's
+  // own left edge comes off first. Same rule as the notes workspace: it only
+  // snaps when both panels are left usable.
+  $: foldRailW = $fold?.posture === 'book' ? $fold.start - ($viewport.width - $contentWidth) : null;
+  $: railSnap = foldRailW != null && foldRailW >= 200 && $contentWidth - foldRailW >= 320;
+  $: hingeW = railSnap ? Math.max(0, $fold.end - $fold.start) : 0;
+
 </script>
 
 <!-- Settings section-list snippet. Defined at the top level so it's
@@ -547,7 +558,8 @@
 
   <div class="page-content settings-content" class:subpage-view={!!currentSection}>
 
-    <div class="settings-two-pane">
+    <div class="settings-two-pane" class:fold-snap={railSnap}
+      style={railSnap ? `--rail-w:${foldRailW}px; --hinge:${hingeW}px` : ''}>
 
       <!-- Left rail (two panes only, html.wide-content). Always shows the full
            section list so users can jump between sections without
@@ -1078,6 +1090,13 @@
       grid-template-columns: 280px minmax(0, 1fr);
       gap: 24px;
       align-items: start;
+    }
+
+    /* Snapped to the fold: the crease is the divider, so the rail reaches it
+       and the section starts on the other side of it. */
+    :global(html.wide-content) .settings-two-pane.fold-snap {
+      grid-template-columns: var(--rail-w) minmax(0, 1fr);
+      gap: var(--hinge);
     }
 
     :global(html.wide-content) .settings-nav-rail {
