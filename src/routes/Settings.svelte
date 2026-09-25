@@ -1108,12 +1108,6 @@
       align-items: start;
     }
 
-    /* Snapped to the fold: the crease is the divider, so the rail reaches it
-       and the section starts on the other side of it. */
-    :global(html.wide-content) .settings-two-pane.fold-snap {
-      grid-template-columns: var(--rail-w) minmax(0, 1fr);
-      gap: var(--hinge);
-    }
 
     :global(html.wide-content) .settings-nav-rail {
       display: flex;
@@ -1309,4 +1303,32 @@
     box-sizing: border-box;
   }
   .cp-apply { height: 44px; margin-top: 4px; width: 100%; }
+
+  /* Half open like a book, at any width. The two-pane layout above waits for
+     a wide enough content area; this turns it on from the crease instead and
+     brings the rail with it, so a narrow fold beside a pinned sidebar behaves
+     like a wide one. Same reasoning as the notes grid. */
+  :global(html.fold-book) .settings-two-pane.fold-snap {
+    display: grid;
+    grid-template-columns: var(--rail-w) minmax(0, 1fr);
+    gap: var(--hinge);
+    align-items: start;
+  }
+  :global(html.fold-book) .settings-two-pane.fold-snap .settings-nav-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    position: sticky;
+    top: calc(var(--page-top, var(--safe-top)) + 12px);
+    max-height: calc(100dvh - var(--page-top, var(--safe-top)) - var(--nav-h, 0px) - var(--safe-bottom, 0px) - 24px);
+    overflow-y: auto;
+    padding: 10px 8px;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-sizing: border-box;
+  }
+  :global(html.fold-book) .settings-two-pane.fold-snap .settings-mobile-index {
+    display: none;
+  }
 </style>
