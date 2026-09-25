@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { foldFromFeatures, foldFromSegments, sizeClassFor } from '../src/lib/fold-core.js';
+import { foldFromFeatures, foldFromSegments, sizeClassFor, columnsAcrossFold } from '../src/lib/fold-core.js';
 
 test('size classes', () => {
   assert.equal(sizeClassFor(344), 'compact');
@@ -24,4 +24,30 @@ test('viewport segments', () => {
   assert.equal(foldFromSegments([{ x: 0, y: 0, width: 800, height: 600 }]), null);
   assert.deepEqual(foldFromSegments([{ x: 0, y: 0, width: 400, height: 900 }, { x: 420, y: 0, width: 400, height: 900 }]), { posture: 'book', start: 400, end: 420 });
   assert.deepEqual(foldFromSegments([{ x: 0, y: 0, width: 900, height: 400 }, { x: 0, y: 400, width: 900, height: 400 }]), { posture: 'tabletop', start: 400, end: 400 });
+});
+
+test('a book fold splits a grid into columns either side of the crease', () => {
+  // A 1000px grid at the left edge, creased between 480 and 520.
+  const fold = { posture: 'book', start: 480, end: 520 };
+  const split = columnsAcrossFold({ width: 1000, left: 0, gap: 16, minCard: 236, fold });
+  assert.deepEqual(split, { left: 1, right: 1, hinge: 40 });
+
+  // Wider cards either side give more of them.
+  const wide = columnsAcrossFold({ width: 2000, left: 0, gap: 16, minCard: 236, fold: { posture: 'book', start: 980, end: 1020 } });
+  assert.deepEqual(wide, { left: 3, right: 3, hinge: 40 });
+});
+
+test('the grid keeps its own layout when the crease misses it', () => {
+  const beside = { posture: 'book', start: 100, end: 140 };
+  // The grid sits to the right of the fold, next to a sidebar.
+  assert.equal(columnsAcrossFold({ width: 800, left: 300, gap: 16, minCard: 236, fold: beside }), null);
+  // Flat, or tabletop, is not a vertical crease.
+  assert.equal(columnsAcrossFold({ width: 800, left: 0, gap: 16, minCard: 236, fold: null }), null);
+  assert.equal(columnsAcrossFold({ width: 800, left: 0, gap: 16, minCard: 236, fold: { posture: 'tabletop', start: 400, end: 440 } }), null);
+});
+
+test('a side with no room for a card is left unsplit', () => {
+  // The crease sits 80px in: one column on the left would be unreadable.
+  const tight = { posture: 'book', start: 80, end: 120 };
+  assert.equal(columnsAcrossFold({ width: 900, left: 0, gap: 16, minCard: 236, fold: tight }), null);
 });

@@ -28,3 +28,29 @@ export function foldFromSegments(segments) {
   return null;
 }
 
+/**
+ * Card columns either side of a book fold, or null when the crease does not
+ * cross this box, or leaves too little room on one side to be worth it.
+ *
+ * A masonry grid across a half-open foldable puts cards over the crease, with
+ * their text split by it. Dealing into separate column runs either side, with
+ * the hinge as an empty track between them, keeps every card on one panel.
+ *
+ * `left` is the box's own x on screen, since the fold is reported in screen
+ * coordinates and the grid may sit beside a sidebar.
+ */
+export function columnsAcrossFold({ width, left = 0, gap, minCard, fold }) {
+  if (!fold || fold.posture !== 'book') return null;
+  if (!(width > 0) || !(minCard > 0)) return null;
+  const start = fold.start - left;
+  const end = fold.end - left;
+  // Entirely to one side of this grid: nothing to do.
+  if (!(start > 0 && end < width)) return null;
+  const fit = (available) => Math.floor((available + gap) / (minCard + gap));
+  const l = fit(start);
+  const r = fit(width - end);
+  // A single column that would be squeezed to nothing is worse than a card
+  // crossing the crease, so the split only happens when both sides work.
+  if (l < 1 || r < 1) return null;
+  return { left: l, right: r, hinge: Math.max(0, Math.round(end - start)) };
+}
