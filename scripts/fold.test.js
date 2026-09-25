@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { foldFromFeatures, foldFromSegments, sizeClassFor, columnsAcrossFold } from '../src/lib/fold-core.js';
+import { foldFromFeatures, foldFromSegments, sizeClassFor, columnsAcrossFold, keepOffCrease } from '../src/lib/fold-core.js';
 
 test('size classes', () => {
   assert.equal(sizeClassFor(344), 'compact');
@@ -50,4 +50,26 @@ test('a side with no room for a card is left unsplit', () => {
   // The crease sits 80px in: one column on the left would be unreadable.
   const tight = { posture: 'book', start: 80, end: 120 };
   assert.equal(columnsAcrossFold({ width: 900, left: 0, gap: 16, minCard: 236, fold: tight }), null);
+});
+
+test('a floating panel slides to the side of the crease it leans towards', () => {
+  const crease = { start: 480, end: 520, min: 12, max: 1000 };
+  // Mostly left of the crease: it goes fully left, ending where the crease starts.
+  assert.equal(keepOffCrease({ pos: 380, size: 200, ...crease }), 280);
+  // Mostly right: it starts where the crease ends.
+  assert.equal(keepOffCrease({ pos: 460, size: 300, ...crease }), 520);
+});
+
+test('a panel already clear of the crease is left alone', () => {
+  const crease = { start: 480, end: 520, min: 12, max: 1000 };
+  assert.equal(keepOffCrease({ pos: 100, size: 200, ...crease }), 100);
+  assert.equal(keepOffCrease({ pos: 600, size: 200, ...crease }), 600);
+  // No crease at all.
+  assert.equal(keepOffCrease({ pos: 300, size: 200, start: 0, end: 0, min: 0, max: 1000 }), 300);
+});
+
+test('a panel too big for either side stays where it was put', () => {
+  // 900 wide with a crease at 480: neither side can hold it, and pushing it
+  // off screen would be worse than leaving it across the fold.
+  assert.equal(keepOffCrease({ pos: 50, size: 900, start: 480, end: 520, min: 12, max: 1000 }), 50);
 });

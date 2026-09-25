@@ -1,5 +1,7 @@
 <script>
   import { closeOnBack } from '../../lib/back-stack.js';
+  import { fold } from '../../lib/fold.js';
+  import { keepOffCrease } from '../../lib/fold-core.js';
   /**
    * Popover: small floating panel anchored to a trigger. On phones it
    * becomes a bottom sheet, which is easier to reach than a tiny menu.
@@ -31,7 +33,7 @@
     return { top, bottom: top + height, height, keyboard: Math.max(0, window.innerHeight - top - height) };
   }
 
-  async function place() {
+  async function place(crease) {
     narrow = window.innerWidth < 600;
     const vp = viewport();
     if (narrow || !anchor) {
@@ -45,15 +47,29 @@
     const pw = panel.offsetWidth, ph = Math.min(panel.offsetHeight, room);
     const ax = anchor.left ?? anchor.x, ay = anchor.bottom ?? anchor.y;
     const top = anchor.top ?? anchor.y;
-    const left = Math.min(Math.max(12, ax), window.innerWidth - pw - 12);
+    let left = Math.min(Math.max(12, ax), window.innerWidth - pw - 12);
     let y = ay + 6;
     if (y + ph > vp.bottom - 12) y = top - ph - 6;
     // Neither below nor above fits (a keyboard is up): keep it inside what's visible.
     y = Math.min(Math.max(vp.top + 12, y), vp.bottom - 12 - ph);
+    // Half open, the crease is a wall rather than a suggestion: a panel placed
+    // in script is the one thing a stylesheet cannot move off it, and unlike a
+    // list it cannot be scrolled out of the way.
+    if (crease?.posture === 'book') {
+      left = keepOffCrease({
+        pos: left, size: pw, start: crease.start, end: crease.end,
+        min: 12, max: window.innerWidth - 12,
+      });
+    } else if (crease?.posture === 'tabletop') {
+      y = keepOffCrease({
+        pos: y, size: ph, start: crease.start, end: crease.end,
+        min: vp.top + 12, max: vp.bottom - 12,
+      });
+    }
     style = `left:${left}px; top:${y}px; max-height:${room}px; --pop-avail:${room}px;`;
   }
 
-  $: if (open) place();
+  $: if (open) place($fold);
 
   function onKey(e) { if (open && e.key === 'Escape') { e.stopPropagation(); close(); } }
   // A keyboard opening or closing moves the popover with it.
@@ -61,7 +77,7 @@
   function onViewport() {
     if (!open) return;
     cancelAnimationFrame(_vvFrame);
-    _vvFrame = requestAnimationFrame(place);
+    _vvFrame = requestAnimationFrame(() => place($fold));
   }
   onMount(() => {
     window.addEventListener('keydown', onKey, true);

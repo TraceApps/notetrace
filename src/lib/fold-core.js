@@ -54,3 +54,28 @@ export function columnsAcrossFold({ width, left = 0, gap, minCard, fold }) {
   if (l < 1 || r < 1) return null;
   return { left: l, right: r, hinge: Math.max(0, Math.round(end - start)) };
 }
+
+/**
+ * Slide a floating panel off a crease, along the axis the crease runs across.
+ *
+ * A menu or picker is placed in script rather than by a stylesheet, so nothing
+ * else can move it off the fold, and unlike a scrolling list it cannot be
+ * nudged out of the way by the reader. `pos` and `size` are the panel's near
+ * edge and its length; `start` and `end` are the crease; `min` and `max` bound
+ * the screen.
+ *
+ * Whichever side the panel already leans towards is tried first. If it fits on
+ * neither, it is left where the caller put it: half off the screen is worse
+ * than across a crease.
+ */
+export function keepOffCrease({ pos, size, start, end, min, max }) {
+  if (!Number.isFinite(pos) || !Number.isFinite(size) || !(end > start)) return pos;
+  if (pos + size <= start || pos >= end) return pos;
+  const leansEarly = pos + size / 2 < (start + end) / 2;
+  const before = start - size;
+  const after = end;
+  for (const candidate of leansEarly ? [before, after] : [after, before]) {
+    if (candidate >= min && candidate + size <= max) return candidate;
+  }
+  return pos;
+}

@@ -20,6 +20,11 @@ html.fold-book .viewer .v-prev { left: calc(var(--fold-end) + 12px) !important; 
 html.fold-book .viewer .v-count,
 html.fold-book .viewer .v-text { left: calc(var(--fold-end) + (100vw - var(--fold-end)) / 2) !important; }
 
+/* Drawing: a stroke should never have to cross the crease, so the canvas keeps
+   to the panel right of it. The stage is watched by a ResizeObserver, so the
+   canvas re-fits itself when the phone is folded or opened. */
+html.fold-book .dw-stage { margin-left: var(--fold-end) !important; }
+
 /* ── Tabletop ─────────────────────────────────────────────────────── */
 /* Full-screen editor on a phone: the note above the fold, its toolbar and the keyboard below. */
 html.fold-tabletop .editor-panel.narrow { padding-bottom: calc(100dvh - var(--fold-start)) !important; }
@@ -40,3 +45,6 @@ html.fold-tabletop .dialog-backdrop { padding-bottom: calc(100dvh - var(--fold-s
 html.fold-tabletop .viewer { padding-top: 16px !important; padding-bottom: calc(100dvh - var(--fold-start) + 12px) !important; }
 html.fold-tabletop .viewer .v-prev,
 html.fold-tabletop .viewer .v-next { top: calc(var(--fold-start) / 2) !important; }
+/* Drawing: the sheet and its tools stay above the crease, the same as the
+   editor does, rather than the canvas running under it. */
+html.fold-tabletop .dw { padding-bottom: calc(100dvh - var(--fold-start)) !important; }
