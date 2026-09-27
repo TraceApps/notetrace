@@ -11,6 +11,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **Foldables use the crease.** Half open like a book, notes are dealt into columns either side of the fold instead of across it, Settings puts its section list on one side and the section on the other, and menus and pickers slide clear rather than being split by it. Trace takes the panel beside the crease; in laptop posture it sits on the flat half, leaving your notes readable on the half standing up. Drawing still gets the whole screen, since an opened foldable is a bigger sheet to draw on.
 
+### Fixed
+
+- **Accents no longer hide what you were looking for.** Searching notes already ignored them; labels, the [[link]] picker and Settings search did not, so a label called "Mañana" or a note titled "Répétition" went missing unless you typed the accent. They all ignore accents now, the match is highlighted in the result, and local mode on Android answers the same as the server. Text without accents matches exactly as before.
+
 ---
 
 ## [1.1.0-dev01] - 2026-09-24 (pre-release)

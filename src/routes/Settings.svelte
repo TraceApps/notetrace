@@ -47,6 +47,8 @@
   import SettingsAbout           from '../components/settings/SettingsAbout.svelte';
   import Profile                 from './Profile.svelte';
   import Sheet                   from '../components/ui/Sheet.svelte';
+  import { foldText } from '../lib/search-text.js';
+
 
   // ── Route param → current section ──────────────────────────────────────
   // svelte-spa-router route `/settings/:section` → params.section.
@@ -79,7 +81,7 @@
 
   // ── Settings search ────────────────────────────────────────────────────
   let settingsSearch = '';
-  $: settingsQuery = settingsSearch.toLowerCase().trim();
+  $: settingsQuery = foldText(settingsSearch).trim();
 
   // On mobile / narrow, typing into the search bar while on a
   // sub-page auto-navigates back to the index with the query so
@@ -266,7 +268,7 @@
   async function _scheduleDeepLinkScroll(q) {
     await tick();
     await new Promise(r => setTimeout(r, 60));
-    const q_norm = q.toLowerCase().trim();
+    const q_norm = foldText(q).trim();
     if (!q_norm) return;
     const scope = document.querySelector('.subpage-view');
     if (!scope) return;
@@ -275,7 +277,7 @@
     );
     let hit = null;
     for (const el of candidates) {
-      if ((el.textContent || '').toLowerCase().includes(q_norm)) { hit = el; break; }
+      if (foldText(el.textContent).includes(q_norm)) { hit = el; break; }
     }
     if (!hit) return;
     const row = hit.closest('.setting-row') || hit;
