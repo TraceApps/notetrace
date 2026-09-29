@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Settings → About has a GitHub Sponsors button** next to Ko-fi, for anyone who'd rather support monthly.
+
 ---
 
 ## [1.1.0-dev02] - 2026-09-27 (pre-release)
