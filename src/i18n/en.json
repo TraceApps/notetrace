@@ -1299,8 +1299,8 @@
       "app_name":               "NoteTrace",
       "federation_prefix":      "Optional federation with ",
       "federation_suffix":      " for nutrition tracking",
-      "family_prefix":          "Part of the ",
-      "family_suffix":          " family (with NutriTrace, LiftTrace, and CookTrace)"
+      "family_line_prefix":     "Part of the ",
+      "family_line_suffix":     " family"
     },
     "support": {
       "lead":                   "NoteTrace is free and always will be. Support is optional and never unlocks anything.",
