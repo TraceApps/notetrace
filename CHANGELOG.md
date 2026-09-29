@@ -14,6 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 - **Settings pages line up with the section list** on desktop and foldables. Every page started 12px below the list beside it.
+- **The Settings section list keeps its place** on desktop and foldables. Every click in it scrolled the list back to Profile.
 
 ---
 
