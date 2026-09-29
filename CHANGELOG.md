@@ -7,21 +7,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [1.1.0-dev03] - 2026-09-29 (pre-release)
+
+A dev pre-release of the 1.1.0 minor. A Support page in Settings, two Settings layout fixes, and security updates.
+
 ### Added
 
 - **Settings has a Support page**, next to About: Ko-fi and GitHub Sponsors, plus free ways to help (star the repo, report a bug, translate). It replaces the support row that used to sit in About.
+
+### Changed
+
+- **The in-app updater reuses an update it already downloaded.** Coming back to Updates goes straight to installing instead of downloading the whole APK again, and the button says Install. Older downloads are cleared so they stop piling up on the phone.
 
 ### Fixed
 
 - **Settings pages line up with the section list** on desktop and foldables. Every page started 12px below the list beside it.
 - **The Settings section list keeps its place** on desktop and foldables. Every click in it scrolled the list back to Profile.
 
-
 ### Security
 
 - **multer** bumped 2.3.0 to 2.4.0, closes [GHSA-3pph-fpjx-jg34](https://github.com/advisories/GHSA-3pph-fpjx-jg34) (moderate: an upload cut off at just the wrong moment could leave its file behind on disk). Uploads and backup restore require signing in.
 - **nodemailer** bumped 9.1.1 to 10.0.12 on the server, closes [GHSA-6vj9-mwq6-2f5v](https://github.com/advisories/GHSA-6vj9-mwq6-2f5v) (moderate: separate mail transports could share one TLS server name). Removed from the web app's own dependencies, where nothing used it.
 - `npm audit` reports 0 vulnerabilities for the app and the server.
+
 ---
 
 ## [1.1.0-dev02] - 2026-09-27 (pre-release)
