@@ -20,10 +20,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Signing in on a plain-HTTP address says what's wrong instead of looping.** The sign-in cookie only works over HTTPS unless `INSECURE_COOKIES=1` is set, so signing in from an `http://` address dropped you back on the login page with no error. The sign-in and setup screens now explain it and link to the fix, the app no longer flashes before sending you back, and the server log says so too.
 - **Sharing works in the Android app connected to a server.** The Share dialog asked the server about the phone's own copy of the note, so it could show the wrong people or none.
 - **Popovers stay on the screen when their contents load late.** The Share dialog opened near the bottom of a note ran off the screen once its list arrived.
+- **The app no longer loads behind the sign-in screen.** Opened signed out, it asked the server for your data and was refused before the sign-in screen replaced it. It now waits to learn who is signed in.
 
 ### Security
 
 - **The Android app's SSO sign-in no longer passes the session token through the `notetrace://` link**, which another app could intercept. The link carries a single-use code that only the app that started the sign-in can redeem.
+- **Uploaded files get unguessable names.** The random part of the name was made with `Math.random()`, which can be predicted from its own output.
 
 ---
 
