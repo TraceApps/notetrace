@@ -481,7 +481,8 @@
         });
         // And on launch, once auth has settled.
         setTimeout(() => import('./lib/wear-pairing.js').then(({ pairWatch }) => pairWatch()).catch(() => {}), 2500);
-        // Deep link callbacks: notetrace://oidc-callback?token=…
+        // Deep link callbacks: notetrace://oidc-callback?code=… (or ?token=…
+        // from servers older than the single-use code hand-off)
         // A home screen shortcut that cold-starts the app arrives as the launch URL.
         App.getLaunchUrl?.().then((r) => {
           const m = String(r?.url || '').match(/^notetrace:\/\/new\/(\w+)/);
@@ -501,9 +502,22 @@
             if (host === 'oidc-callback') {
               const errMsg = params.get('error');
               const linked = params.get('linked');
-              const token = params.get('token');
-              const idTokenHint = params.get('id_token_hint');
-              const providerId  = params.get('provider_id');
+              let token = params.get('token');
+              let idTokenHint = params.get('id_token_hint');
+              let providerId  = params.get('provider_id');
+              const code = params.get('code');
+              if (code && !errMsg) {
+                try {
+                  const { redeemHandoff } = await import('./lib/oidc-app-handoff.js');
+                  const data = await redeemHandoff(code);
+                  token = data.token;
+                  idTokenHint = data.id_token_hint || null;
+                  providerId = data.provider_id != null ? String(data.provider_id) : null;
+                } catch (e) {
+                  import('./stores/toast.js').then(({ showError }) => showError(e?.message || 'Sign-in failed'));
+                  return;
+                }
+              }
               if (errMsg) {
                 import('./stores/toast.js').then(({ showError }) => showError(decodeURIComponent(errMsg)));
               } else if (linked) {
