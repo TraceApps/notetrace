@@ -32,6 +32,7 @@ import webhooksRoutes     from './routes/webhooks.js';
 import mcpRoutes          from './routes/mcp.js';
 import integrationsRoutes from './routes/integrations.js';
 import linkPreviewRoutes from './routes/link-preview.js';
+import publicNoteRoutes from './routes/public-note.js';
 import { logger }   from './logger.js';
 import { authenticate, userMgmtActive } from './middleware/auth.js';
 import { csrfProtect } from './middleware/csrf.js';
@@ -43,6 +44,8 @@ import { seedOidcFromEnv } from './lib/oidc-env.js';
 // Initialise DB (runs schema)
 import db from './db.js';
 import { isPrivateUploadPath, UPLOAD_RESPONSE_HEADERS, uploadDisposition } from './lib/upload-paths.js';
+import { getPublicNote } from './lib/notes.js';
+import { publicNoteHead, injectPublicNoteHead, publicPageHtml } from './lib/public-note-meta.js';
 
 // Seed config from env vars if provided (env vars take priority over UI)
 seedSmtpFromEnv();
@@ -179,6 +182,10 @@ router.get('/api/oidc/callback', (req, res) => {
   res.redirect(307, `${BASE_URL}/api/auth/oidc/callback${q >= 0 ? req.originalUrl.slice(q) : ''}`);
 });
 
+// Public note links read one note by its token, with no account. Ahead of
+// the setup gate so a link keeps working in single-user mode.
+router.use('/api/n', publicNoteRoutes);
+
 // Setup enforcement — block data APIs until the first user account is created.
 // /api/auth/* is allowed so the client can register the admin.
 //
@@ -271,6 +278,25 @@ try {
 } catch (e) {
   logger.warn(`[server] could not pre-template dist/index.html: ${e.message}`);
 }
+
+// A public note link. Same app page, with the note's title, a line of its
+// text, and its first picture in <head> so chat apps can preview the link.
+// An unknown or removed token still gets the page (it says the link is
+// gone) but with a 404, so a preview shows nothing.
+router.get('/n/:token', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.set('Referrer-Policy', 'no-referrer');
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  if (!_indexHtmlTemplated) return res.sendFile(_indexHtmlPath);
+  const html = publicPageHtml(_indexHtmlTemplated, BASE_URL);
+  const note = getPublicNote(req.params.token);
+  if (!note) return res.status(404).set('Content-Type', 'text/html').send(html);
+  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
+  const origin = `${proto}://${req.headers['x-forwarded-host'] || req.get('host')}`;
+  const pageUrl = `${origin}${BASE_URL}/n/${encodeURIComponent(req.params.token)}`;
+  const head = publicNoteHead(note, { origin, basePath: BASE_URL, pageUrl });
+  res.set('Content-Type', 'text/html').send(injectPublicNoteHead(html, head));
+});
 
 // SPA fallback — serves the templated index.html for any route under BASE_URL.
 // Express 5 / path-to-regexp 8 requires named splat syntax for catch-alls;

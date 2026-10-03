@@ -7,12 +7,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Public links for notes** (#15). The owner can make a read-only link to a note from the Share dialog, for people without an account. It shows the note, its checklist, and its pictures, and nothing about who owns it or who else it's shared with. Chat apps show the note's title, a line of its text, and its first picture. Removing the link stops it at once, and a note in the trash isn't readable until it's restored.
+
 ### Fixed
 
 - **Signing in through SSO with an email that already has an account no longer creates a second account.** When the identity provider doesn't mark the email verified (Authentik's default since 2025.10), the sign-in is refused with a pointer to link the provider from your profile, instead of landing you in a new, empty account.
 - **SSO works with Authelia 4.39 and later out of the box.** Email, username and groups are read from the provider's userinfo when the ID token leaves them out.
 - **The SSO callback also works without the provider number, and at `/api/oidc/callback`**, the address older docs gave. Both used to end on a blank page.
 - **`OIDC_ENABLE_EMAIL_PASSWORD_LOGIN` works for providers added in Settings.** It was ignored unless a provider was also defined through env vars.
+- **Sharing works in the Android app connected to a server.** The Share dialog asked the server about the phone's own copy of the note, so it could show the wrong people or none.
+- **Popovers stay on the screen when their contents load late.** The Share dialog opened near the bottom of a note ran off the screen once its list arrived.
 
 ### Security
 

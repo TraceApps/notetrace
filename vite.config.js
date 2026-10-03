@@ -78,7 +78,9 @@ export default defineConfig({
         // Reminder notification clicks and shared photos (public/sw-extras.js).
         importScripts: ['sw-extras.js'],
         navigateFallback: 'index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/uploads\//, /^\/share-target/],
+        // Public note links (/n/<token>) come from the server every time: it
+        // writes the preview tags and the <base> the page needs.
+        navigateFallbackDenylist: [/^\/api\//, /^\/uploads\//, /^\/share-target/, /\/n\/[A-Za-z0-9_-]{16,64}\/?$/],
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,

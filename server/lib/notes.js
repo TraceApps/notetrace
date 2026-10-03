@@ -16,7 +16,7 @@
  *   - pin, archive, and labels are personal to each person
  *   - reminders, trash, and permanent delete stay with the owner
  */
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes } from 'crypto';
 import { localizeDataUrl } from './image-localizer.js';
 import db from '../db.js';
 import { dispatchWebhookEvent } from './webhooks.js';
@@ -576,7 +576,7 @@ export const deleteNoteForever = db.transaction((u, id) => {
   db.prepare(`UPDATE checklist_items SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND deleted_at IS NULL`).run(ts, ts, id);
   db.prepare(`UPDATE note_labels SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND deleted_at IS NULL`).run(ts, ts, id);
   db.prepare(`UPDATE note_attachments SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND deleted_at IS NULL`).run(ts, ts, id);
-  db.prepare(`UPDATE notes SET deleted_at = ?, updated_at = ? WHERE id = ?`).run(ts, ts, id);
+  db.prepare(`UPDATE notes SET deleted_at = ?, updated_at = ?, share_token = NULL WHERE id = ?`).run(ts, ts, id);
   db.prepare(`UPDATE note_members SET deleted_at = ?, updated_at = ? WHERE note_id = ? AND deleted_at IS NULL`).run(stampNow(), stampNow(), id);
   db.prepare(`DELETE FROM note_versions WHERE note_id = ?`).run(id);
   return true;
@@ -964,6 +964,69 @@ export function revokedNoteIds(u, since) {
         AND ((m.deleted_at IS NOT NULL AND m.updated_at >= ?)
           OR (m.deleted_at IS NULL AND n.trashed_at IS NOT NULL AND n.synced_at >= ?))`
   ).all(u, since, since).map(r => r.id);
+}
+
+// ── Public link ──────────────────────────────────────────────────────
+// A read-only link anyone can open without an account. Only the owner
+// creates or removes it, and only on a server with accounts. A note in the
+// trash stops being readable until it's restored.
+
+const PUBLIC_TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
+
+/** The owner's view of the link: { token } (null when there is none). */
+export function getPublicLink(u, noteId) {
+  if (u == null) return null;
+  const row = _row(u, noteId);
+  return row ? { token: row.share_token || null } : null;
+}
+
+/** Owner creates the link. A second call keeps the existing token. */
+export function createPublicLink(u, noteId) {
+  if (u == null) return { status: 400, error: 'Sharing needs user accounts' };
+  const row = _row(u, noteId);
+  if (!row) return { status: 404, error: 'Note not found' };
+  if (row.trashed_at) return { status: 400, error: 'Restore the note before sharing it' };
+  if (row.share_token) return { token: row.share_token };
+  const token = randomBytes(16).toString('base64url');
+  db.prepare(`UPDATE notes SET share_token = ? WHERE id = ?`).run(token, noteId);
+  return { token };
+}
+
+/** Owner removes the link. The old URL stops working at once. */
+export function revokePublicLink(u, noteId) {
+  if (u == null || !_row(u, noteId)) return { status: 404, error: 'Note not found' };
+  db.prepare(`UPDATE notes SET share_token = NULL WHERE id = ?`).run(noteId);
+  return { token: null };
+}
+
+/**
+ * The note behind a public token, as a stranger may see it: the content
+ * and pictures, nothing about who owns it, who it's shared with, its
+ * labels, reminders, or history. Null when the token is unknown, removed,
+ * or the note is in the trash.
+ */
+export function getPublicNote(token) {
+  if (!PUBLIC_TOKEN_RE.test(String(token || ''))) return null;
+  const row = db.prepare(
+    `SELECT id, title, body_md, kind, color, created_at, updated_at FROM notes
+      WHERE share_token = ? AND deleted_at IS NULL AND trashed_at IS NULL`
+  ).get(token);
+  if (!row) return null;
+  const items = row.kind === 'checklist' ? (_itemsFor([row.id]).get(row.id) || []) : [];
+  const attachments = _attachmentsFor([row.id]).get(row.id) || [];
+  return {
+    title: row.title || '',
+    body_md: row.kind === 'text' ? (row.body_md || '') : '',
+    kind: row.kind,
+    color: row.color,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    items: items.map(i => ({ text: i.text, checked: i.checked })),
+    attachments: attachments.map(a => ({
+      url: a.url, mime: a.mime, name: a.name, preview_url: a.preview_url,
+      width: a.width, height: a.height, duration_ms: a.duration_ms,
+    })),
+  };
 }
 
 // ── Import ───────────────────────────────────────────────────────────

@@ -220,6 +220,9 @@ const _NoteApiHttp = {
   addMember(noteId, data)        { return this.post(`/api/notes/${noteId}/members`, data); },
   updateMember(noteId, uid, data){ return this.patch(`/api/notes/${noteId}/members/${uid}`, data); },
   removeMember(noteId, uid)      { return this.del(`/api/notes/${noteId}/members/${uid}`); },
+  getPublicLink(noteId)          { return this.get(`/api/notes/${noteId}/public-link`); },
+  createPublicLink(noteId)       { return this.post(`/api/notes/${noteId}/public-link`); },
+  removePublicLink(noteId)       { return this.del(`/api/notes/${noteId}/public-link`); },
 
   // Users (sharing picker)
   getUsersList()                 { return this.get('/api/auth/users/list'); },
@@ -270,6 +273,7 @@ const _NoteApiWeb = isNative ? null : createOfflineApi(_NoteApiHttp);
 const SERVER_ONLY_METHODS = new Set([
   'getUsersList', 'getAppConfig',
   'getMembers', 'addMember', 'updateMember', 'removeMember',
+  'getPublicLink', 'createPublicLink', 'removePublicLink',
   // Imports run on the server (keeping original dates) and reach this
   // device through sync.
   'importNotes', 'importUploadImage', 'importUploadFile', 'importUpdateAttachment', 'importAddAttachments', 'uploadAudio',

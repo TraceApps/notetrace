@@ -71,6 +71,25 @@
 
   $: if (open) place($fold);
 
+  // Contents that load after opening (the Share dialog fetches its list) grow
+  // the panel after it was placed, which pushed its bottom off the screen.
+  // Place it again whenever its height changes.
+  let _sizeObserver = null;
+  let _placedHeight = 0;
+  function observeSize(el) {
+    _sizeObserver?.disconnect();
+    _sizeObserver = null;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    _placedHeight = el.offsetHeight;
+    _sizeObserver = new ResizeObserver(() => {
+      if (Math.abs(el.offsetHeight - _placedHeight) < 2) return;
+      _placedHeight = el.offsetHeight;
+      onViewport();
+    });
+    _sizeObserver.observe(el);
+  }
+  $: observeSize(panel);
+
   function onKey(e) { if (open && e.key === 'Escape') { e.stopPropagation(); close(); } }
   // A keyboard opening or closing moves the popover with it.
   let _vvFrame = 0;
@@ -89,6 +108,7 @@
     window.visualViewport?.removeEventListener('resize', onViewport);
     window.removeEventListener('resize', onViewport);
     cancelAnimationFrame(_vvFrame);
+    _sizeObserver?.disconnect();
   });
 </script>
 

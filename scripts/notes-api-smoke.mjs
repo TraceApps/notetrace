@@ -269,6 +269,42 @@ ok(pull3.revoked_notes.includes(shared.id) && (await as(samToken, 'GET', '/api/n
 await api('POST', `/api/notes/${shared.id}/restore`);
 ok((await as(samToken, 'GET', `/api/notes/${shared.id}`)).status === 200, 'restoring brings it back for members');
 
+console.log('public link');
+const anon = (...a) => as('', ...a);
+ok((await api('GET', `/api/notes/${shared.id}/public-link`)).json.token === null, 'a note has no public link until the owner makes one');
+ok((await as(samToken, 'POST', `/api/notes/${shared.id}/public-link`)).status === 404, 'an edit member cannot make a public link');
+const link = (await api('POST', `/api/notes/${shared.id}/public-link`)).json;
+ok(/^[A-Za-z0-9_-]{22}$/.test(link.token || ''), 'owner makes a public link');
+ok((await api('POST', `/api/notes/${shared.id}/public-link`)).json.token === link.token, 'making it again keeps the same link');
+ok((await as(samToken, 'GET', `/api/notes/${shared.id}/public-link`)).status === 404, 'a member cannot read the link');
+const pub = await anon('GET', `/api/n/${link.token}`);
+ok(pub.status === 200 && pub.json.title === ownerView.title && pub.json.items.length === ownerView.items.length, 'anyone with the link reads the note without signing in');
+const leaked = ['id', 'user_id', 'share_token', 'labels', 'reminder_at', 'reminder_rrule', 'pinned', 'archived', 'trashed_at', 'share_role', 'share_owner', 'share_count'].filter(k => k in pub.json);
+ok(leaked.length === 0 && pub.json.items.every(i => Object.keys(i).sort().join() === 'checked,text'), `public view carries only the content (leaked: ${leaked.join() || 'none'})`);
+ok((await anon('GET', `/api/n/${link.token.slice(0, -1)}x`)).status === 404 && (await anon('GET', '/api/n/short')).status === 404, 'a wrong token reads nothing');
+const page = await fetch(`${B}/n/${link.token}`);
+const pageHtml = await page.text();
+ok(page.status === 200 && pageHtml.includes(`<meta property="og:title" content="${ownerView.title}" />`) && pageHtml.includes('noindex') && page.headers.get('referrer-policy') === 'no-referrer', 'the link page carries the preview tags and keeps the token out of referrers');
+ok((pageHtml.match(/<title>/g) || []).length === 1, 'the page has one title');
+const xss = (await api('POST', '/api/notes', { title: '"><script>alert(1)</script>', body_md: 'Body <img src=x onerror=alert(1)>' })).json;
+const xssLink = (await api('POST', `/api/notes/${xss.id}/public-link`)).json;
+const xssHtml = await (await fetch(`${B}/n/${xssLink.token}`)).text();
+ok(!xssHtml.includes('<script>alert(1)') && !xssHtml.includes('<img src=x') && xssHtml.includes('&lt;script&gt;'), 'preview tags are escaped');
+await api('DELETE', `/api/notes/${xss.id}/forever`);
+ok((await anon('GET', `/api/n/${xssLink.token}`)).status === 404, 'a deleted note stops being public');
+await api('DELETE', `/api/notes/${shared.id}`);
+ok((await anon('GET', `/api/n/${link.token}`)).status === 404 && (await fetch(`${B}/n/${link.token}`)).status === 404, 'a note in the trash is not public');
+ok((await api('POST', `/api/notes/${shared.id}/public-link`)).status === 400, 'no new link for a note in the trash');
+await api('POST', `/api/notes/${shared.id}/restore`);
+ok((await anon('GET', `/api/n/${link.token}`)).status === 200, 'restoring makes the same link work again');
+ok((await as(samToken, 'DELETE', `/api/notes/${shared.id}/public-link`)).status === 404, 'a member cannot remove the link');
+ok((await api('DELETE', `/api/notes/${shared.id}/public-link`)).json.token === null && (await anon('GET', `/api/n/${link.token}`)).status === 404, 'removing the link stops it at once');
+const relink = (await api('POST', `/api/notes/${shared.id}/public-link`)).json;
+ok(relink.token && relink.token !== link.token && (await anon('GET', `/api/n/${link.token}`)).status === 404, 'a new link never revives the old one');
+const pushTok = (await api('POST', '/api/sync/push', { tables: { notes: [{ client_id: 7, server_id: shared.id, share_token: 'chosen-by-device-123', updated_at: '2099-01-02 00:00:00' }] } }));
+ok(pushTok.status === 200 && (await anon('GET', '/api/n/chosen-by-device-123')).status === 404, 'a device cannot set the link through sync');
+await api('DELETE', `/api/notes/${shared.id}/public-link`);
+
 console.log('import');
 const importBatch = [
   { title: 'From Keep', body_md: 'Line one  \nline two', kind: 'text', color: 'tide', pinned: true, labels: ['Imported', 'home'], created_at: '2024-09-10 20:26:40', updated_at: '2024-09-12 14:06:40' },

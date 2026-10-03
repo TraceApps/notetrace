@@ -42,6 +42,7 @@ const NEEDS_SERVER = new Set([
   'deleteAttachment', 'updateAttachment', 'getAttachmentDrawing',
   'uploadAudio',
   'getMembers', 'addMember', 'updateMember', 'removeMember',
+  'getPublicLink', 'createPublicLink', 'removePublicLink',
 ]);
 
 /** { online, pending, syncing, error } for the sidebar and the offline bar. */

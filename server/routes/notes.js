@@ -208,6 +208,20 @@ router.delete('/:id/members/:userId', wrap((req, res) => {
   sendResult(res, Notes.removeMember(uid(req), idParam(req), parseInt(req.params.userId, 10)));
 }));
 
+// Public link: owner only. GET reads it, POST creates it, DELETE removes it.
+router.get('/:id/public-link', wrap((req, res) => {
+  const r = Notes.getPublicLink(uid(req), idParam(req));
+  return r ? res.json(r) : notFound(res);
+}));
+
+router.post('/:id/public-link', wrap((req, res) => {
+  sendResult(res, Notes.createPublicLink(uid(req), idParam(req)));
+}));
+
+router.delete('/:id/public-link', wrap((req, res) => {
+  sendResult(res, Notes.revokePublicLink(uid(req), idParam(req)));
+}));
+
 // ── Versions ─────────────────────────────────────────────────────────
 
 router.get('/:id/versions', wrap((req, res) => {

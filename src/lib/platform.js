@@ -239,3 +239,18 @@ export function apiUrl(path) {
   }
   return _basePath + path;
 }
+
+/** The address of a note's public link, on the server this app talks to. */
+export function publicNoteUrl(token) {
+  const root = isNative ? String(getServerUrl() || '').replace(/\/+$/, '') : `${window.location.origin}${_basePath}`;
+  return `${root}/n/${token}`;
+}
+
+/** The token when this page is a public note link (/n/<token>), else null. */
+export function publicNoteToken() {
+  if (isNative || typeof window === 'undefined') return null;
+  let path = window.location.pathname;
+  if (_basePath && path.startsWith(_basePath)) path = path.slice(_basePath.length);
+  const m = /^\/n\/([A-Za-z0-9_-]{16,64})\/?$/.exec(path);
+  return m ? m[1] : null;
+}

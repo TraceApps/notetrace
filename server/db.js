@@ -383,6 +383,11 @@ if (!columnExists('note_members', 'in_tasks')) db.exec(`ALTER TABLE note_members
 // so "daily at 8:00" stays at 8:00 across daylight-saving changes.
 if (!columnExists('notes', 'reminder_tz')) db.exec(`ALTER TABLE notes ADD COLUMN reminder_tz TEXT`);
 
+// Public link: anyone with the token can read the note. Set and cleared by
+// the owner only; never synced, so a device can't publish a note.
+if (!columnExists('notes', 'share_token')) db.exec(`ALTER TABLE notes ADD COLUMN share_token TEXT`);
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_share_token ON notes(share_token) WHERE share_token IS NOT NULL`);
+
 // /api/sync/pull SELECTs updated_at on every synced table, including
 // ai_chat_history. SQLite refuses non-constant DEFAULTs on ALTER ADD
 // COLUMN, so older databases get the column without a default and a pair
