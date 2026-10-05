@@ -14,7 +14,7 @@ async function fakeProvider(handler) {
     req.on('data', c => chunks.push(c));
     req.on('end', () => {
       const body = Buffer.concat(chunks);
-      seen.push({ url: req.url, auth: req.headers.authorization, type: req.headers['content-type'] || '', body });
+      seen.push({ url: req.url, auth: req.headers.authorization, type: req.headers['content-type'] || '', accept: req.headers.accept || '', body });
       const out = handler(req.url, body);
       res.writeHead(out.status || 200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(out.json));
@@ -55,12 +55,18 @@ test('image text sends a vision message and treats NONE as no text', async () =>
   let reply = 'Total: $12';
   const p = await fakeProvider(() => ({ json: { choices: [{ message: { content: reply } }] } }));
   const cfg = { provider: 'oai-compat', baseUrl: p.base, model: 'vision' };
-  assert.equal(await readImageText(cfg, { base64: 'AAAA', mime: 'image/png' }), 'Total: $12');
-  const sent = JSON.parse(p.seen[0].body.toString());
-  assert.equal(sent.messages[0].content[0].image_url.url, 'data:image/png;base64,AAAA');
-  reply = 'NONE';
-  assert.equal(await readImageText(cfg, { base64: 'AAAA', mime: 'image/png' }), '');
-  p.close();
+  try {
+    assert.equal(await readImageText(cfg, { base64: 'AAAA', mime: 'image/png' }), 'Total: $12');
+    const sent = JSON.parse(p.seen[0].body.toString());
+    assert.equal(sent.messages[0].content[0].image_url.url, 'data:image/png;base64,AAAA');
+    // One JSON answer, never a stream (TraceApps/nutritrace#258).
+    assert.equal(sent.stream, false);
+    assert.equal(p.seen[0].accept, 'application/json');
+    reply = 'NONE';
+    assert.equal(await readImageText(cfg, { base64: 'AAAA', mime: 'image/png' }), '');
+  } finally {
+    p.close();
+  }
 });
 
 test('provider support and errors', async () => {
