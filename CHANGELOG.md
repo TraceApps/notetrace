@@ -26,6 +26,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Popovers stay on the screen when their contents load late.** The Share dialog opened near the bottom of a note ran off the screen once its list arrived.
 - **The app no longer loads behind the sign-in screen.** Opened signed out, it asked the server for your data and was refused before the sign-in screen replaced it. It now waits to learn who is signed in.
 - **The installed app works when NoteTrace is served from a subpath.** With `BASE_URL` set (say `/notetrace`), every visit after the first sent the app's requests to the site root instead, online and offline. Thanks @kgenerozov for the fix in LiftTrace and NutriTrace.
+- **Trace works with OpenAI-compatible endpoints that stream unless told not to** ([nutritrace#258](https://github.com/TraceApps/nutritrace/issues/258), reported by @jsapede). Chat answers and reading pictures failed with "Unexpected non-whitespace character after JSON"; every request now asks for a single answer.
 
 ### Security
 

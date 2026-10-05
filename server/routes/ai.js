@@ -172,8 +172,10 @@ export function relayRequest(cfg, body) {
     return { url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cfg.model)}:generateContent?key=${encodeURIComponent(cfg.apiKey || '')}`, headers: { 'Content-Type': 'application/json' }, body: out };
   }
   out.model = cfg.model;
+  // The relay passes back one JSON reply, never a stream (TraceApps/nutritrace#258).
+  out.stream = false;
   const base = cfg.provider === 'openai' ? 'https://api.openai.com' : String(cfg.baseUrl || '').replace(/\/+$/, '');
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
   if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
   return { url: `${base}/v1/chat/completions`, headers, body: out };
 }
@@ -274,6 +276,7 @@ async function _callOpenAI(apiKey, model, messages, systemPrompt, baseUrl = 'htt
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
