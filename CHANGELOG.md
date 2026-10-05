@@ -11,6 +11,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **Public links for notes** (#15). The owner can make a read-only link to a note from the Share dialog, for people without an account. It shows the note, its checklist, and its pictures, and nothing about who owns it or who else it's shared with. Chat apps show the note's title, a line of its text, and its first picture. Removing the link stops it at once, and a note in the trash isn't readable until it's restored.
 
+### Changed
+
+- **Trace's attach button offers Camera or Gallery on phones and in the Android app**, the same as the other Trace apps. Each choice goes straight to the camera or the photo picker; on a computer the button opens the file picker.
+
 ### Fixed
 
 - **Signing in through SSO with an email that already has an account no longer creates a second account.** When the identity provider doesn't mark the email verified (Authentik's default since 2025.10), the sign-in is refused with a pointer to link the provider from your profile, instead of landing you in a new, empty account.
@@ -21,6 +25,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Sharing works in the Android app connected to a server.** The Share dialog asked the server about the phone's own copy of the note, so it could show the wrong people or none.
 - **Popovers stay on the screen when their contents load late.** The Share dialog opened near the bottom of a note ran off the screen once its list arrived.
 - **The app no longer loads behind the sign-in screen.** Opened signed out, it asked the server for your data and was refused before the sign-in screen replaced it. It now waits to learn who is signed in.
+- **The installed app works when NoteTrace is served from a subpath.** With `BASE_URL` set (say `/notetrace`), every visit after the first sent the app's requests to the site root instead, online and offline. Thanks @kgenerozov for the fix in LiftTrace and NutriTrace.
 
 ### Security
 
