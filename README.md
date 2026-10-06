@@ -155,6 +155,7 @@ Open `http://localhost:3004` and a first-run wizard walks you through creating a
 | `UPLOADS_PATH` | `/data/uploads` | Uploaded images and server-side backups. |
 | `PORT` | `3004` | Port the server listens on inside the container. |
 | `BASE_URL` | - | Mount at a subpath, e.g. `/notetrace`. |
+| `PUBLIC_URL` | - | The full address people open the app at, subpath included (e.g. `https://notes.example.com`). Links in emails (password reset, invites, sharing) use it. Unset, they use an address an admin has opened the app at. |
 | `LOG_LEVEL` | `info` | `error` \| `warn` \| `info` \| `debug`. |
 | `INSECURE_COOKIES` | unset | Set to `1` on plain-HTTP LAN deployments so the auth cookie isn't dropped. |
 | `MAX_SESSION_HOURS` | `8760` | Session-length cap in hours. Lower for shared / kiosk machines. |
