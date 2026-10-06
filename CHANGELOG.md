@@ -30,6 +30,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Security
 
+- **The image proxy passes images only.** For its image hosts it passed through whatever came back from the app's own address, a web page included, before sign-in. Anything that isn't an image is refused now, and images can't act as a page.
 - **A password reset link can no longer be pointed at someone else's site.** The link took its address from the request, so anyone could ask for another person's reset with a forged host and have the real email, token included, send them to it. Reset, invite emails now link to `PUBLIC_URL` when it's set, or to an address an admin uses. Links also keep the `BASE_URL` subpath now.
 - **Names in emails can no longer carry markup.** A name, or a title someone shared, went into the email as-is, so HTML or a link typed into it became real markup in the recipient's inbox. Affected the SMTP test and invite emails. Everything an email shows is escaped now.
 - **Link previews, Send to CookTrace and push notifications connect only to the address they checked**, so a name can't answer the check with one address and the connection with another, and they never reach cloud-metadata addresses.
