@@ -692,7 +692,7 @@
     "hide":              "Hide",
     "token_help":        "Create one in CookTrace: Settings, API Tokens, New Token, with just the shopping scope. Copy it right away: it is shown once.",
     "token_saved":       "Saved on this server and never shown again. Paste a new token to replace it.",
-    "setup_private":     "If CookTrace is on your local network, set ALLOW_PRIVATE_COOKTRACE_URLS=1 on this NoteTrace server.",
+    "address_help":      "The address you open CookTrace at. One on your local network works too.",
     "open_label":        "Shopping List",
     "open_desc":         "Your CookTrace list, grouped by aisle, to check off as you shop.",
     "open":              "Open Shopping",

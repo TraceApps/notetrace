@@ -142,7 +142,7 @@
           <input id="ct-url" class="input" type="url" inputmode="url" autocomplete="off"
             placeholder="https://cooktrace.example.com"
             bind:value={url} on:input={() => urlTouched = true} on:blur={save} />
-          <span class="setting-desc">{$_('cooktrace.setup_private')}</span>
+          <span class="setting-desc">{$_('cooktrace.address_help')}</span>
         </div>
         <div class="setting-divider"></div>
         <div class="form-group" style="padding:10px 16px">

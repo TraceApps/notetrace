@@ -1,7 +1,7 @@
 /**
  * cooktrace-smoke.mjs: link CookTrace, send checklist items, and use its
  * shopping list (list, check off, clear) through NoteTrace, against a
- * throwaway NoteTrace (ALLOW_PRIVATE_COOKTRACE_URLS=1) and the stand-in
+ * throwaway NoteTrace and the stand-in
  * CookTrace in design/tools/fake-cooktrace.mjs.
  *
  *   NOTETRACE_URL=http://localhost:3004 COOKTRACE_URL=http://host.docker.internal:5998 \

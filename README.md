@@ -168,7 +168,6 @@ Open `http://localhost:3004` and a first-run wizard walks you through creating a
 | `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` (or numbered `OIDC_PROVIDER_N_*`) | - | OIDC SSO provider(s). Env-defined providers are read-only in the UI. |
 | `MCP_ENABLED` / `MCP_WRITE_ENABLED` / `MCP_DESTROY_ENABLED` | unset | Model Context Protocol endpoint and its write / destructive tiers. |
 | `WEBHOOKS_ENABLED` | unset | Outgoing signed webhooks. |
-| `ALLOW_PRIVATE_COOKTRACE_URLS` | unset | Allow Send to CookTrace to reach a CookTrace on a LAN or Docker network address. |
 | `ALLOW_PRIVATE_LINK_PREVIEWS` | unset | Show link previews for links to LAN, loopback, or Docker network addresses. |
 | `FFMPEG_PATH` / `FFPROBE_PATH` | `ffmpeg` / `ffprobe` | Audio tools for converting voice recordings and splitting long ones for transcription. The Docker image includes a small audio-only build; set these when running outside Docker. |
 

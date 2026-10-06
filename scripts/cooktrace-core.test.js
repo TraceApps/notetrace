@@ -11,6 +11,9 @@ test('normalizeCooktraceUrl trims, drops trailing slashes, and needs http(s)', (
   assert.equal(normalizeCooktraceUrl('cook.example.com'), '');
   assert.equal(normalizeCooktraceUrl('ftp://cook.example.com'), '');
   assert.equal(normalizeCooktraceUrl(''), '');
+  // Origin and path only: a query or fragment would swallow the API path.
+  assert.equal(normalizeCooktraceUrl('http://cook.lan:3003/ct?x=1#y'), 'http://cook.lan:3003/ct');
+  assert.equal(normalizeCooktraceUrl('https://Cook.Example.com'), 'https://cook.example.com');
 });
 
 test('shoppingNames sends unchecked items once, cleaned', () => {

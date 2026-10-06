@@ -30,6 +30,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Security
 
+- **Link previews, Send to CookTrace and push notifications connect only to the address they checked**, so a name can't answer the check with one address and the connection with another, and they never reach cloud-metadata addresses.
+- **Send to CookTrace works with a CookTrace on your own network without `ALLOW_PRIVATE_COOKTRACE_URLS`**, which is no longer used. It only ever calls CookTrace's shopping API.
+- **A failed push test no longer shows the other server's raw reply**, and push follows a redirect only on the same server. The open `/api/proxy` checks every redirect too.
 - **The Android app's SSO sign-in no longer passes the session token through the `notetrace://` link**, which another app could intercept. The link carries a single-use code that only the app that started the sign-in can redeem.
 - **Uploaded files get unguessable names.** The random part of the name was made with `Math.random()`, which can be predicted from its own output.
 

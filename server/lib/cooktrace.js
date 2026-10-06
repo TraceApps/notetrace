@@ -8,12 +8,14 @@
  * (/api/v1/shopping) to list, add, check off, and clear items. CookTrace
  * needs no server setting for it.
  *
- * CookTrace on a private address (a LAN IP, localhost, a Docker network
- * name) needs ALLOW_PRIVATE_COOKTRACE_URLS=1 here.
+ * CookTrace usually lives on the home network (a LAN IP, localhost, a
+ * Docker network name), so that's allowed for every account. Only its
+ * shopping API and /api/v1/me are called, the address is checked (never
+ * cloud metadata), the connection pinned to it, and no redirect followed.
  */
 import db from '../db.js';
 import { encrypt, decrypt } from './token-crypto.js';
-import { assertSafeUrl } from './ssrf-guard.js';
+import { fetchChecked } from './ssrf-guard.js';
 import { normalizeCooktraceUrl } from './cooktrace-core.js';
 
 const URL_KEY = 'cooktraceUrl';
@@ -21,11 +23,6 @@ const TOKEN_KEY = 'cooktraceToken';
 const ENABLED_KEY = 'cooktraceEnabled';
 const TIMEOUT_MS = 15_000;
 
-function _envFlag(v) {
-  const s = String(v ?? '').trim().toLowerCase();
-  return s === '1' || s === 'true' || s === 'yes' || s === 'on';
-}
-const ALLOW_PRIVATE = () => _envFlag(process.env.ALLOW_PRIVATE_COOKTRACE_URLS);
 
 // ── Stored link (per user; app_config when there are no user accounts) ──
 
@@ -89,12 +86,18 @@ export class CooktraceError extends Error {
 }
 
 async function _fetch(url, opts = {}) {
-  await assertSafeUrl(url, { allowPrivate: ALLOW_PRIVATE(), allowPrivateEnvHint: 'ALLOW_PRIVATE_COOKTRACE_URLS' })
-    .catch(e => { throw new CooktraceError(e.message, 400); });
   try {
-    return await fetch(url, { ...opts, redirect: 'error', signal: AbortSignal.timeout(TIMEOUT_MS) });
+    const res = await fetchChecked(url, { ...opts, signal: AbortSignal.timeout(TIMEOUT_MS) }, { allowPrivate: true });
+    // No redirect is followed, as before: one means this isn't CookTrace's API.
+    if (res.status >= 300 && res.status < 400) {
+      try { await res.body?.cancel(); } catch {}
+      throw new CooktraceError('Couldn\'t reach CookTrace at that address.');
+    }
+    return res;
   } catch (e) {
+    if (e instanceof CooktraceError) throw e;
     if (e?.name === 'TimeoutError') throw new CooktraceError('CookTrace didn\'t answer in time.');
+    if (/addresses are not allowed/.test(e?.message || '')) throw new CooktraceError(e.message, 400);
     throw new CooktraceError('Couldn\'t reach CookTrace at that address.');
   }
 }
@@ -109,6 +112,9 @@ async function _me(url, token) {
 }
 
 
+// CookTrace's own short error message, never more than that of the reply.
+const _ctError = data => (typeof data?.error === 'string' ? data.error.slice(0, 200) : '');
+
 /** A call to CookTrace's shopping API with the saved token. Throws CooktraceError with a message for people. */
 async function _shopping(cfg, method, path = '', body) {
   const res = await _fetch(`${cfg.url}/api/v1/shopping${path}`, {
@@ -122,8 +128,8 @@ async function _shopping(cfg, method, path = '', body) {
   if (res.status === 404 && (!path || path.startsWith('?'))) throw new CooktraceError('This CookTrace is too old for NoteTrace. Update CookTrace, then link it again.', 400);
   if (res.status === 429) throw new CooktraceError('CookTrace is rate limiting this token. Try again in a minute.', 429);
   const data = await res.json().catch(() => null);
-  if (res.status === 404) throw new CooktraceError(data?.error || 'That item isn\'t on the CookTrace list any more.', 404);
-  if (!res.ok || !data) throw new CooktraceError(data?.error || `CookTrace answered with an error (${res.status}).`);
+  if (res.status === 404) throw new CooktraceError(_ctError(data) || 'That item isn\'t on the CookTrace list any more.', 404);
+  if (!res.ok || !data) throw new CooktraceError(_ctError(data) || `CookTrace answered with an error (${res.status}).`);
   return data;
 }
 
@@ -144,7 +150,7 @@ export async function link(userId, { url: rawUrl, token: rawToken }) {
   if (!url) throw new CooktraceError('Enter the CookTrace address, starting with http:// or https://.', 400);
   if (!token) {
     const saved = _config(userId);
-    if (saved && saved.url !== url) throw new CooktraceError('Enter the API token again for the new address.', 400);
+    if (saved && normalizeCooktraceUrl(saved.url) !== url) throw new CooktraceError('Enter the API token again for the new address.', 400);
     token = saved?.token || '';
   }
   if (!token) throw new CooktraceError('Enter a CookTrace API token.', 400);

@@ -9,8 +9,11 @@ export const MAX_SEND_ITEMS = 50;
 export function normalizeCooktraceUrl(raw) {
   const s = String(raw || '').trim().replace(/\/+$/, '');
   if (!/^https?:\/\/[^/\s]+/i.test(s)) return '';
-  try { new URL(s); } catch { return ''; }
-  return s;
+  let u;
+  try { u = new URL(s); } catch { return ''; }
+  // Origin and path only: a query or fragment would turn the API path
+  // appended to it into part of the query.
+  return (u.origin + u.pathname).replace(/\/+$/, '');
 }
 
 /**
