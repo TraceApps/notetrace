@@ -126,8 +126,16 @@ export function isEmailConfigured() {
 
 const _FONT = `-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif`;
 
+// Every name, title and link that goes into an email's HTML is escaped
+// here, so a name like "<b>Eve</b>" reads as typed instead of as markup.
+function _escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function emailWrapper(origin, bodyHtml, footerNote, preheaderText) {
-  const logoUrl = `${origin}/icons/logo-email.png`;
+  const logoUrl = `${_escapeHtml(origin)}/icons/logo-email.png`;
   const year    = new Date().getFullYear();
   const preheader = preheaderText
     ? `<div style="display:none;font-size:1px;color:#0A0B0F;line-height:1px;max-height:0;max-width:0;opacity:0;overflow:hidden;">${preheaderText}</div>`
@@ -213,7 +221,7 @@ ${preheader}
 
 function greeting(name) {
   return `<p class="nt-body-txt" style="margin:0 0 20px;font-size:15px;color:#8A93A8;line-height:1.7;">
-    Hi${name ? ' <strong style="color:#FFFFFF;">' + name + '</strong>' : ''},
+    Hi${name ? ' <strong style="color:#FFFFFF;">' + _escapeHtml(name) + '</strong>' : ''},
   </p>`;
 }
 
@@ -222,9 +230,9 @@ function ctaButton(href, label) {
     <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 auto;">
       <tr>
         <td align="center" style="border-radius:10px;background-color:#9A7CF0;">
-          <a href="${href}"
+          <a href="${_escapeHtml(href)}"
             style="display:inline-block;padding:14px 36px;font-family:${_FONT};font-size:15px;font-weight:700;color:#FFFFFF;text-decoration:none;border-radius:10px;letter-spacing:0.01em;">
-            ${label}
+            ${_escapeHtml(label)}
           </a>
         </td>
       </tr>
@@ -234,7 +242,7 @@ function ctaButton(href, label) {
 function fallbackUrl(url) {
   return `<p class="nt-expiry" style="margin:24px 0 0;font-family:${_FONT};font-size:12px;color:#4A5268;text-align:center;line-height:1.6;">
     Button not working? Copy this link into your browser:<br/>
-    <a class="nt-fb-url" href="${url}" style="color:#9A7CF0;word-break:break-all;font-size:11px;">${url}</a>
+    <a class="nt-fb-url" href="${_escapeHtml(url)}" style="color:#9A7CF0;word-break:break-all;font-size:11px;">${_escapeHtml(url)}</a>
   </p>`;
 }
 
@@ -269,7 +277,7 @@ export async function sendPasswordReset(email, resetUrl) {
 export async function sendInvite(email, inviteUrl, inviterName) {
   const origin  = new URL(inviteUrl).origin;
   const sender  = inviterName
-    ? `<strong style="color:#FFFFFF;">${inviterName}</strong> has invited you to join`
+    ? `<strong style="color:#FFFFFF;">${_escapeHtml(inviterName)}</strong> has invited you to join`
     : `You&rsquo;ve been invited to join`;
 
   const body = `
@@ -294,7 +302,7 @@ export async function sendInvite(email, inviteUrl, inviterName) {
   await sendMail({
     to: email,
     subject: `You've been invited to NoteTrace`,
-    html: emailWrapper(origin, body, null, `${inviterName || 'Someone'} invited you to NoteTrace, accept within 7 days.`),
+    html: emailWrapper(origin, body, null, `${_escapeHtml(inviterName || 'Someone')} invited you to NoteTrace, accept within 7 days.`),
     text: `${inviterName ? inviterName + ' has invited you' : "You've been invited"} to join NoteTrace.\n\nAccept your invitation:\n${inviteUrl}\n\nThis invite expires in 7 days.`,
   });
 }
