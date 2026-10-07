@@ -201,8 +201,9 @@ function _headers() {
 async function _handleSyncAuthError() {
   console.warn('[sync] received 401 — clearing local auth so the user can re-sign-in');
   try {
-    const { setAuthToken } = await import('./platform.js');
+    const { setAuthToken, forgetServerCookies } = await import('./platform.js');
     setAuthToken(null);
+    await forgetServerCookies();
   } catch {}
   try { localStorage.removeItem('wl:userId'); } catch {}
   try { localStorage.removeItem('note:cachedUser'); } catch {}

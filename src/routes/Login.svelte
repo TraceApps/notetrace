@@ -8,7 +8,7 @@
   import { push } from 'svelte-spa-router';
   import { slide } from 'svelte/transition';
   import { _ } from 'svelte-i18n';
-  import { apiUrl, isNative, getServerUrl, setAuthToken, resolveAssetUrl, iconUrl } from '../lib/platform.js';
+  import { apiUrl, isNative, getServerUrl, setAuthToken, forgetServerCookies, resolveAssetUrl, iconUrl } from '../lib/platform.js';
 
   import { get } from 'svelte/store';
 
@@ -28,6 +28,7 @@
       const saved = await bio.readSavedToken();
       if (!saved) { showError($_('login_ct.toast.no_saved')); return; }
       setAuthToken(saved);
+      await forgetServerCookies();
       await loadAuthState();
       // If /me rejected the saved token (expired, JWT_SECRET rotated, backup
       // restored, server URL changed), loadAuthState cleared currentUser.
@@ -116,7 +117,10 @@
       const data = await res.json();
       if (!res.ok) { showError(data.error || $_('login.errors.failed')); return; }
       // Store auth token for native server mode
-      if (isNative && data.token) setAuthToken(data.token);
+      if (isNative && data.token) {
+        setAuthToken(data.token);
+        await forgetServerCookies();
+      }
       // If biometric is enabled, stash the JWT so the next launch can unlock
       // with biometric instead of password. Mirrors the NT + LT save-on-login
       // pattern.

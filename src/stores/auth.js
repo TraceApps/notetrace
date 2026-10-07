@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
 import { loadServerSettings } from './settings.js';
-import { isNative, getServerUrl, getAuthToken, apiUrl as _apiUrl } from '../lib/platform.js';
+import { isNative, getServerUrl, getAuthToken, apiUrl as _apiUrl, forgetServerCookies } from '../lib/platform.js';
 
 function _authHeaders() {
   const h = {};
@@ -193,6 +193,7 @@ async function _refreshAuthFromServer() {
         localStorage.removeItem('wl:userId');
         localStorage.removeItem('note:cachedUser');
         localStorage.removeItem('note:csrf');
+        await forgetServerCookies();
         return;
       }
       if (!meRes.ok) return; // actual server error — keep cached auth
@@ -297,6 +298,8 @@ export async function logout() {
   if (isNative) {
     const { setAuthToken } = await import('../lib/platform.js');
     setAuthToken(null);
+    // The server's sign-in cookie goes too (lib/platform.js).
+    await forgetServerCookies();
     // Wipe biometric-cached JWT too, otherwise the next launch could bypass
     // the password gate after the user explicitly signed out.
     try {

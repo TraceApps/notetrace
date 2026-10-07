@@ -38,6 +38,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **A failed push test no longer shows the other server's raw reply**, and push follows a redirect only on the same server. The open `/api/proxy` checks every redirect too.
 - **The Android app's SSO sign-in no longer passes the session token through the `notetrace://` link**, which another app could intercept. The link carries a single-use code that only the app that started the sign-in can redeem.
 - **Uploaded files get unguessable names.** The random part of the name was made with `Math.random()`, which can be predicted from its own output.
+- **The server answers as the account whose token a request carries, never as the one a leftover sign-in cookie names.** After one account signed out of the Android app and another signed in, the first account's cookie stayed on the phone, so some of the app's requests could be answered, and saved, as the first account. The app also forgets NoteTrace's sign-in cookie whenever the account changes.
 
 ---
 

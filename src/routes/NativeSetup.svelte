@@ -1,6 +1,6 @@
 <script>
   import { _ } from 'svelte-i18n';
-  import { setNativeMode, setServerUrl, setAuthToken, resolveAssetUrl, iconUrl, explainConnectError } from '../lib/platform.js';
+  import { setNativeMode, setServerUrl, setAuthToken, forgetServerCookies, resolveAssetUrl, iconUrl, explainConnectError } from '../lib/platform.js';
   import { showError, showSuccess } from '../stores/toast.js';
   import { DB } from '../lib/db.js';
 
@@ -93,6 +93,7 @@
 
       setServerUrl(validatedUrl);
       setAuthToken(loginData.token);
+      await forgetServerCookies(validatedUrl);
       setNativeMode('server');
       DB.setSetting('setupComplete', true);
       showSuccess($_('native_setup_ct.toast.connected_to_server'));
@@ -113,6 +114,7 @@
   // token" state and next launch lands on Login.svelte which correctly
   // renders the OIDC button now that getServerUrl() is populated.
   async function loginWithOidc(providerId) {
+    await forgetServerCookies(validatedUrl);
     setServerUrl(validatedUrl);
     setNativeMode('server');
     DB.setSetting('setupComplete', true);

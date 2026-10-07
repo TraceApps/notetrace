@@ -18,7 +18,7 @@
   import { onMount, onDestroy } from 'svelte';
   import {
     isNative, getNativeMode, getServerUrl, setNativeMode, setServerUrl,
-    setAuthToken, getAuthToken, explainConnectError,
+    setAuthToken, getAuthToken, explainConnectError, forgetServerCookies,
   } from '../../lib/platform.js';
   import { _ } from 'svelte-i18n';
   import { showError, showSuccess } from '../../stores/toast.js';
@@ -85,6 +85,7 @@
 
       _pendingServerUrl = url;
       if (body.token) setAuthToken(body.token);
+      await forgetServerCookies(url);
 
       // Count local data so the merge dialog can show what's about to
       // move. On a fresh install this is all zeros and we skip the
@@ -171,16 +172,18 @@
     setTimeout(() => window.location.reload(), 600);
   }
 
-  function cancelMerge() {
+  async function cancelMerge() {
     // Cancelling here keeps the auth token (already set) but doesn't
     // flip the mode, so the user can retry without re-entering creds.
     // If they really want to bail entirely they can hit Disconnect once
     // in server mode.
+    const pending = _pendingServerUrl;
     mergeStep = null;
     _pendingServerUrl = '';
     localCounts = null;
     migrationSummary = null;
     setAuthToken(null);
+    await forgetServerCookies(pending);
   }
 
   // ── Server-mode actions ─────────────────────────────────────────────
@@ -239,6 +242,7 @@
       dangerous: true,
     });
     if (!ok) return;
+    await forgetServerCookies();
     setServerUrl(null);
     setAuthToken(null);
     setNativeMode('local');

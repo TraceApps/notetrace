@@ -524,8 +524,9 @@
                 import('./stores/toast.js').then(({ showSuccess }) => showSuccess('Linked'));
                 await loadAuthState();
               } else if (token) {
-                const { setAuthToken } = await import('./lib/platform.js');
+                const { setAuthToken, forgetServerCookies } = await import('./lib/platform.js');
                 setAuthToken(token);
+                await forgetServerCookies();
                 // Stash the OIDC session hint so logout() can ask the IdP
                 // to end the session via RP-initiated logout. PWA stores
                 // this in an httpOnly cookie at the same point; native
