@@ -236,8 +236,31 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// Every setting store, so a change of account can make each read its own
+// account's value again (reloadSettingStores).
+const _settingStores = [];
+
+/**
+ * Every setting store reads the value of the account signed in now. A
+ * store keeps the last value it read, so after a sign-out and another
+ * account's sign-in it would show, and could save, the previous account's.
+ * `force` also drops changes still waiting to be sent (the previous
+ * account's). Called on every change of account (lib/user-state.js).
+ */
+export function reloadSettingStores({ force = false } = {}) {
+  if (force) {
+    for (const k of Object.keys(_saveQueue)) { clearTimeout(_saveQueue[k]); delete _saveQueue[k]; }
+    _recentlyChanged.clear();
+  }
+  for (const { key, defaultValue, store } of _settingStores) {
+    const next = DB.getSetting(key, defaultValue);
+    if (JSON.stringify(get(store)) !== JSON.stringify(next)) store.set(next);
+  }
+}
+
 function createSettingStore(key, defaultValue) {
   const store = writable(DB.getSetting(key, defaultValue));
+  _settingStores.push({ key, defaultValue, store });
 
   window.addEventListener('wl:setting', (e) => {
     if (e.detail && e.detail.key === key) {

@@ -18,12 +18,13 @@
   import ConfirmDialogMount from './components/ui/ConfirmDialogMount.svelte';
   import { DB }    from './lib/db.js';
   import { NoteApi } from './lib/api.js';
-  import { navStyle, applyAccentColor, accentColor, applyAppearance, appearance, disableAnimations, sidebarPersistent, sidebarRail, sidebarRailMedium, cardDensity, pageBanners, bannerStyle, bannerAnimation, forceMobileLayout, startPage, language } from './stores/settings.js';
+  import { navStyle, applyAccentColor, accentColor, applyAppearance, appearance, disableAnimations, sidebarPersistent, sidebarRail, sidebarRailMedium, cardDensity, pageBanners, bannerStyle, bannerAnimation, forceMobileLayout, startPage, language, reloadSettingStores } from './stores/settings.js';
   import { _, locale } from 'svelte-i18n';
   import { currentUser, userMgmtActive, setupRequired, loadAuthState, handleOidcCallback } from './stores/auth.js';
   import { needsNativeSetup, isNative, getNativeMode, getServerUrl, apiUrl, getAuthToken } from './lib/platform.js';
-  import { writable } from 'svelte/store';
+  import { writable, get as getStore } from 'svelte/store';
   import { notesChanged, signalNotesChanged } from './stores/notes.js';
+  import { accountGate, ensureLocalAccount, accountReadyFor } from './lib/local-account.js';
   import { notifLocalEnabled, appLockEnabled } from './stores/settings.js';
   import { refreshHomeWidget } from './lib/home-widget.js';
   import { appLocked } from './lib/app-lock.js';
@@ -653,8 +654,36 @@
   // nothing renders: the app used to load first and fire its requests
   // signed out, before the sign-in screen replaced it. Android starts from
   // the account it cached, so it never waits.
-  let authLoaded = isNative;
+  // Connected to a server, it still waits for that (a moment: the cached
+  // account), so nothing of the phone's copy shows before the account
+  // check knows whose it is.
+  let authLoaded = isNative && getNativeMode() !== 'server';
   $: needsLogin = $userMgmtActive && !$currentUser && !AUTH_BYPASS.includes($location);
+
+  // Android, server mode: the phone's copy of the data must be this
+  // account's before the app shows any of it (lib/local-account.js). A
+  // different account than last time clears the copy; if that account
+  // left changes that never went up, the person is asked first, and
+  // saying no signs them back out. Every sign-in path ends by setting
+  // $currentUser, so this is the one place that sees them all. Keyed on
+  // the id, so a refreshed user object doesn't ask again; the gate itself
+  // runs one check per account at a time.
+  // Every platform: the setting stores follow the account signed in
+  // (stores/settings.js), so another account never sees or saves the last
+  // one's values.
+  $: _settingsFor = $currentUser?.id ?? null;
+  $: _settingsFor, reloadSettingStores();
+  $: _accountId = isNative && getNativeMode() === 'server' && $currentUser?.id != null ? `${$currentUser.id}#${$currentUser.created_at || ''}` : null;
+  $: if (_accountId != null) _checkAccount();
+  $: accountReady = _accountId == null || accountReadyFor($accountGate, $currentUser);
+  async function _checkAccount() {
+    const user = getStore(currentUser);
+    if (!user || user.id == null) return;
+    const ok = await ensureLocalAccount(user, {
+      signOut: async () => { const { logout } = await import('./stores/auth.js'); await logout(); },
+    });
+    if (ok) import('./lib/sync.js').then(m => m.fullSync()).catch(() => {});
+  }
 
   let _wasNeedsLogin = needsLogin;
   $: {
@@ -695,6 +724,24 @@
   <!-- Asking the server who is signed in: a blank page, never the app. -->
 {:else if needsLogin}
   <Login />
+{:else if !accountReady}
+  <!-- Checking the phone's copy is this account's: never another account's data (the confirm dialog is mounted below). -->
+  {#if $accountGate.state === 'error'}
+    <div class="account-check-error" role="alert">
+      <span class="material-symbols-rounded" aria-hidden="true">error</span>
+      <h2>{$_('sync.account_check_failed_title')}</h2>
+      <p>{$_('sync.account_check_failed')}</p>
+      <div class="account-check-actions">
+        <button class="btn btn-primary" on:click={_checkAccount}>{$_('sync.retry')}</button>
+        <button class="btn btn-ghost" on:click={async () => { const { logout } = await import('./stores/auth.js'); await logout(); }}>{$_('common.sign_out')}</button>
+      </div>
+    </div>
+  {:else}
+    <div class="account-check-wait" role="status" aria-label={$_('sync.account_checking')}>
+      <span class="material-symbols-rounded account-check-spin" aria-hidden="true">progress_activity</span>
+    </div>
+  {/if}
+  <Toast />
 {:else}
 
 {#if $appLocked}<LockScreen />{/if}
@@ -802,6 +849,23 @@
 <ConfirmDialogMount />
 
 <style>
+  .account-check-error {
+    min-height: 100vh; min-height: 100dvh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; padding: 24px 16px; text-align: center;
+    background: var(--bg); color: var(--text-1);
+  }
+  .account-check-error .material-symbols-rounded { font-size: 40px; color: var(--danger, #d33); }
+  .account-check-error h2 { margin: 0; font-size: 18px; }
+  .account-check-error p { margin: 0; max-width: 360px; color: var(--text-3); font-size: 14px; line-height: 1.5; }
+  .account-check-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; justify-content: center; }
+  .account-check-wait {
+    min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center;
+    background: var(--bg); color: var(--accent);
+  }
+  .account-check-spin { font-size: 36px; animation: account-check-spin 1s linear infinite; }
+  @keyframes account-check-spin { to { transform: rotate(360deg); } }
+
   :global(body) { overflow-x: hidden; }
 
   :global(.no-animations *) {

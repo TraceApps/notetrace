@@ -413,6 +413,13 @@ db.exec(`
   END;
 `);
 
+// The Android app's key for a row it made (lib/create-keys.js), so the same
+// create sent twice (a retry, two syncs at once, an answer lost) makes one row.
+for (const t of ['notes', 'labels', 'checklist_items', 'note_labels', 'note_attachments', 'ai_chat_history']) {
+  if (!columnExists(t, 'client_key')) db.exec(`ALTER TABLE ${t} ADD COLUMN client_key TEXT DEFAULT NULL`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_${t}_client_key ON ${t}(user_id, client_key)`);
+}
+
 // ── Sync cursor ────────────────────────────────────────────────────────────
 // synced_at is the SERVER's clock time of the last write to a row, stamped
 // by triggers so every write path (REST routes, sync push, restore) is

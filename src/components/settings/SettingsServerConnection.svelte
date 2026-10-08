@@ -48,6 +48,8 @@
   let mergeProgressPct = 0;
   let mergeStage = '';
   let _pendingServerUrl = '';
+  let _pendingUser = null;
+  let _pendingMode = null;
   let localCounts = null;
   let migrationSummary = null;
 
@@ -84,6 +86,7 @@
       if (login.status < 200 || login.status >= 300) throw new Error(body?.error || 'Login failed');
 
       _pendingServerUrl = url;
+      _pendingUser = body.user || null;
       if (body.token) setAuthToken(body.token);
       await forgetServerCookies(url);
 
@@ -112,6 +115,7 @@
   //   merge:    upload local, then pull on reload. May duplicate notes
   //             because they don't have a natural unique key.
   async function _mergeAndConnect(modeChoice) {
+    _pendingMode = modeChoice;
     mergeStep = 'syncing';
     mergeProgress = '';
     mergeProgressPct = 0;
@@ -163,7 +167,23 @@
     }
   }
 
-  function _finalizeConnect() {
+  async function _finalizeConnect() {
+    // The phone's data is this account's now (the choice above decided
+    // what of it goes up), and fills from it from the start
+    // (lib/local-account.js).
+    if (_pendingUser?.id != null) {
+      try {
+        const { claimForServer } = await import('../../lib/local-account.js');
+        await claimForServer(_pendingServerUrl, _pendingUser.id, { created: _pendingUser.created_at || null, clear: _pendingMode === 'download' });
+      } catch (e) { console.warn('[connect] claim failed:', e?.message); }
+      // The account the app opens with after the reload: this one, never
+      // one cached from an earlier server (the same id there is someone
+      // else).
+      try {
+        localStorage.setItem('note:cachedUser', JSON.stringify(_pendingUser));
+        localStorage.setItem('wl:userId', String(_pendingUser.id));
+      } catch { /* storage unavailable */ }
+    }
     setServerUrl(_pendingServerUrl);
     setNativeMode('server');
     mode = 'server';
@@ -192,7 +212,7 @@
     try {
       const r = await fullSync(false);
       if (r?.ok === false && r.error) showError(r.error);
-      else showSuccess($_('settings_server_conn.toast.synced'));
+      else if (r?.ok) showSuccess($_('settings_server_conn.toast.synced'));
     } finally { busy = false; }
   }
 
@@ -242,7 +262,11 @@
       dangerous: true,
     });
     if (!ok) return;
-    await forgetServerCookies();
+    // What's on the phone is its own from now on (lib/local-account.js).
+    try {
+      const { setLocalOwner } = await import('../../lib/local-account.js');
+      await setLocalOwner();
+    } catch { await forgetServerCookies(); }
     setServerUrl(null);
     setAuthToken(null);
     setNativeMode('local');

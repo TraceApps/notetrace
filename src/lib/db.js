@@ -4,6 +4,8 @@
  * server (web) or in local SQLite (native); no IndexedDB stores are
  * registered yet.
  */
+import { settingPrefix } from './setting-key.js';
+
 const DB = (() => {
   const DB_NAME = 'notetrace';
   const DB_VERSION = 1;
@@ -94,9 +96,9 @@ const DB = (() => {
     },
 
     // ── Settings (localStorage, per-user-scoped) ────────────────────────────
+    // Per account, and per server in the Android app (lib/setting-key.js).
     _settingKey(key) {
-      const userId = localStorage.getItem('wl:userId');
-      return userId ? `wl_u${userId}_${key}` : `wl_${key}`;
+      return settingPrefix() + key;
     },
     getSetting(key, def) {
       const raw = localStorage.getItem(this._settingKey(key));
@@ -130,15 +132,15 @@ const DB = (() => {
     /** Move every setting from one user-prefix to another. Used when
      *  enable/disable user-management toggles change the key prefix. */
     migrateSettingsPrefix(fromUserId, toUserId) {
-      const fromPrefix = fromUserId == null ? 'wl_' : `wl_u${fromUserId}_`;
-      const toPrefix   = toUserId   == null ? 'wl_' : `wl_u${toUserId}_`;
+      const fromPrefix = settingPrefix(fromUserId == null ? null : String(fromUserId));
+      const toPrefix   = settingPrefix(toUserId == null ? null : String(toUserId));
       if (fromPrefix === toPrefix) return 0;
       let moved = 0;
       const orphans = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
         if (!k || !k.startsWith(fromPrefix)) continue;
-        if (fromPrefix === 'wl_' && /^wl_u\d+_/.test(k)) continue;
+        if (fromPrefix === 'wl_' && /^wl_u\d+[@_]/.test(k)) continue;
         orphans.push(k);
       }
       for (const fromKey of orphans) {

@@ -31,6 +31,11 @@ export function refreshLabels() {
   return _loading;
 }
 
+/** Another account: none of the last one's labels stay on show. */
+export function clearLabels() {
+  savedLabels.set([]);
+}
+
 export function signalNotesChanged() {
   notesChanged.update(n => n + 1);
 }

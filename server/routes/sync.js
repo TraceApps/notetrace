@@ -12,10 +12,16 @@
  *
  *   POST /api/sync/push
  *     body: { tables: { [name]: [row, ...] }, settings: [{ key, value, updated_at }] }
- *     row shape: { client_id, server_id?, ...table-columns, updated_at, deleted_at }
+ *     row shape: { client_id, server_id?, client_key?, ...table-columns, updated_at, deleted_at }
+ *     A row without server_id carries client_key, the app's stable key for
+ *     it (lib/create-keys.js): sent again, it gets the row made the first
+ *     time. Pulls return it to the account that made the row, so the app
+ *     knows its own row when an answer was lost.
  *     response: { tables: { [name]: [{ client_id, server_id }] } }
  *
- *   GET /api/sync/pull?since=<ISO>
+ *   GET /api/sync/pull?since=<ISO>[&keys=1]
+ *     keys=1 (the app that sends client_key): rows come with it. Older apps
+ *     store every column a row comes with, so they never get it.
  *     response: { now: 'ISO', tables: { [name]: [{ id, ...cols, updated_at, deleted_at }] },
  *                 revoked_notes: [serverNoteId, ...] }
  *
@@ -45,6 +51,7 @@ import { requireAuth, userMgmtActive } from '../middleware/auth.js';
 import { snapshotVersion, tsMs, noteAccess, restampNote, revokedNoteIds, cleanAttachmentUrl } from '../lib/notes.js';
 import { dispatchWebhookEvent } from '../lib/webhooks.js';
 import { isServerOnlyKey } from '../lib/server-only-keys.js';
+import { cleanCreateKey, findByCreateKey, setCreateKey } from '../lib/create-keys.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -141,6 +148,11 @@ router.post('/push', wrap((req, res) => {
         }
 
         let existing = null;
+        // Items and images carry the note owner's id, whoever adds them.
+        const rowOwner = () => ((name === 'checklist_items' || name === 'note_attachments')
+          ? db.prepare(`SELECT user_id FROM notes WHERE id = ?`).get(translated.note_id)?.user_id ?? u
+          : u);
+        const createKey = row.server_id ? null : cleanCreateKey(row.client_key);
         if (row.server_id) {
           existing = db.prepare(`SELECT * FROM ${name} WHERE id = ?`).get(row.server_id);
           if (!existing) continue;
@@ -148,6 +160,9 @@ router.post('/push', wrap((req, res) => {
           const where = spec.uniqueKey.map(k => `${k} = ?`).join(' AND ');
           existing = db.prepare(`SELECT * FROM ${name} WHERE ${where}`).get(...spec.uniqueKey.map(k => translated[k])) || null;
         }
+        // Made before from this very row (a retry, two syncs at once, an
+        // answer lost): that row, never a second one.
+        if (!existing && createKey) existing = findByCreateKey(name, rowOwner(), createKey);
 
         if (existing && name === 'notes' && u != null && existing.user_id !== u) {
           _pushSharedNote(u, existing, translated);
@@ -194,17 +209,14 @@ router.post('/push', wrap((req, res) => {
           // columns fall back to their schema DEFAULTs instead of
           // tripping NOT NULL constraints.
           const present = spec.cols.filter(c => translated[c] !== undefined);
-          // Items and images carry the note owner's id, whoever adds them.
-          const rowOwner = (name === 'checklist_items' || name === 'note_attachments')
-            ? db.prepare(`SELECT user_id FROM notes WHERE id = ?`).get(translated.note_id)?.user_id ?? u
-            : u;
           const info = db.prepare(_buildInsertSql(name, spec, present)).run(
-            rowOwner,
+            rowOwner(),
             ...present.map(c => _coerce(translated[c])),
             translated.updated_at || _now(),
             spec.softDelete ? (translated.deleted_at ?? null) : null
           );
           const serverId = Number(info.lastInsertRowid);
+          setCreateKey(name, serverId, createKey);
           results[name].push({ client_id: row.client_id, server_id: serverId });
           idMaps[name][row.client_id] = serverId;
           if (name === 'notes' && !translated.deleted_at && u != null) {
@@ -246,6 +258,7 @@ router.get('/pull', wrap((req, res) => {
   // Taken before the queries so a write racing this pull is picked up
   // by the next one (>= below makes an overlap harmless: pulls are upserts).
   const now = new Date().toISOString().replace('T', ' ').replace('Z', '');
+  const withKeys = req.query.keys === '1';
 
   const out = {};
   for (const [name, spec] of Object.entries(TABLES)) {
@@ -254,7 +267,7 @@ router.get('/pull', wrap((req, res) => {
     // column and SQLite's local `DEFAULT (datetime('now'))` stamps
     // every synced row with the pull-time clock, so every note ends
     // up looking like it was created on first-connect day.
-    const cols = ['id', ...spec.cols, 'created_at', 'updated_at'];
+    const cols = ['id', ...spec.cols, 'created_at', 'updated_at', ...(withKeys ? ['client_key'] : [])];
     if (spec.softDelete) cols.push('deleted_at');
     // Sort self-referencing tables so parents come before children in
     // the pull payload. The client's dbApplyPull scans server_id →
@@ -265,10 +278,12 @@ router.get('/pull', wrap((req, res) => {
     // the relationship silently disappears on the first sync after
     // it was attached (SQLite orders NULLs first in ASC by default,
     // so top-level parents naturally lead).
-    if (name === 'notes') { out.notes = _pullNotes(u, since); continue; }
+    if (name === 'notes') { out.notes = _pullNotes(u, since, withKeys); continue; }
     if ((name === 'checklist_items' || name === 'note_attachments') && u != null) {
+      // Their own uuid matches them on the phone; a shared note's items
+      // never carry anyone's install key to another account.
       out[name] = db.prepare(
-        `SELECT ${cols.join(', ')} FROM ${name}
+        `SELECT ${cols.filter(c => c !== 'client_key').join(', ')} FROM ${name}
           WHERE synced_at >= ? AND note_id IN (
             SELECT id FROM notes WHERE user_id = ?
             UNION SELECT note_id FROM note_members WHERE user_id = ? AND deleted_at IS NULL)`
@@ -334,10 +349,11 @@ function _translateParents(row, spec, idMaps, u) {
 
 // Notes as a member's device sees them: the member's own pin and archive,
 // no reminder (reminders belong to the owner), plus the share fields.
-function _pullNotes(u, since) {
+function _pullNotes(u, since, withKeys = false) {
+  const key = withKeys ? ', client_key' : '';
   if (u == null) {
     return db.prepare(
-      `SELECT id, ${TABLES.notes.cols.join(', ')}, created_at, updated_at, deleted_at,
+      `SELECT id, ${TABLES.notes.cols.join(', ')}, created_at, updated_at, deleted_at${key},
               'owner' AS share_role, NULL AS share_owner, 0 AS share_count
          FROM notes WHERE user_id IS NULL AND synced_at >= ?`
     ).all(since);
@@ -351,7 +367,8 @@ function _pullNotes(u, since) {
             CASE WHEN m.id IS NULL THEN n.reminder_at END AS reminder_at,
             CASE WHEN m.id IS NULL THEN n.reminder_rrule END AS reminder_rrule,
             CASE WHEN m.id IS NULL THEN n.reminder_tz END AS reminder_tz,
-            n.created_at, n.updated_at, n.deleted_at,
+            n.created_at, n.updated_at, n.deleted_at,${withKeys ? `
+            CASE WHEN m.id IS NULL THEN n.client_key END AS client_key,` : ''}
             COALESCE(m.role, 'owner') AS share_role,
             CASE WHEN m.id IS NULL THEN NULL ELSE COALESCE(o.full_name, o.username) END AS share_owner,
             (SELECT COUNT(*) FROM note_members c WHERE c.note_id = n.id AND c.deleted_at IS NULL) AS share_count

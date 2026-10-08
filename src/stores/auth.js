@@ -1,4 +1,4 @@
-import { writable } from 'svelte/store';
+import { writable, get as getStore } from 'svelte/store';
 import { loadServerSettings } from './settings.js';
 import { isNative, getServerUrl, getAuthToken, apiUrl as _apiUrl, forgetServerCookies } from '../lib/platform.js';
 
@@ -91,11 +91,26 @@ export async function loadAuthState() {
     if (cached) {
       try {
         const user = JSON.parse(cached);
+        // Only the account the session is for: one cached by an earlier
+        // sign-in (before a Disconnect and a connect as someone else)
+        // would be checked against the phone's copy as if signed in.
+        const { tokenUserId } = await import('../lib/local-account.js');
+        const sid = tokenUserId(getAuthToken());
+        if (sid != null && String(sid) !== String(user?.id)) throw new Error('another account');
         currentUser.set(user);
         userMgmtActive.set(localStorage.getItem('note:cachedUserMgmt') === '1');
         localStorage.setItem('wl:userId', String(user.id));
-      } catch {}
+      } catch {
+        // Not this session's account: the sign-in screen until the server
+        // says who is signed in, never the phone's copy with nobody.
+        localStorage.removeItem('note:cachedUser');
+        localStorage.removeItem('wl:userId');
+      }
     }
+    // No account to show yet on a server with accounts: sign-in first
+    // (offline included), never the copy with no account. A server
+    // without accounts (single-user) said so before, and shows the app.
+    if (getStore(currentUser) == null && localStorage.getItem('note:cachedUserMgmt') !== '0') userMgmtActive.set(true);
     // Refresh auth from server in the background (non-blocking)
     _refreshAuthFromServer();
     return;
@@ -269,6 +284,17 @@ export async function logout() {
   // post_logout_redirect_uri so the Capacitor browser can route back
   // into the app after the IdP destroys the session.
   let logoutUrl = null;
+  // Android: the phone keeps its copy of the account, so signing back in to
+  // the same account picks up where it left off. Send what's waiting first,
+  // while the session still works: a push only, cut off after a few
+  // seconds. What can't go now stays for this account (lib/local-account.js
+  // keeps it from going up under anyone else).
+  if (isNative && getServerUrl()) {
+    try {
+      const { pushBeforeSignOut } = await import('../lib/sync.js');
+      await pushBeforeSignOut();
+    } catch { /* never block sign-out */ }
+  }
   try {
     const logoutPath = isNative
       ? '/api/auth/oidc/logout?mobile=1'
@@ -286,6 +312,8 @@ export async function logout() {
     const oidcRes = await fetch(_apiUrl(logoutPath), {
       method: 'POST',
       credentials: 'include',
+      // Android: a server that doesn't answer never holds up signing out.
+      ...(isNative ? { signal: AbortSignal.timeout(5000) } : {}),
       headers: { ..._authHeaders(), 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -293,7 +321,7 @@ export async function logout() {
     logoutUrl = oidcData?.logoutUrl || null;
     try { localStorage.removeItem('note:oidc_logout_hint'); } catch {}
   } catch {}
-  try { await fetch(_apiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include', headers: _authHeaders() }); } catch {}
+  try { await fetch(_apiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include', headers: _authHeaders(), ...(isNative ? { signal: AbortSignal.timeout(5000) } : {}) }); } catch {}
   // Clear auth state — but keep cached data (foods, images, server URL)
   if (isNative) {
     const { setAuthToken } = await import('../lib/platform.js');
@@ -341,6 +369,18 @@ export async function logout() {
   localStorage.removeItem('wl:userId');
   localStorage.removeItem('note:cachedUser');
   localStorage.removeItem('note:csrf');
+  // What the app holds in memory is this account's: gone before anyone
+  // else signs in (lib/user-state.js). A sync still running writes nothing
+  // more (lib/local-account.js).
+  try {
+    const { resetUserState } = await import('../lib/user-state.js');
+    await resetUserState();
+    if (isNative) {
+      const la = await import('../lib/local-account.js');
+      la.bumpAccountGeneration();
+      la.resetAccountGate();
+    }
+  } catch { /* never block sign-out */ }
   // The offline copies of this account's notes and files (service worker
   // caches) don't outlive the session on a shared computer.
   try {

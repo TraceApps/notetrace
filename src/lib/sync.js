@@ -19,10 +19,13 @@ import {
   dbGetPendingChanges, dbGetPendingSettingsForPush,
   dbSetServerId, dbApplyPull,
   dbGetMeta, dbSetMeta, dbMarkSettingsSynced, dbMarkTableSynced,
+  dbCountUnsynced, dbInstallId, createKeyOf,
   SYNC_PARENTS,
 } from './db-native.js';
+import { localDataIsThisAccount, accountGeneration } from './local-account.js';
 
 let _syncInFlight = null;
+let _syncAgain = false;
 let _interval = null;
 const LAST_PULL_KEY = 'last_pull_at';
 
@@ -183,11 +186,19 @@ async function _errBody(res) {
   }
 }
 
-function _headers() {
+// `token`: the session a push or pull started with. A sign-in as someone
+// else meanwhile never makes it speak for the new account.
+function _headers(token = getAuthToken()) {
   const h = { 'Content-Type': 'application/json' };
-  const tok = getAuthToken();
-  if (tok) h['Authorization'] = `Bearer ${tok}`;
+  if (token) h['Authorization'] = `Bearer ${token}`;
   return h;
+}
+
+// A request of a run that a change of account stops (stopSync) ends at
+// once; otherwise it gets up to 60 seconds.
+function _deadline(signal) {
+  const t = AbortSignal.timeout(60000);
+  return signal && AbortSignal.any ? AbortSignal.any([signal, t]) : (signal || t);
 }
 
 /**
@@ -378,9 +389,19 @@ async function _reconcileLocalPhotoUrls(onProgress) {
   return { total: jobs.length, uploaded, cleared };
 }
 
-async function pushChanges() {
+async function pushChanges({ token = getAuthToken(), signal = null, gen = accountGeneration() } = {}) {
+  // False once another account's sign-in has begun (lib/local-account.js
+  // accountGeneration): nothing more is written for this push after that.
+  const live = () => gen === accountGeneration();
+  // Another account's data still on the phone (a sign-in that hasn't been
+  // through prepareLocalAccount yet) never goes up under this one.
+  if (!live() || !(await localDataIsThisAccount(token))) return { pushed: 0, stopped: true };
   const pending = await dbGetPendingChanges();
   const settings = await dbGetPendingSettingsForPush();
+  // A row the server hasn't seen goes with a stable key (this install and
+  // its own id here), so a retry, two syncs at once or a lost answer never
+  // makes it twice (server/lib/create-keys.js).
+  const install = await dbInstallId();
 
   const tablesToSend = {};
   let total = 0;
@@ -392,6 +413,7 @@ async function pushChanges() {
     const out = [];
     for (const r of rows) {
       const row = { ...r, client_id: r.id, server_id: r.server_id || null };
+      if (!row.server_id && install) row.client_key = createKeyOf(install, table, r);
       delete row.id;
       delete row.sync_status;
       // Local FK ids become server ids. A parent with no server id yet is
@@ -414,16 +436,21 @@ async function pushChanges() {
     return { pushed: 0 };
   }
 
+  if (!live()) return { pushed: 0, stopped: true };
   const res = await fetch(apiUrl('/api/sync/push'), {
     method: 'POST',
-    headers: _headers(),
+    headers: _headers(token),
+    signal: _deadline(signal),
     body: JSON.stringify({ tables: tablesToSend, settings }),
   });
   if (!res.ok) {
-    if (res.status === 401) await _handleSyncAuthError();
+    if (res.status === 401 && live() && getAuthToken() === token) await _handleSyncAuthError();
     throw new Error(`Sync push failed: ${res.status} ${await _errBody(res)}`);
   }
   const body = await res.json();
+  // Another account's sign-in began while this was out, and the phone's
+  // copy is (or is becoming) theirs: these ids belong to rows that go.
+  if (!live() || !(await localDataIsThisAccount(token))) return { pushed: 0, stopped: true };
 
   // Build a lookup of {table → {clientId → snapshotUpdatedAt}} so the
   // mark-synced steps below can check the push snapshot against the
@@ -445,6 +472,7 @@ async function pushChanges() {
     const snap = snapshotByTable[table];
     const updatedRowsForBulkMark = [];
     for (const r of results) {
+      if (!live()) return { pushed: 0, stopped: true };
       if (r.client_id && r.server_id) {
         // Newly-created row: server assigned a server_id. Stamp it +
         // mark synced gated on updated_at.
@@ -460,24 +488,34 @@ async function pushChanges() {
       await dbMarkTableSynced(table, updatedRowsForBulkMark);
     }
   }
+  if (!live()) return { pushed: 0, stopped: true };
   if (settings.length) {
     await dbMarkSettingsSynced(settings.map(s => ({ key: s.key, updated_at: s.updated_at })));
   }
   return { pushed: total };
 }
 
-async function pullChanges() {
+async function pullChanges({ token = getAuthToken(), signal = null, gen = accountGeneration() } = {}) {
+  // False once another account's sign-in has begun: checked before every
+  // write (lib/local-account.js accountGeneration, dbApplyPull's live()).
+  const live = () => gen === accountGeneration();
+  if (!live() || !(await localDataIsThisAccount(token))) return { pulled: 0, stopped: true };
   const since = (await dbGetMeta(LAST_PULL_KEY)) || '1970-01-01T00:00:00';
-  const res = await fetch(apiUrl(`/api/sync/pull?since=${encodeURIComponent(since)}`), {
+  // keys=1: rows this phone made come back with the key they were sent
+  // with, so one whose push answer was lost is matched to its row here.
+  const res = await fetch(apiUrl(`/api/sync/pull?since=${encodeURIComponent(since)}&keys=1`), {
     method: 'GET',
-    headers: _headers(),
+    headers: _headers(token),
+    signal: _deadline(signal),
   });
   if (!res.ok) {
-    if (res.status === 401) await _handleSyncAuthError();
+    if (res.status === 401 && live() && getAuthToken() === token) await _handleSyncAuthError();
     throw new Error(`Sync pull failed: ${res.status} ${await _errBody(res)}`);
   }
   const body = await res.json();
-  await dbApplyPull(body);
+  if (!live() || !(await localDataIsThisAccount(token))) return { pulled: 0, stopped: true };
+  const done = await dbApplyPull(body, { live });
+  if (done === false || !live()) return { pulled: 0, stopped: true };
   await dbSetMeta(LAST_PULL_KEY, body.now || new Date().toISOString());
   let pulled = 0;
   for (const arr of Object.values(body.tables || {})) {
@@ -487,23 +525,66 @@ async function pullChanges() {
   return { pulled };
 }
 
+// What's running now (full syncs and the sign-out push), so a change of
+// account can stop it: every run's requests are aborted, and the account's
+// copy changes hands only once they have all ended (stopSync). Each run
+// also stops writing as soon as the account generation moves
+// (lib/local-account.js).
+const _runs = new Set(); // { ctl, signal, promise }
+function _startRun() {
+  const ctl = new AbortController();
+  const run = { ctl, signal: ctl.signal, promise: null };
+  _runs.add(run);
+  return run;
+}
+function _endRun(run, promise) {
+  run.promise = promise;
+  Promise.resolve(promise).catch(() => {}).finally(() => _runs.delete(run));
+}
+export async function stopSync() {
+  _syncAgain = false;
+  const running = [..._runs];
+  for (const r of running) r.ctl.abort();
+  await Promise.allSettled(running.map(r => r.promise).filter(Boolean));
+}
+
 /**
  * Full sync round: pull recent FIRST, then push pending. Pull-then-push
  * means mobile pushes against the freshest baseline; otherwise a row
  * the user edited locally before the server's last change would push
- * the stale full-row payload and silently clobber the server (issue
- * surfaced as variant relationships not appearing on mobile even
- * though the PWA had set them — local row was still pre-attach, the
- * push sent generic_parent_id=NULL, and the server's value was lost).
- * Concurrent callers share the in-flight promise so a manual "Sync
- * now" tap mid-background round doesn't double-fire.
+ * the stale full-row payload and silently clobber the server.
+ *
+ * One at a time, whatever asks (app start, the API layer's loop, coming
+ * back to the app, the timer, an edit, Sync Now): a call while one runs
+ * gets that run, and one more runs after it if anything is still waiting
+ * to go up, so an edit made meanwhile doesn't wait for the timer. Two at
+ * once stored every pulled note twice and sent the same new rows twice.
  */
-export async function fullSync(silentOrOpts = false, forceCheck = false, showFailureBanner = false) {
+export function fullSync(silentOrOpts = false, forceCheck = false, showFailureBanner = false) {
   // Backwards-compatible: old callers pass a bool for `silent`; the
   // pull-to-refresh + Retry banner paths pass all three positional args.
   const silent = typeof silentOrOpts === 'object' ? !!silentOrOpts.silent : !!silentOrOpts;
-  if (!_shouldRun()) return { ok: false, reason: 'not-server-mode' };
-  if (_syncInFlight) return _syncInFlight;
+  if (!_shouldRun()) return Promise.resolve({ ok: false, reason: 'not-server-mode' });
+  if (_syncInFlight) { _syncAgain = true; return _syncInFlight; }
+  const token = getAuthToken();
+  if (!token) return Promise.resolve({ ok: false, reason: 'not_authenticated' });
+  const run = _startRun();
+  const promise = _fullSync({ silent, forceCheck, showFailureBanner, token, signal: run.signal, gen: accountGeneration() })
+    .finally(() => {
+      if (_syncInFlight === promise) _syncInFlight = null;
+      if (_syncAgain) {
+        _syncAgain = false;
+        // Asked for while this one ran (an edit saved meanwhile): once more,
+        // after it, when anything is still waiting to go up.
+        promise.then(async r => { if (r?.ok && (await dbCountUnsynced()) > 0) setTimeout(() => fullSync(true), 0); }).catch(() => {});
+      }
+    });
+  _syncInFlight = promise;
+  _endRun(run, promise);
+  return promise;
+}
+
+async function _fullSync({ silent, forceCheck, showFailureBanner, token, signal, gen }) {
   // Server-reachability probe before the heavy pull/push. Skipping this
   // when the circuit breaker says "known offline" avoids re-triggering
   // the 3s health-check on every ticked poll. `showFailureBanner` opts
@@ -511,73 +592,124 @@ export async function fullSync(silentOrOpts = false, forceCheck = false, showFai
   // the compact cloud badge.
   const online = await checkOnline(forceCheck, showFailureBanner);
   if (!online) return { ok: false, reason: 'offline' };
+  // The phone still holds another account's data (a sign-in the app
+  // hasn't finished checking): nothing is read, sent or fetched until
+  // App.svelte has run prepareLocalAccount.
+  if (!(await localDataIsThisAccount(token))) return { ok: false, reason: 'other_account' };
+  const live = () => gen === accountGeneration();
+  if (!live()) return { ok: false, reason: 'stopped' };
+  const stopped = () => Object.assign(new Error('stopped'), { stopped: true });
   syncState.update(s => ({ ...s, syncing: true, phase: 'pull', error: null }));
-  _syncInFlight = (async () => {
+  try {
+    const pull = await pullChanges({ token, signal, gen });
+    if (pull.stopped) throw stopped();
+    // Between pull and push: reconcile any phone-local photo URLs
+    // (Capacitor's https://<host>/_capacitor_file_/... scheme) that
+    // ended up in server-tracked entities. These are always non-
+    // portable: they point at a file inside THIS install's private
+    // Filesystem. If the file still exists on disk, re-upload to
+    // /api/upload and rewrite the URL to a portable /uploads/... one.
+    // If it doesn't (fresh install syncing entries from another
+    // device, uninstall-reinstall), clear the URL so downstream
+    // renderers show the placeholder instead of a broken image.
+    // Runs before push so the rewritten URLs sync out in the same
+    // pass.
     try {
-      const pull = await pullChanges();
-      // Between pull and push: reconcile any phone-local photo URLs
-      // (Capacitor's https://<host>/_capacitor_file_/... scheme) that
-      // ended up in server-tracked entities. These are always non-
-      // portable — they point at a file inside THIS install's private
-      // Filesystem. If the file still exists on disk, re-upload to
-      // /api/upload and rewrite the URL to a portable /uploads/... one.
-      // If it doesn't (fresh install syncing entries from another
-      // device, uninstall-reinstall), clear the URL so downstream
-      // renderers show the placeholder instead of a broken image.
-      // Runs before push so the rewritten URLs sync out in the same
-      // pass.
-      try {
+      if (live()) {
         await _reconcileLocalPhotoUrls((done, total) => {
           if (total > 0) {
             syncState.update(s => ({ ...s, phase: 'photos', progress: `Uploading local photos… ${done}/${total}` }));
           }
         });
-      } catch (e) {
-        console.warn('[sync] local-photo reconcile failed:', e?.message);
       }
-      syncState.update(s => ({ ...s, phase: 'push' }));
-      const push = await pushChanges();
-      // After the data pull, walk the server's image URLs and download
-      // any that aren't already in the local cache so note images
-      // render offline. Best-effort: a failure here
-      // doesn't fail the sync — the user just sees broken-image
-      // placeholders for fresh entries until the next pass. Same
-      // ordering as NutriTrace's sync.js.
-      try {
+    } catch (e) {
+      console.warn('[sync] local-photo reconcile failed:', e?.message);
+    }
+    if (!live()) throw stopped();
+    syncState.update(s => ({ ...s, phase: 'push' }));
+    const push = await pushChanges({ token, signal, gen });
+    if (push.stopped) throw stopped();
+    // After the data pull, walk the server's image URLs and download
+    // any that aren't already in the local cache so note images
+    // render offline. Best-effort: a failure here
+    // doesn't fail the sync: the user just sees broken-image
+    // placeholders for fresh entries until the next pass. Same
+    // ordering as NutriTrace's sync.js.
+    try {
+      if (live()) {
         const { cacheAllImages } = await import('./image-cache.js');
         await cacheAllImages((done, total) => {
           if (total > 0) {
             syncState.update(s => ({ ...s, phase: 'images', progress: `Caching images… ${done}/${total}` }));
           }
         });
-      } catch (e) {
-        console.warn('[sync] image-cache pass failed:', e?.message);
       }
-      const result = { ok: true, ...push, ...pull };
-      const ts = new Date().toISOString();
-      // Clear connectionIssue + showErrorBanner + error on success so a
-      // stale banner from a prior 401 / timeout doesn't linger forever
-      // once the underlying issue is resolved.
-      syncState.update(s => ({
-        ...s, syncing: false, phase: '', progress: '',
-        lastSync: ts, error: null, online: true,
-        connectionIssue: null, showErrorBanner: false,
-      }));
-      _notify(result);
-      return result;
     } catch (e) {
-      const err = e.message || String(e);
-      syncState.update(s => ({
-        ...s, syncing: false, phase: '', error: err,
-        ...(showFailureBanner ? { showErrorBanner: true } : {}),
-      }));
-      if (!silent) _notify({ ok: false, error: err });
-      return { ok: false, error: err };
-    } finally {
-      _syncInFlight = null;
+      console.warn('[sync] image-cache pass failed:', e?.message);
+    }
+    const result = { ok: true, ...push, ...pull };
+    const ts = new Date().toISOString();
+    // Clear connectionIssue + showErrorBanner + error on success so a
+    // stale banner from a prior 401 / timeout doesn't linger forever
+    // once the underlying issue is resolved.
+    syncState.update(s => ({
+      ...s, syncing: false, phase: '', progress: '',
+      lastSync: ts, error: null, online: true,
+      connectionIssue: null, showErrorBanner: false,
+    }));
+    _notify(result);
+    return result;
+  } catch (e) {
+    // Stopped by a change of account: not an error anyone needs to see.
+    if (e?.stopped || !live()) {
+      syncState.update(s => ({ ...s, syncing: false, phase: '', progress: '' }));
+      return { ok: false, reason: 'stopped' };
+    }
+    const err = e.message || String(e);
+    syncState.update(s => ({
+      ...s, syncing: false, phase: '', error: err,
+      ...(showFailureBanner ? { showErrorBanner: true } : {}),
+    }));
+    if (!silent) _notify({ ok: false, error: err });
+    return { ok: false, error: err };
+  }
+}
+
+/**
+ * Signing out on Android: the phone keeps its copy of the account, so
+ * signing back in to the same account picks up where it left off. What's
+ * waiting goes up first, while the session still works: a push only, cut
+ * off after a few seconds. What can't go now stays for this account
+ * (lib/local-account.js keeps it from going up under anyone else).
+ */
+export function pushBeforeSignOut(timeoutMs = 4000) {
+  const token = getAuthToken();
+  if (!_shouldRun() || !token) return Promise.resolve(false);
+  let timer;
+  const timeout = new Promise(resolve => { timer = setTimeout(() => resolve(false), timeoutMs); });
+  if (_syncInFlight) {
+    _syncAgain = false;
+    return Promise.race([_syncInFlight.then(r => !!r?.ok), timeout]).finally(() => clearTimeout(timer));
+  }
+  const r = _startRun();
+  const gen = accountGeneration();
+  const run = (async () => {
+    try {
+      if (!(await checkOnline(true))) return false;
+      const res = await pushChanges({ token, signal: r.signal, gen });
+      return !res.stopped;
+    } catch (e) {
+      console.warn('[sync] push before sign-out failed:', e?.message || e);
+      return false;
     }
   })();
-  return _syncInFlight;
+  // A sync asked for meanwhile joins this push rather than starting another.
+  const mine = run.then(ok => ({ ok }));
+  _syncInFlight = mine;
+  mine.finally(() => { if (_syncInFlight === mine) _syncInFlight = null; });
+  _endRun(r, run);
+  const cut = timeout.then(v => { r.ctl.abort(); return v; });
+  return Promise.race([run, cut]).finally(() => clearTimeout(timer));
 }
 
 /** Start the background sync loop. Idempotent. */

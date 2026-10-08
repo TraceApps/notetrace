@@ -32,7 +32,10 @@ for (const dev of ['devA', 'devB', 'devC']) {
     .replaceAll("from './platform.js'", "from './platform.mjs'")
     .replaceAll("from './db-native.js'", "from './db-native.mjs'")
     .replaceAll("import('./db-native.js')", "import('./db-native.mjs')")
+    .replace("from './local-account.js'", "from './local-account.mjs'")
     + '\nexport { pushChanges, pullChanges };\n');
+  // One account per simulated device: the account check always agrees.
+  put('local-account.mjs', 'export const localDataIsThisAccount = async () => true;\nexport const accountGeneration = () => 0;\n');
   put('notes-native.mjs', src('src/lib/notes-native.js').replace("from './db-native.js'", "from './db-native.mjs'")
     .replaceAll("from '../../server/lib/", `from '${new URL('server/lib/', root).href}`)
     .replaceAll("from './due-dates.js'", `from '${new URL('src/lib/due-dates.js', root).href}'`));
