@@ -39,13 +39,41 @@ function _stringify(arg) {
   try { return JSON.stringify(arg); } catch { return String(arg); }
 }
 
+// Secrets never reach the log, whatever a message carries: anything named
+// like a token, secret, password, key, PIN or topic in a URL, a header or
+// JSON (`token=...`, `"apiKey": "..."`, `Authorization: Basic ...`), a
+// sign-in code in a link, sign-in tokens (JWTs, Bearer/Basic), passwords
+// in an address (user:pass@host), and API keys by their usual look
+// (sk-..., ghp_..., AIza..., hf_...). The log is what people attach to bug
+// reports. Error codes, keys of a list and the like stay readable.
+const _GENERIC = '(?<![A-Za-z0-9])(?:[A-Za-z_]*(?:token|secret|passw(?:or)?d|passphrase|api_?key|apikey|private_?key|authorization|auth_?token|credential|topic)[A-Za-z_]*|pass|pwd|pin|otp|id_token_hint)(?![A-Za-z])';
+const _CAMEL_KEY = '(?<![A-Za-z0-9])(?:[A-Za-z]*[a-z](?:Key|Pass|Pin|Secret|Token)|[A-Z_]*_(?:KEY|PASS|SECRET|TOKEN))(?![A-Za-z])';
+const _SEP = `["']?\\s*[=:]\\s*`;
+const _VALUE = `(?!\\[hidden\\])(?:"(?!\\[hidden\\])[^"]*"|'(?!\\[hidden\\])[^']*'|(?:Bearer|Basic|Token)\\s+[^\\s"',}\\]]+|[^&\\s"',}\\]]+)`;
+const _pair = (name, flags) => new RegExp(`(${name}${_SEP})(${_VALUE})`, flags);
+const _PAIRS = [_pair(_GENERIC, 'gi'), _pair(_CAMEL_KEY, 'g')];
+const _hide = (m, head, value) => head + (/^["']/.test(value) ? value[0] + '[hidden]' + value[0] : '[hidden]');
+export function redactSecrets(text) {
+  let out = String(text);
+  for (const re of _PAIRS) out = out.replace(re, _hide);
+  return out
+    .replace(/([?&#](?:code|state|token|access_token|id_token)=)[^&\s#"']+/gi, '$1[hidden]')
+    .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^/\s:@"']+:[^/\s@"']+@/gi, '$1[hidden]@')
+    .replace(/eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g, '[hidden]')
+    .replace(/\b((?:Bearer|Basic)\s+)[A-Za-z0-9+/=._~-]{6,}/g, '$1[hidden]')
+    .replace(/\b(?:sk|pk|rk|ghp|gho|ghs|ghu|glpat|xox[abpr])[-_][A-Za-z0-9_-]{12,}/g, '[hidden]')
+    .replace(/\bAIza[0-9A-Za-z_-]{30,}/g, '[hidden]')
+    .replace(/\bhf_[A-Za-z0-9]{20,}/g, '[hidden]')
+    .replace(/(hooks\.slack\.com\/services\/)[^\s"']+/gi, '$1[hidden]');
+}
+
 function _maxLines() {
   return _verbose ? MAX_LINES_VERBOSE : MAX_LINES_DEFAULT;
 }
 
 function _push(level, args) {
   const ts = new Date().toISOString().slice(11, 23); // HH:MM:SS.mmm
-  const text = Array.from(args).map(_stringify).join(' ');
+  const text = redactSecrets(Array.from(args).map(_stringify).join(' '));
   const line = `[${ts}] [${level.toUpperCase()}] ${text}`;
   buffer.push(line);
   const cap = _maxLines();
@@ -107,7 +135,7 @@ function _buildHeader() {
   if (server) lines.push(`Server: ${server}`);
   if (ua) lines.push(`User agent: ${ua}`);
   lines.push('─'.repeat(60));
-  return lines.join('\n') + '\n';
+  return redactSecrets(lines.join('\n')) + '\n';
 }
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -208,9 +236,9 @@ async function _writeCrashReport(detail) {
       _buildHeader(),
       `--- CRASH ---`,
       `Kind: ${detail.kind}`,
-      `Message: ${detail.message}`,
+      `Message: ${redactSecrets(detail.message)}`,
       detail.source ? `Source: ${detail.source}:${detail.line || 0}:${detail.col || 0}` : '',
-      detail.stack ? `Stack:\n${detail.stack}` : '',
+      detail.stack ? `Stack:\n${redactSecrets(detail.stack)}` : '',
       ``,
       `--- LAST ${buffer.length} BUFFER LINES ---`,
       buffer.join('\n'),

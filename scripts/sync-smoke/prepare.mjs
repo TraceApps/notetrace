@@ -38,7 +38,9 @@ for (const dev of ['devA', 'devB', 'devC']) {
   put('local-account.mjs', 'export const localDataIsThisAccount = async () => true;\nexport const accountGeneration = () => 0;\n');
   put('notes-native.mjs', src('src/lib/notes-native.js').replace("from './db-native.js'", "from './db-native.mjs'")
     .replaceAll("from '../../server/lib/", `from '${new URL('server/lib/', root).href}`)
-    .replaceAll("from './due-dates.js'", `from '${new URL('src/lib/due-dates.js', root).href}'`));
+    .replaceAll("from './due-dates.js'", `from '${new URL('src/lib/due-dates.js', root).href}'`)
+    // Any other module of the app's (search-text.js, ...) from the app itself.
+    .replace(/from '\.\/([\w-]+\.js)'/g, (m, f) => `from '${new URL('src/lib/' + f, root).href}'`));
   put('sqlite-stub.mjs', `import { createRequire } from 'node:module';
 const Database = createRequire(${JSON.stringify(sqliteFrom)})('better-sqlite3');
 export const CapacitorSQLite = {};

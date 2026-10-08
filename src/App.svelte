@@ -65,27 +65,12 @@
   let _pullRefreshing = false;
   let _retryingConnection = false;
 
-  async function _waitForSyncIdle(maxMs = 4000) {
-    const start = Date.now();
-    return new Promise(resolve => {
-      const check = () => {
-        let s; syncState.subscribe(v => s = v)();
-        if (!s?.syncing || Date.now() - start > maxMs) resolve();
-        else setTimeout(check, 100);
-      };
-      check();
-    });
-  }
-
+  // Pull to refresh and Retry: a sync from now (lib/sync.js runs it right
+  // after one already running, never alongside it).
   async function _runForcedSync() {
     try {
       const mod = await import('./lib/sync.js');
-      let result = await mod.fullSync(false, true, true);
-      if (result?.reason === 'busy') {
-        await _waitForSyncIdle();
-        result = await mod.fullSync(false, true, true);
-      }
-      return result;
+      return await mod.fullSync(false, true, true);
     } catch (e) {
       console.warn('[sync] forced sync failed:', e?.message);
       return { ok: false };
@@ -490,7 +475,8 @@
           if (m) import('svelte-spa-router').then(({ push }) => push(`/?new=${m[1]}`));
         }).catch(() => {});
         App.addListener('appUrlOpen', async ({ url }) => {
-          console.log('[app] deep link received:', url);
+          // Without its query: a sign-in link carries a code or a token.
+          console.log('[app] deep link received:', String(url).split('?')[0]);
           try {
             const u = new URL(url);
             const params = u.searchParams;
@@ -682,7 +668,11 @@
     const ok = await ensureLocalAccount(user, {
       signOut: async () => { const { logout } = await import('./stores/auth.js'); await logout(); },
     });
-    if (ok) import('./lib/sync.js').then(m => m.fullSync()).catch(() => {});
+    if (ok) {
+      import('./lib/sync.js').then(m => m.fullSync()).catch(() => {});
+      // The copy is this account's: its own reminders are set again.
+      import('./lib/note-reminders.js').then(m => m.rescheduleReminders()).catch(() => {});
+    }
   }
 
   let _wasNeedsLogin = needsLogin;

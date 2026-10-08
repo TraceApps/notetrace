@@ -31,13 +31,7 @@ export function refreshHomeWidget({ locked = false, now = false } = {}) {
 // while signed out, and never another account's while one signs in.
 async function _mayShow() {
   if (!getServerUrl()) return true;
-  const { tokenUserId, accountReadyFor, accountGate } = await import('./local-account.js');
-  const id = tokenUserId();
-  if (id == null) {
-    // A server without accounts (single-user) has no account to check.
-    try { return localStorage.getItem('note:cachedUserMgmt') === '0'; } catch { return false; }
-  }
-  return accountReadyFor(get(accountGate), id);
+  return (await import('./local-account.js')).copyMayShowOutside();
 }
 
 async function _send(locked) {

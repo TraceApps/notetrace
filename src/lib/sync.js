@@ -26,6 +26,7 @@ import { localDataIsThisAccount, accountGeneration } from './local-account.js';
 
 let _syncInFlight = null;
 let _syncAgain = false;
+let _forcedNext = null; // a sync asked for from now (pull to refresh, Retry) while one runs
 let _interval = null;
 const LAST_PULL_KEY = 'last_pull_at';
 
@@ -543,6 +544,7 @@ function _endRun(run, promise) {
 }
 export async function stopSync() {
   _syncAgain = false;
+  _forcedNext = null;
   const running = [..._runs];
   for (const r of running) r.ctl.abort();
   await Promise.allSettled(running.map(r => r.promise).filter(Boolean));
@@ -565,6 +567,19 @@ export function fullSync(silentOrOpts = false, forceCheck = false, showFailureBa
   // pull-to-refresh + Retry banner paths pass all three positional args.
   const silent = typeof silentOrOpts === 'object' ? !!silentOrOpts.silent : !!silentOrOpts;
   if (!_shouldRun()) return Promise.resolve({ ok: false, reason: 'not-server-mode' });
+  // Asked for from now (pull to refresh, Retry): the run going on may have
+  // pulled before the change the person is waiting for, so one more runs
+  // right after it, shared by every such call meanwhile.
+  if (_syncInFlight && forceCheck) {
+    // Not once the account has changed (stopSync) meanwhile.
+    const gen = accountGeneration();
+    _forcedNext ||= _syncInFlight.catch(() => {}).then(() => {
+      _forcedNext = null;
+      if (gen !== accountGeneration()) return { ok: false, reason: 'stopped' };
+      return fullSync(silentOrOpts, forceCheck, showFailureBanner);
+    });
+    return _forcedNext;
+  }
   if (_syncInFlight) { _syncAgain = true; return _syncInFlight; }
   const token = getAuthToken();
   if (!token) return Promise.resolve({ ok: false, reason: 'not_authenticated' });

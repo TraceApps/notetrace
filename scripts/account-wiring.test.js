@@ -57,3 +57,30 @@ test('the install marker is kept out of every backup', () => {
   assert.match(read('../android/app/src/main/java/com/notetrace/app/InstallMarkerPlugin.java'), /FILE = "note_install_marker"/);
   assert.match(read('../android/app/src/main/java/com/notetrace/app/MainActivity.java'), /registerPlugin\(InstallMarkerPlugin\.class\)/);
 });
+
+test('no log line carries a setting value or a sign-in link\'s query', () => {
+  const settings = read('../src/stores/settings.js');
+  assert.doesNotMatch(settings, /_dlog\([^)]*JSON\.stringify\(value\)/, 'a setting value in the diagnostic log');
+  assert.match(read('../src/App.svelte'), /console\.log\('\[app\] deep link received:', String\(url\)\.split\('\?'\)\[0\]\)/);
+  assert.match(read('../src/lib/log-capture.js'), /const text = redactSecrets\(/, 'every line goes through the redaction');
+});
+
+test('reminders stop on sign-out, another account and Disconnect, and come back once the copy is current', () => {
+  assert.match(read('../src/stores/auth.js'), /clearReminders\(\)/);
+  const la = read('../src/lib/local-account.js');
+  assert.match(la, /export async function setLocalOwner\(\) \{\n  resetAccountGate\(\);\n  await _syncIdle\(\);\n  await _clearReminders\(\);/);
+  assert.match(la, /await _syncIdle\(\);\n  \/\/ The previous account's reminders stop now/);
+  assert.match(read('../src/App.svelte'), /rescheduleReminders\(\)\)\.catch/);
+});
+
+test("nothing checks for a 'busy' sync any more: a forced one runs right after the running one", () => {
+  assert.doesNotMatch(read('../src/App.svelte'), /'busy'/);
+  assert.match(read('../src/lib/sync.js'), /if \(_syncInFlight && forceCheck\) \{/);
+});
+
+test('closing a dialog without an answer is told apart from Cancel', () => {
+  assert.match(read('../src/components/ui/Dialog.svelte'), /dispatch\('cancel', \{ dismissed: true \}\)/);
+  assert.match(read('../src/components/ui/ConfirmDialogMount.svelte'), /e\.detail\?\.dismissed/);
+  assert.match(read('../src/lib/local-account.js'), /dismissed: null,/);
+  assert.match(read('../src/components/settings/SettingsServerConnection.svelte'), /keepIds: _sameAccount/);
+});

@@ -10,6 +10,10 @@ import { writable } from 'svelte/store';
  *  of text and resolves to what was typed (trimmed), or null when cancelled.
  *  With allowEmpty, confirming an empty box resolves to '' instead of null.
  *
+ *  With `dismissed` set, closing the dialog without an answer (Back,
+ *  Escape, a tap outside) resolves to that value instead of false, for
+ *  questions where Cancel is itself an answer.
+ *
  *  A single <ConfirmDialogMount /> instance (mounted in App.svelte) renders
  *  the Dialog and resolves the awaiting promise on user action.
  */
@@ -23,9 +27,10 @@ export function confirmDialog({
   cancelText = 'Cancel',
   dangerous = false,
   input = null,
+  ...rest
 } = {}) {
   return new Promise(resolve => {
-    confirmRequest.set({ title, message, confirmText, cancelText, dangerous, input, resolve });
+    confirmRequest.set({ title, message, confirmText, cancelText, dangerous, input, resolve, ...('dismissed' in rest ? { dismissed: rest.dismissed } : {}) });
   });
 }
 

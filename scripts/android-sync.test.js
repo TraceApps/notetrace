@@ -303,6 +303,7 @@ test('the first sync stores every note once, whatever starts it', async (t) => {
     // that only sometimes lines up can't hide.
     const rounds = [];
     for (let round = 0; round < 5; round++) {
+      await p.sync(); await p.sleep(300); // nothing still running from the round before
       await p.db.run('DELETE FROM notes', []);
       await p.db.run("DELETE FROM sync_meta WHERE key = 'last_pull_at'", []);
       await Promise.all([p.syncMod.fullSync(), p.syncMod.fullSync(true), p.syncMod.fullSync(true), p.sync(), p.sync(), p.sync()]);
@@ -424,4 +425,202 @@ test('the server reports an instance id that stays the same', async (t) => {
   assert.equal(a1.instance_id, a2.instance_id);
   assert.notEqual(a1.instance_id, b.instance_id);
   assert.equal(a1.sync_version, 2);
+});
+
+// ── Settings, reminders and the diagnostic log across accounts ─────────
+
+test("the previous account's setting changed offline survives another account's sign-in and Cancel, and goes up as theirs", async (t) => {
+  if (skip(t)) return;
+  await web(A, 'alice', 'PUT', '/api/settings', { key: 'dateFormat', value: 'EU' });
+  await web(A, 'bob', 'PUT', '/api/settings', { key: 'dateFormat', value: 'US' });
+  const r = phone('setting-cancel', A, `
+    await p.setupSignIn('bob'); await p.sync();
+    await p.offline(async () => { p.settings.dateFormat.set('ISO'); await p.sleep(900); await p.logout(); });
+    p.answerWaiting(false);
+    await p.NotesNative.createNote({ title: 'keeps the ask' });
+    const ok = await p.loginSignIn('alice');
+    await p.sleep(300);
+    const pendingAfterCancel = (await p.rows('user_settings')).filter(x => x.key === 'dateFormat').map(x => ({ value: x.value, status: x.sync_status }));
+    await p.loginSignIn('bob'); await p.sync(); await p.sleep(300);
+    const { DB } = await import(p.SRC + 'lib/db.js');
+    p.done({ ok, pendingAfterCancel, shown: DB.getSetting('dateFormat', null) });`);
+  const bobOnServer = A.q(`SELECT s.value FROM user_settings s JOIN users u ON u.id = s.user_id WHERE u.username = 'bob' AND s.key = 'dateFormat'`).map(x => JSON.parse(x.value));
+  assert.deepEqual({ ...r, bobOnServer }, { ok: false, pendingAfterCancel: [{ value: '"ISO"', status: 'pending' }], shown: 'ISO', bobOnServer: ['ISO'] });
+});
+
+test('a setting sent straight to the server is marked sent on the phone', async (t) => {
+  if (skip(t)) return;
+  const r = phone('setting-sent', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    // Only the direct push: no sync can send it (and mark it) meanwhile.
+    p.net.block = u => u.includes('/api/sync/');
+    p.settings.timeFormat.set('24h');
+    await p.sleep(1500);
+    p.done((await p.rows('user_settings')).filter(x => x.key === 'timeFormat').map(x => x.sync_status));`);
+  assert.deepEqual(r, ['synced']);
+});
+
+test("signing out stops the account's reminders; another account gets only its own once its copy is current", async (t) => {
+  if (skip(t)) return;
+  const soon = new Date(Date.now() + 86400000).toISOString().replace('T', ' ').slice(0, 19);
+  await web(A, 'alice', 'POST', '/api/notes', { title: 'alice reminder', body_md: '', reminder_at: soon });
+  const r = phone('reminders', A, `
+    await p.setupSignIn('bob'); await p.sync();
+    await p.NotesNative.createNote({ title: 'bob reminder', reminder_at: ${JSON.stringify(soon)} });
+    p.reminders.rescheduleReminders(); await p.sleep(700);
+    const bobArmed = globalThis.__reminders.at(-1);
+    await p.logout(); await p.sleep(700);
+    const afterSignOut = globalThis.__reminders.at(-1);
+    p.answerWaiting(true);
+    await p.loginSignIn('alice'); await p.sync(); await p.sleep(200);
+    p.reminders.rescheduleReminders(); await p.sleep(700);
+    p.done({ bobArmed, afterSignOut, alice: globalThis.__reminders.at(-1), everArmedBobAfterSignOut: globalThis.__reminders.slice(globalThis.__reminders.indexOf(afterSignOut)).some(l => l.includes('bob reminder')) });`);
+  assert.deepEqual(r, { bobArmed: ['bob reminder'], afterSignOut: [], alice: ['alice reminder'], everArmedBobAfterSignOut: false });
+});
+
+test('the diagnostic log never holds a secret, in verbose mode either', async (t) => {
+  if (skip(t)) return;
+  const r = phone('log', A, `
+    const log = await import(p.SRC + 'lib/log-capture.js');
+    log.setVerboseLogging(true);
+    await p.setupSignIn('carol'); await p.sync();
+    p.settings.aiApiKey.set('sk-proj-NEVERLOGTHIS1234567890');
+    await p.sleep(1200);
+    console.log('[app] deep link received:', 'notetrace://oidc-callback/?code=NEVERCODE123&id_token_hint=eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJlLWhlcmU');
+    const text = log.getLogBufferText();
+    p.done({ key: text.includes('NEVERLOGTHIS'), code: text.includes('NEVERCODE'), idToken: text.includes('eyJhbGciOiJSUzI1NiJ9'), named: /aiApiKey/.test(text) });`);
+  assert.deepEqual(r, { key: false, code: false, idToken: false, named: true }, 'the key name shows, never its value');
+});
+
+// ── The last small ones ────────────────────────────────────────────────
+
+test('closing "Is This the Same Server?" without an answer clears nothing, sends nothing, and asks again', async (t) => {
+  if (skip(t)) return;
+  const viaLocalhost = A.base.replace('127.0.0.1', 'localhost');
+  const r = phone('dismiss', A, `
+    p.net.noInstanceId = true;
+    await p.setupSignIn('alice'); await p.sync();
+    await p.offline(() => p.NotesNative.createNote({ title: 'alice waiting through a dismiss' }));
+    const before = (await p.rows()).map(n => n.title + ':' + n.sync_status).sort();
+    p.platform.setServerUrl(${JSON.stringify(viaLocalhost)});
+    p.answerSameServer(null);
+    const ok = await p.loginSignIn('alice');
+    const signedOut = !p.platform.getAuthToken();
+    const after = (await p.rows()).map(n => n.title + ':' + n.sync_status).sort();
+    const kept = after.length === before.length && after.every((x, i) => x === before[i]) && after.includes('alice waiting through a dismiss:pending');
+    const again = await p.loginSignIn('alice');
+    p.done({ ok, signedOut, kept, again, asked: p.asked });`);
+  assert.deepEqual(r, {
+    ok: false, signedOut: true,
+    kept: true,
+    again: false, asked: [{ kind: 'same_server' }, { kind: 'same_server' }],
+  });
+  assert.deepEqual(owners(A, 'alice waiting through a dismiss'), [], 'nothing went up');
+});
+
+test('Disconnect, then Connect again to the same account with Upload: only what was made since goes up, once', async (t) => {
+  if (skip(t)) return;
+  for (const n of [1, 2]) await note(A, 'carol', `carol before disconnect ${n}`);
+  const r = phone('reconnect', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    // Settings > Server > Disconnect & Use Locally.
+    await p.la?.setLocalOwner?.();
+    p.platform.setServerUrl(null); p.platform.setAuthToken(null); p.platform.setNativeMode('local');
+    await p.NotesNative.createNote({ title: 'carol made while disconnected' });
+    const before = (await p.rows()).find(n => n.title === 'carol before disconnect 1');
+    await p.NotesNative.updateNote(before.id, { title: 'carol before disconnect 1 (edited offline)' });
+    // Settings > Server > Connect as carol, Upload Phone to Server (SettingsServerConnection.svelte).
+    const tok = JSON.parse(process.env.PHONE_TOKENS)[p.S].carol;
+    p.platform.setAuthToken(tok);
+    const me = await (await fetch(p.S + '/api/auth/me', { headers: { Authorization: 'Bearer ' + tok } })).json();
+    const same = p.la?.cameFromThisAccount ? await p.la.cameFromThisAccount(p.S, me.user) : false;
+    const { uploadLocalToServer } = await import(p.SRC + 'lib/migrate.js');
+    await uploadLocalToServer({ serverUrl: p.S, authToken: tok, keepIds: same });
+    await p.la?.claimForServer?.(p.S, me.user.id, { created: me.user.created_at, sameAccount: same });
+    localStorage.setItem('note:cachedUser', JSON.stringify(me.user));
+    p.platform.setServerUrl(p.S); p.platform.setNativeMode('server');
+    await p.sync(); await p.sync();
+    p.done({ same, phone: (await p.rows()).filter(n => /^carol (before|made)/.test(n.title)).map(n => n.title).sort() });`);
+  assert.equal(r.same, true);
+  assert.deepEqual(r.phone, ['carol before disconnect 1 (edited offline)', 'carol before disconnect 2', 'carol made while disconnected']);
+  const onServer = A.q(`SELECT n.title, COUNT(*) AS n FROM notes n JOIN users u ON u.id = n.user_id WHERE u.username = 'carol' AND n.title LIKE 'carol %' AND n.title NOT LIKE 'carol note %' AND n.title NOT LIKE 'carol offline%' AND n.title NOT LIKE 'carol lost%' AND n.title NOT LIKE 'carol created%' AND n.deleted_at IS NULL GROUP BY n.title ORDER BY n.title`);
+  assert.deepEqual(onServer, [
+    { title: 'carol before disconnect 1 (edited offline)', n: 1 },
+    { title: 'carol before disconnect 2', n: 1 },
+    { title: 'carol made while disconnected', n: 1 },
+  ], 'no second copy of anything');
+});
+
+test('a forced sync asked for while one runs runs again right after it, never alongside', async (t) => {
+  if (skip(t)) return;
+  const r = phone('forced', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const S = p.S, tok = JSON.parse(process.env.PHONE_TOKENS)[S].carol;
+    let inPull = 0, most = 0;
+    const real = globalThis.fetch;
+    globalThis.fetch = async (u, i) => { const pull = String(u).includes('/api/sync/pull'); if (pull) { inPull++; most = Math.max(most, inPull); } try { return await real(u, i); } finally { if (pull) inPull--; } };
+    const first = p.syncMod.fullSync(true);
+    await p.sleep(5);
+    await fetch(S + '/api/notes', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok }, body: JSON.stringify({ title: 'made during a sync', body_md: '' }) });
+    const forced = await p.syncMod.fullSync(false, true, true);
+    await first;
+    p.done({ ok: forced.ok, here: (await p.rows()).some(n => n.title === 'made during a sync'), most });`, { PHONE_DELAY_MS: '40' });
+  assert.deepEqual(r, { ok: true, here: true, most: 1 });
+});
+
+test('a list setting changed on the phone reaches the server as a list, not as text', async (t) => {
+  if (skip(t)) return;
+  const r = phone('list-setting', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    await p.offline(async () => { p.settings.noteOrder.set([3, 1, 2]); p.settings.noteTemplates.set([{ id: 't1', name: 'Daily', body: 'x' }]); await p.sleep(900); });
+    await p.sync(); await p.sleep(300);
+    const res = await fetch(p.S + '/api/settings', { headers: { Authorization: 'Bearer ' + p.platform.getAuthToken() } });
+    const all = await res.json();
+    p.done({ noteOrder: all.noteOrder, noteTemplates: all.noteTemplates });`);
+  assert.deepEqual(r, { noteOrder: [3, 1, 2], noteTemplates: [{ id: 't1', name: 'Daily', body: 'x' }] });
+});
+
+test('Disconnect keeps which account the data came from; a sync meanwhile, or a restored backup, never mixes it up', async (t) => {
+  if (skip(t)) return;
+  const r = phone('origin', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const tok = p.platform.getAuthToken();
+    const me = await (await fetch(p.S + '/api/auth/me', { headers: { Authorization: 'Bearer ' + tok } })).json();
+    await p.la.setLocalOwner();
+    // A sync that still runs with the old session (a timer) between Disconnect and the reload.
+    const during = await p.syncMod.fullSync(true);
+    const keptWas = !!JSON.parse(await p.dbn.dbGetMeta('account')).was;
+    const same = await p.la.cameFromThisAccount(p.S, me.user);
+    const { importLocalSnapshot } = await import(p.SRC + 'lib/local-backup.js');
+    await importLocalSnapshot({ format: 'notetrace-local-snapshot', tables: {} });
+    const afterRestore = await p.la.cameFromThisAccount(p.S, me.user);
+    p.done({ during: during.reason, keptWas, same, afterRestore });`);
+  assert.deepEqual(r, { during: 'other_account', keptWas: true, same: true, afterRestore: false });
+});
+
+test('closing "Is This the Same Server?" while connecting from Settings decides nothing', async (t) => {
+  if (skip(t)) return;
+  const viaLocalhost = A.base.replace('127.0.0.1', 'localhost');
+  const r = phone('connect-dismiss', A, `
+    p.net.noInstanceId = true;
+    await p.setupSignIn('carol'); await p.sync();
+    const tok = p.platform.getAuthToken();
+    const me = await (await fetch(p.S + '/api/auth/me', { headers: { Authorization: 'Bearer ' + tok } })).json();
+    await p.la.setLocalOwner();
+    const answer = await p.la.cameFromThisAccount(${JSON.stringify(viaLocalhost)}, me.user, { sameServer: async () => null });
+    p.done({ answer });`);
+  assert.deepEqual(r, { answer: null }, 'the connect stops (SettingsServerConnection.svelte cancels it)');
+});
+
+test('a forced sync asked for before a change of account never runs after it', async (t) => {
+  if (skip(t)) return;
+  const r = phone('forced-stop', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const first = p.syncMod.fullSync(true);
+    const forced = p.syncMod.fullSync(false, true, true);
+    p.la.bumpAccountGeneration();
+    await p.syncMod.stopSync();
+    await first;
+    p.done((await forced).reason);`, { PHONE_DELAY_MS: '40' });
+  assert.equal(r, 'stopped');
 });

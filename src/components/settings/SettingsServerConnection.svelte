@@ -50,6 +50,7 @@
   let _pendingServerUrl = '';
   let _pendingUser = null;
   let _pendingMode = null;
+  let _sameAccount = false;
   let localCounts = null;
   let migrationSummary = null;
 
@@ -87,6 +88,15 @@
 
       _pendingServerUrl = url;
       _pendingUser = body.user || null;
+      // The phone's data came from this very account (Disconnect, then
+      // Connect again): what it already has isn't sent again.
+      try {
+        const { cameFromThisAccount } = await import('../../lib/local-account.js');
+        _sameAccount = await cameFromThisAccount(url, _pendingUser);
+      } catch { _sameAccount = false; }
+      // "Is This the Same Server?" closed without an answer: nothing goes
+      // up and nothing changes; connecting again asks again.
+      if (_sameAccount == null) { await cancelMerge(); return; }
       if (body.token) setAuthToken(body.token);
       await forgetServerCookies(url);
 
@@ -146,6 +156,7 @@
         migrationSummary = await uploadLocalToServer({
           serverUrl: url,
           authToken: token,
+          keepIds: _sameAccount,
           onProgress: (stage, current, total) => {
             mergeStage = stageLabels[stage] || stage;
             mergeProgress = `Uploading ${mergeStage} (${Math.min(current + 1, total)} / ${total})`;
@@ -174,7 +185,7 @@
     if (_pendingUser?.id != null) {
       try {
         const { claimForServer } = await import('../../lib/local-account.js');
-        await claimForServer(_pendingServerUrl, _pendingUser.id, { created: _pendingUser.created_at || null, clear: _pendingMode === 'download' });
+        await claimForServer(_pendingServerUrl, _pendingUser.id, { created: _pendingUser.created_at || null, clear: _pendingMode === 'download', sameAccount: _sameAccount });
       } catch (e) { console.warn('[connect] claim failed:', e?.message); }
       // The account the app opens with after the reload: this one, never
       // one cached from an earlier server (the same id there is someone

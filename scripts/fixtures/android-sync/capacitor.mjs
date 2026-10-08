@@ -15,7 +15,12 @@ const InstallMarker = {
 const inert = new Proxy({}, { get: (_, k) => (k === 'then' ? undefined : async () => ({})) });
 // The home screen widget: what it was last sent (globalThis.__widget).
 const NoteWidget = { async update(snapshot) { (globalThis.__widget ??= []).push(snapshot); return {}; } };
-export const registerPlugin = name => (name === 'InstallMarker' ? InstallMarker : name === 'NoteWidget' ? NoteWidget : inert);
+// The reminder alarms: every list handed to the native scheduler, which
+// arms exactly the last one (globalThis.__reminders).
+const NoteReminders = new Proxy({
+  async reschedule({ reminders }) { (globalThis.__reminders ??= []).push((reminders || []).map(r => r.title).sort()); return { armed: (reminders || []).length, exact: true }; },
+}, { get: (t, k) => (k in t ? t[k] : k === 'then' ? undefined : async () => ({})) });
+export const registerPlugin = name => (name === 'InstallMarker' ? InstallMarker : name === 'NoteWidget' ? NoteWidget : name === 'NoteReminders' ? NoteReminders : inert);
 export const App = { addListener: async () => ({ remove() {} }) };
 export const Preferences = inert, BiometricAuth = inert, Browser = inert, LocalNotifications = inert, Haptics = inert, Share = inert;
 export default {};

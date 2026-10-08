@@ -31,6 +31,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **The Android app no longer writes your notes to the device log.** Debug builds logged every note the app read or saved.
 - **Signing out of the Android app with no connection goes to the sign-in screen.** It showed the app with nobody signed in.
 - **A note made offline in the Android app keeps the date it was made.** The first sync replaced it with the time the note reached the server.
+- **A setting changed in the Android app before it reached the server is no longer lost** when another account signs in on the phone and the sign-in is canceled, or set back when your settings load from the server. It goes up with the next sync.
+- **Reminders stop when you sign out of the Android app**, and the previous account's don't fire after another account signs in. Your own come back when you sign back in.
+- **Connecting the Android app back to the account it was disconnected from no longer uploads a second copy of every note.** Only what you made, changed or deleted while disconnected goes up.
+- **Note templates and other list settings changed in the Android app reach the server intact.** They went up as plain text and came back broken on every device.
+- **Closing "Is This the Same Server?" without choosing no longer clears the phone's data.** Nothing is cleared or sent, and the app asks again the next time you sign in.
+- **Pull to refresh in the Android app gets what changed on the server while a sync was already running.**
 
 ### Security
 
@@ -44,6 +50,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Uploaded files get unguessable names.** The random part of the name was made with `Math.random()`, which can be predicted from its own output.
 - **The server answers as the account whose token a request carries, never as the one a leftover sign-in cookie names.** After one account signed out of the Android app and another signed in, the first account's cookie stayed on the phone, so some of the app's requests could be answered, and saved, as the first account. The app also forgets NoteTrace's sign-in cookie whenever the account changes.
 - **Signing in to another account in the Android app shows only that account's notes, and downloads all of them.** The previous account's notes stayed on the phone, its changes that hadn't synced went up into the new account, and the new account's older notes never downloaded. If the previous account left changes that haven't synced, the app asks first; Cancel signs out and keeps them for that account. Settings are kept per account and per server, and the home screen widget shows nothing while signed out.
+- **The diagnostic log never holds a secret.** It recorded every link the app opened, sign-in codes included, and in diagnostic mode the value of every setting sent to the server, AI API keys included. It now records only which setting changed, and hides anything that looks like a key, token or password.
 - **@capacitor/android** bumped 8.3.0 to 8.5.3 and **@capacitor/core** 8.4.0 to 8.5.3, closes [GHSA-rvm3-566m-v7fv](https://github.com/advisories/GHSA-rvm3-566m-v7fv) (critical: a tapped link could load another site's page inside the app as if it were the app, with your sign-in and the app's phone features). The Android app was exposed: a link in a note shared with you as view-only could do this. **@capacitor/ios** moves to 8.5.3 with them; NoteTrace has no iOS app.
 - **proxy-addr** bumped 2.0.7 to 2.0.8 on the server, closes [GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h) (critical: some IPv6-style trusted-proxy ranges trusted every client's forwarded address). NoteTrace sets no trusted proxy, so it wasn't exposed.
 - **@modelcontextprotocol/sdk** bumped 1.30.0 to 1.32.1 on the server, closes [GHSA-6qxp-vccf-f47h](https://github.com/advisories/GHSA-6qxp-vccf-f47h) (high: its OAuth client could send credentials to a server the other side picked). NoteTrace uses only its MCP server, so it wasn't exposed.

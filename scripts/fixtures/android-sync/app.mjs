@@ -14,7 +14,7 @@ const net = { offline: false, dropAnswer: null, noInstanceId: false, sent: [] };
 const delayMax = Number(process.env.PHONE_DELAY_MS || 0);
 globalThis.fetch = async (url, init) => {
   const u = String(url);
-  if (net.offline) throw new TypeError('Failed to fetch');
+  if (net.offline || net.block?.(u)) throw new TypeError('Failed to fetch');
   if (delayMax) await sleep(Math.floor(Math.random() * delayMax));
   net.sent.push({ url: u.replace(/^https?:\/\/[^/]+/, ''), method: init?.method || 'GET' });
   const res = await realFetch(url, init);
@@ -50,23 +50,32 @@ export async function open() {
     const r = await fetch(platform.apiUrl('/api/auth/me'), { headers: { Authorization: `Bearer ${platform.getAuthToken()}` } });
     return (await r.json()).user;
   };
-  // What the app does once it knows who signed in (stores/auth.js), then
-  // App.svelte's account check. False when the check signed them back out.
+  // What the app does once it knows who signed in (Login.svelte,
+  // stores/auth.js: the account's settings load), then App.svelte's account
+  // check, and once that passes its sync and reminders. False when the
+  // check signed them back out.
+  const settings = await import(SRC + 'stores/settings.js');
+  const reminders = await import(SRC + 'lib/note-reminders.js');
   async function signedIn() {
     const user = await me();
     localStorage.setItem('wl:userId', String(user.id));
     localStorage.setItem('note:cachedUser', JSON.stringify(user));
+    localStorage.setItem('note:cachedUserMgmt', '1');
     auth.currentUser.set(user);
+    settings.reloadSettingStores?.(); // App.svelte, on every change of $currentUser
+    await settings.loadServerSettings();
     if (!la) return true;
-    return la.ensureLocalAccount(user, {
+    const ok = await la.ensureLocalAccount(user, {
       confirm: async n => { asked.push({ kind: 'waiting', n }); return answer; },
       sameServer: async () => { asked.push({ kind: 'same_server' }); return sameServer; },
       signOut: () => auth.logout(),
     });
+    if (ok) reminders.rescheduleReminders();
+    return ok;
   }
 
   const p = {
-    SRC, S, db, dbn, syncMod: sync, auth, platform, NotesNative, la, net, asked, sleep, get,
+    SRC, S, db, dbn, syncMod: sync, auth, settings, reminders, platform, NotesNative, la, net, asked, sleep, get,
     answerWaiting(v) { answer = v; },
     answerSameServer(v) { sameServer = v; },
     // First-run setup (NativeSetup.svelte) and the sign-in screen

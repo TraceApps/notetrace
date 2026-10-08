@@ -381,6 +381,10 @@ export async function logout() {
       la.resetAccountGate();
     }
   } catch { /* never block sign-out */ }
+  // This account's reminders stop with its session.
+  if (isNative) {
+    try { await (await import('../lib/note-reminders.js')).clearReminders(); } catch { /* none set */ }
+  }
   // The offline copies of this account's notes and files (service worker
   // caches) don't outlive the session on a shared computer.
   try {

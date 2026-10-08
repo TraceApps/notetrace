@@ -323,18 +323,60 @@ async function _migrateAiChatUpdatedAt() {
 // `isNative`. Now they actually persist to the local user_settings
 // table when running native.
 
+// A setting's value as the server keeps it (JSON), so a list or an object
+// (note templates, note order) goes up as itself: String() made it
+// "[object Object]" or "3,1,2".
+export function settingText(value) {
+  if (value == null) return null;
+  return JSON.stringify(value);
+}
+
+// Returns when the change was made (to the millisecond): a direct push
+// marks it sent only if it is still that change (dbMarkSettingsSynced).
 export async function dbUpsertSetting(key, value) {
-  if (!isNative) return;
+  if (!isNative) return null;
   const db = await getDb();
-  const v = value == null ? null : String(value);
+  const v = settingText(value);
+  const updatedAt = new Date().toISOString();
   await db.run(
-    `INSERT INTO user_settings (user_id, key, value, sync_status)
-     VALUES (?, ?, ?, 'pending')
+    `INSERT INTO user_settings (user_id, key, value, updated_at, sync_status)
+     VALUES (?, ?, ?, ?, 'pending')
      ON CONFLICT(user_id, key) DO UPDATE SET
        value = excluded.value,
-       updated_at = datetime('now'),
+       updated_at = excluded.updated_at,
        sync_status = 'pending'`,
-    [LOCAL_USER_ID, key, v]
+    [LOCAL_USER_ID, key, v, updatedAt]
+  );
+  return updatedAt;
+}
+
+/** When the phone's copy of a setting last changed, if it holds `value`
+ *  (the change a direct push sends), or null. */
+export async function dbGetSettingUpdatedAt(key, value) {
+  if (!isNative) return null;
+  const db = await getDb();
+  const r = await db.query(`SELECT value, updated_at FROM user_settings WHERE user_id = ? AND key = ?`, [LOCAL_USER_ID, key]);
+  const row = r?.values?.[0];
+  if (!row) return null;
+  if (value !== undefined && row.value !== settingText(value)) return null;
+  return row.updated_at ?? null;
+}
+
+// The server's value of a setting, written into the phone's copy as sent
+// (stores/settings.js, settings coming down). A setting changed here and
+// not sent yet is the newer one: it stays, and goes up with the next push.
+// One statement, so a change made meanwhile is never written over.
+export async function dbMirrorSetting(key, value) {
+  if (!isNative) return;
+  const db = await getDb();
+  const v = settingText(value);
+  await db.run(
+    `INSERT INTO user_settings (user_id, key, value, updated_at, sync_status)
+     VALUES (?, ?, ?, ?, 'synced')
+     ON CONFLICT(user_id, key) DO UPDATE SET
+       value = excluded.value, updated_at = excluded.updated_at, sync_status = 'synced'
+     WHERE user_settings.sync_status != 'pending'`,
+    [LOCAL_USER_ID, key, v, new Date().toISOString()]
   );
 }
 
@@ -720,6 +762,14 @@ export async function dbClearUserData() {
     if (left) throw new Error(`could not clear ${t}`);
   }
   if ((await db.query(`SELECT 1 FROM sync_meta WHERE key = 'last_pull_at'`, []))?.values?.length) throw new Error('could not clear the pull cursor');
+}
+
+/** The pull starts over (back to the account the data came from: what
+ *  changed there meanwhile comes down; lib/local-account.js). */
+export async function dbResetPullCursor() {
+  if (!isNative) return;
+  const db = await getDb();
+  await db.run(`DELETE FROM sync_meta WHERE key = 'last_pull_at'`, []);
 }
 
 /** Connecting to a server from Settings with the phone's rows going up

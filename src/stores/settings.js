@@ -93,15 +93,47 @@ export function _applySetting(key, value) {
 function _isLoggedIn() { return !!localStorage.getItem('wl:userId'); }
 function _shouldSyncToServer() { return _isLoggedIn() && !(isNative && !getServerUrl()); }
 
+// ── The phone's copy of the settings (Android) ───────────────────────────
+// Every setting change also waits in the phone's copy (SQLite user_settings)
+// until it reaches the server. That copy is one account's: until the
+// account check has passed (lib/local-account.js), it may still be the
+// previous account's, so nothing of this account's goes into it before.
+// Checked again before every write: once another account signs in (the
+// account generation moves), nothing more goes in.
+async function _intoPhoneCopy(write) {
+  const forUser = localStorage.getItem('wl:userId');
+  const la = await import('../lib/local-account.js');
+  if (!(await la.whenLocalCopyIsCurrent(forUser))) return null;
+  const gen = la.accountGeneration();
+  const live = () => la.accountGeneration() === gen && la.localCopyIsCurrent(forUser)
+    && localStorage.getItem('wl:userId') === forUser;
+  if (!live()) return null;
+  return write(live);
+}
+function _queueInPhoneCopy(key, value) {
+  _intoPhoneCopy(async () => (await import('../lib/db-native.js')).dbUpsertSetting(key, value)).catch(() => {});
+}
+
 export function scheduleSave(key, value) {
   if (!SERVER_SETTINGS.has(key)) return;
   if (_suppressSync) return;
   clearTimeout(_saveQueue[key]);
   _saveQueue[key] = setTimeout(async () => {
     if (!_shouldSyncToServer()) return;
+    // When the phone's copy of this setting was last changed, before it
+    // goes up: if it changes again while this is out, it stays waiting
+    // for the next sync instead of being marked as sent.
+    let sentAt = null;
+    if (isNative) {
+      try {
+        const la = await import('../lib/local-account.js');
+        if (la.localCopyIsCurrent()) sentAt = await (await import('../lib/db-native.js')).dbGetSettingUpdatedAt(key, value);
+      } catch { /* not in the copy yet */ }
+    }
     try {
       const url = _settingsUrl();
-      _dlog(`[settings] pushing ${key}=${JSON.stringify(value)} to ${url}`);
+      // Never a value: settings include API keys and tokens.
+      _dlog(`[settings] pushing ${key} (changed) to ${url}`);
       const res = await fetch(url, {
         method: 'PUT',
         credentials: 'include',
@@ -110,10 +142,10 @@ export function scheduleSave(key, value) {
         signal: AbortSignal.timeout(8000),
       });
       if (!res.ok) throw new Error(`Server responded ${res.status}`);
-      if (isNative) {
+      if (isNative && sentAt) {
         try {
-          const { dbMarkSettingsSynced } = await import('../lib/db-native.js');
-          await dbMarkSettingsSynced([key]);
+          const la = await import('../lib/local-account.js');
+          if (la.localCopyIsCurrent()) await (await import('../lib/db-native.js')).dbMarkSettingsSynced([{ key, updated_at: sentAt }]);
         } catch {}
       }
     } catch (e) {
@@ -141,10 +173,17 @@ export async function bulkSet(settingsObj) {
     for (const [key, value] of entries) DB.setSetting(key, value);
   } finally { _suppressSync = false; }
 
+  // When each went into the phone's copy, to mark it sent below.
+  const sentAt = new Map();
   if (isNative && userPrefEntries.length > 0) {
     try {
-      const { dbUpsertSetting } = await import('../lib/db-native.js');
-      for (const [key, value] of userPrefEntries) await dbUpsertSetting(key, value);
+      await _intoPhoneCopy(async (live) => {
+        const { dbUpsertSetting } = await import('../lib/db-native.js');
+        for (const [key, value] of userPrefEntries) {
+          if (!live()) return;
+          sentAt.set(key, await dbUpsertSetting(key, value));
+        }
+      });
     } catch (e) {
       console.warn('[settings] bulk native upsert failed:', e.message);
     }
@@ -162,14 +201,40 @@ export async function bulkSet(settingsObj) {
       signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) throw new Error(`Server responded ${res.status}`);
-    if (isNative) {
+    if (isNative && sentAt.size) {
       try {
-        const { dbMarkSettingsSynced } = await import('../lib/db-native.js');
-        await dbMarkSettingsSynced(userPrefEntries.map(([k]) => k));
+        const la = await import('../lib/local-account.js');
+        if (la.localCopyIsCurrent()) await (await import('../lib/db-native.js')).dbMarkSettingsSynced([...sentAt].map(([key, updated_at]) => ({ key, updated_at })));
       } catch {}
     }
   } catch (e) {
     console.warn('[settings] bulk push failed:', e.message);
+  }
+}
+
+async function _unsentSettingKeys(forUser) {
+  try {
+    const la = await import('../lib/local-account.js');
+    // The copy is this account's: checked already, or tagged as its own (a
+    // sign-in back to the same account, before the check has run).
+    if (!la.localCopyIsCurrent(forUser) && !(await la.copyTaggedFor(forUser))) return new Set();
+    const { dbGetPendingSettings } = await import('../lib/db-native.js');
+    return new Set((await dbGetPendingSettings()).map(s => s.key));
+  } catch { return new Set(); }
+}
+
+async function _mirrorServerSettings(serverSettings) {
+  try {
+    await _intoPhoneCopy(async (live) => {
+      const { dbMirrorSetting } = await import('../lib/db-native.js');
+      for (const [key, value] of Object.entries(serverSettings)) {
+        if (DEVICE_PREFS.has(key)) continue;
+        if (!live()) return;
+        await dbMirrorSetting(key, value);
+      }
+    });
+  } catch (e) {
+    console.warn('[settings] native SQLite mirror failed:', e.message);
   }
 }
 
@@ -179,6 +244,11 @@ export async function loadServerSettings() {
     const res = await fetch(_settingsUrl(), { credentials: 'include', headers: _authHeaders(), signal: AbortSignal.timeout(8000) });
     if (!res.ok) return;
     const serverSettings = await res.json();
+    // Settings changed on this phone and not sent yet are the newer ones:
+    // kept when the server's come down. Only while the phone's copy is
+    // this account's (before, its rows can be the previous account's).
+    const forUser = localStorage.getItem('wl:userId');
+    const unsent = isNative ? await _unsentSettingKeys(forUser) : new Set();
     _suppressSync = true;
     // CRITICAL: skip DEVICE_PREFS keys. These are local-only (form-factor
     // or hardware specific) and should never be overwritten by server
@@ -189,23 +259,13 @@ export async function loadServerSettings() {
     // turn off mid-session.
     for (const [key, value] of Object.entries(serverSettings)) {
       if (DEVICE_PREFS.has(key)) continue;
+      if (unsent.has(key)) continue; // changed here, not sent yet: the newer value
       DB.setSetting(key, value, true);
     }
-    if (isNative) {
-      try {
-        const { dbUpsertSetting, dbMarkSettingsSynced } = await import('../lib/db-native.js');
-        const keys = [];
-        // Same DEVICE_PREFS skip as the localStorage loop above.
-        for (const [key, value] of Object.entries(serverSettings)) {
-          if (DEVICE_PREFS.has(key)) continue;
-          await dbUpsertSetting(key, value);
-          keys.push(key);
-        }
-        if (keys.length) await dbMarkSettingsSynced(keys);
-      } catch (e) {
-        console.warn('[settings] native SQLite mirror failed:', e.message);
-      }
-    }
+    // Into the phone's copy only once it's this account's, and never over
+    // a change waiting to go up. In the background, so signing in never
+    // waits on the account check.
+    if (isNative) _mirrorServerSettings(serverSettings).catch(() => {});
     _suppressSync = false;
 
     try {
@@ -229,9 +289,7 @@ if (typeof window !== 'undefined') {
     if (_suppressSync) return;
     const value = DB.getSetting(key, undefined);
     _recentlyChanged.set(key, Date.now());
-    if (isNative) {
-      import('../lib/db-native.js').then(({ dbUpsertSetting }) => dbUpsertSetting(key, value)).catch(() => {});
-    }
+    if (isNative) _queueInPhoneCopy(key, value);
     scheduleSave(key, value);
   });
 }
@@ -282,9 +340,7 @@ function createSettingStore(key, defaultValue) {
       store.set(value);
       if (_suppressSync) return;
       _recentlyChanged.set(key, Date.now());
-      if (isNative && SERVER_SETTINGS.has(key)) {
-        import('../lib/db-native.js').then(({ dbUpsertSetting }) => dbUpsertSetting(key, value)).catch(() => {});
-      }
+      if (isNative && SERVER_SETTINGS.has(key)) _queueInPhoneCopy(key, value);
       scheduleSave(key, value);
     },
     update(fn) {

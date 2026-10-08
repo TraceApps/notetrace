@@ -246,5 +246,8 @@ export async function importLocalSnapshot(snapshot) {
     }
   }
 
+  // Where the phone's data came from is no longer known: connecting to a
+  // server again sends all of it up as new (lib/local-account.js).
+  try { await (await import('./local-account.js')).forgetCopyOrigin(); } catch { /* not tagged */ }
   return { ok: true };
 }

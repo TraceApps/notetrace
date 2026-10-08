@@ -34,7 +34,7 @@
  */
 import { writable, get } from 'svelte/store';
 import { getServerUrl, getAuthToken, forgetServerCookies } from './platform.js';
-import { dbGetMeta, dbSetMeta, dbCountUnsynced, dbClearUserData, dbKeepForNewServer } from './db-native.js';
+import { dbGetMeta, dbSetMeta, dbCountUnsynced, dbClearUserData, dbKeepForNewServer, dbResetPullCursor } from './db-native.js';
 import { resetUserState } from './user-state.js';
 
 const META_KEY = 'account';
@@ -156,6 +156,11 @@ export async function localDataIsThisAccount(token = getAuthToken()) {
   const id = tokenUserId(token);
   if (id == null) return true;
   const owner = await _readOwner();
+  // The phone's own copy (local mode, Disconnect) is handed to an account
+  // only by the account check or by Connect (claimForServer), never by a
+  // sync that happens to run meanwhile: that would lose which account it
+  // came from (`was`).
+  if (owner?.local) return false;
   // When the account was made, as the server last said (stores/auth.js
   // keeps it): the same id on a server rebuilt with a fresh database is
   // someone else, and nothing goes up or comes down for them here until
@@ -176,29 +181,64 @@ export async function localDataIsThisAccount(token = getAuthToken()) {
 }
 
 /** Local mode (Disconnect, or chose local at setup): the data is this
- *  phone's own now, and goes to whichever account it's connected to next. */
+ *  phone's own now, and goes to whichever account it's connected to next.
+ *  Which account it came from is kept (`was`), so connecting to that same
+ *  account again sends up only what's new (cameFromThisAccount). */
 export async function setLocalOwner() {
   resetAccountGate();
   await _syncIdle();
+  await _clearReminders();
   await forgetServerCookies();
-  await dbSetMeta(META_KEY, JSON.stringify({ local: true }));
+  const owner = await _readOwner();
+  const was = _unowned(owner) ? (owner?.was || null) : { i: owner.i || null, s: owner.s, u: owner.u, c: owner.c || null };
+  await dbSetMeta(META_KEY, JSON.stringify({ local: true, ...(was ? { was } : {}) }));
+}
+
+/**
+ * Connecting from Settings: whether the phone's data came from this very
+ * account on this server (it was disconnected from it). Its rows then keep
+ * their ids there, and only what was made or changed since goes up, once.
+ * At another address only the servers' ids can tell; without them the
+ * person is asked, and no answer counts as not the same.
+ */
+export async function cameFromThisAccount(serverUrl, user, { sameServer = _askSameServer } = {}) {
+  if (!user || user.id == null) return false;
+  const owner = await _readOwner();
+  const was = owner?.local ? owner.was : null;
+  if (!was) return false;
+  const m = await matchOwner(was, user.id, serverUrl, user.created_at || null);
+  if (m.same) return true;
+  // null: the question was closed without an answer (the caller stops).
+  if (m.ambiguous) { const a = await sameServer(); return a == null ? null : a === true; }
+  return false;
+}
+
+/** A local backup restored: where the phone's data came from is unknown. */
+export async function forgetCopyOrigin() {
+  const owner = await _readOwner();
+  if (owner?.local && owner.was) await dbSetMeta(META_KEY, JSON.stringify({ local: true }));
 }
 
 /**
  * Connecting to a server from Settings, after the person chose what
  * happens to the phone's data there (lib/migrate.js). `clear` (Download):
- * the copy is emptied and fills from that account. Otherwise (Upload,
- * Merge, or nothing on the phone) every row goes up to it as new: ids from
- * a server it may have synced with before mean nothing there. Either way
+ * the copy is emptied and fills from that account. `sameAccount`: the data
+ * came from this account (cameFromThisAccount), so only what's new goes
+ * up. Otherwise (Upload, Merge, or nothing on the phone) every row goes up
+ * to it as new: ids from a server it may have synced with before mean
+ * nothing there. Either way
  * the copy is that account's now and fills from it from the start, so
  * signing in afterwards neither asks nor clears.
  */
-export async function claimForServer(serverUrl, userId, { created = null, clear = false } = {}) {
+export async function claimForServer(serverUrl, userId, { created = null, clear = false, sameAccount = false } = {}) {
   resetAccountGate();
   await _syncIdle();
   await forgetServerCookies(serverUrl);
   await resetUserState();
   if (clear) await dbClearUserData();
+  // Back to the account the data came from: its rows keep their ids, and
+  // the pull starts over to bring what changed there meanwhile.
+  else if (sameAccount) await dbResetPullCursor();
   else await dbKeepForNewServer();
   await _setOwner({ i: await serverInstanceId(serverUrl), s: _server(serverUrl), u: userId, c: created });
 }
@@ -224,6 +264,8 @@ async function _askSameServer() {
     message: say('sync.same_server'),
     confirmText: say('sync.same_server_yes'),
     cancelText: say('sync.same_server_no'),
+    // Closed without an answer: nothing is decided (prepareLocalAccount).
+    dismissed: null,
   });
 }
 
@@ -237,6 +279,10 @@ async function _askToDiscard(count) {
     confirmText: say('sync.switch_account_anyway'),
     dangerous: true,
   });
+}
+
+async function _clearReminders() {
+  try { await (await import('./note-reminders.js')).clearReminders(); } catch { /* none set */ }
 }
 
 // What the phone shows of the copy outside the app (reminders it set, the
@@ -258,11 +304,19 @@ export async function prepareLocalAccount(user, { confirm = _askToDiscard, sameS
   const owner = await _readOwner();
   // A server that didn't answer is asked again before anyone is asked.
   const m = await matchOwner(owner, user.id, getServerUrl(), user.created_at || null, { tries: 3 });
-  if (m.same || (m.ambiguous && await sameServer())) {
+  // Not answered (the question closed without a choice): nothing is
+  // cleared and nothing goes up; the sign-in is undone and the question
+  // comes back next time.
+  const answer = m.ambiguous ? await sameServer() : null;
+  if (m.ambiguous && answer == null) return false;
+  if (m.same || answer === true) {
     if (m.tag) await _retag(owner, m.tag);
     return true;
   }
   await _syncIdle();
+  // The previous account's reminders stop now, whatever is answered below:
+  // they come back from that account's own copy when it's current again.
+  await _clearReminders();
   // Notes, lists, labels and the rest. Settings aren't asked about: the
   // previous account keeps its own on this phone (lib/setting-key.js), and
   // one the app set by itself (the time zone) would ask about nothing.
@@ -326,6 +380,57 @@ async function _check(user, key, { confirm, signOut, sameServer }) {
   }
   accountGate.set({ state: 'ready', key, error: null });
   return true;
+}
+
+// Whether the phone's copy is the signed-in account's yet. Until the gate
+// has checked, it may still hold the previous account's data, including
+// settings it never sent: the new account's settings wait to be written
+// into it (stores/settings.js), so they're neither counted as the previous
+// account's nor written over its unsent ones. Local mode has one owner.
+export function localCopyIsCurrent(userId = localStorage.getItem('wl:userId')) {
+  if (!getServerUrl()) return true;
+  // A server without accounts (single-user): one copy, no one to check.
+  if (tokenUserId() == null) {
+    try { if (localStorage.getItem('note:cachedUserMgmt') === '0') return true; } catch { /* storage unavailable */ }
+  }
+  if (userId == null || userId === '') return false;
+  return accountReadyFor(get(accountGate), userId);
+}
+/** Whether the copy is already tagged as this account's, on this server
+ *  (its rows waiting to go up are this account's own), before the check
+ *  has run. */
+export async function copyTaggedFor(userId = localStorage.getItem('wl:userId')) {
+  if (!getServerUrl()) return true;
+  const owner = await _readOwner();
+  return !_unowned(owner) && userId != null && String(owner.u) === String(userId) && owner.s === _server();
+}
+/** Resolves true once the copy is this account's, false if that takes longer than `ms`. */
+export function whenLocalCopyIsCurrent(userId = localStorage.getItem('wl:userId'), ms = 60_000) {
+  if (localCopyIsCurrent(userId)) return Promise.resolve(true);
+  return new Promise(resolve => {
+    let unsub = null, done = false;
+    const end = ok => { if (done) return; done = true; clearTimeout(timer); queueMicrotask(() => unsub?.()); resolve(ok); };
+    const timer = setTimeout(() => end(false), ms);
+    // Also what the check doesn't drive: a server found to have no
+    // accounts (single-user), or a sign-in.
+    const poll = setInterval(() => { if (done) clearInterval(poll); else if (localCopyIsCurrent(userId)) { clearInterval(poll); end(true); } }, 1000);
+    unsub = accountGate.subscribe(g => { if (userId != null && accountReadyFor(g, userId)) end(true); });
+  });
+}
+
+/**
+ * Whether what the phone shows outside the app (the home screen widget,
+ * reminder alarms) may come from its copy now: in local mode always; in
+ * server mode only while signed in and once the copy is the signed-in
+ * account's. A server without accounts (single-user) has none to check.
+ */
+export function copyMayShowOutside() {
+  if (!getServerUrl()) return true;
+  const id = tokenUserId();
+  if (id == null) {
+    try { return !!getAuthToken() || localStorage.getItem('note:cachedUserMgmt') === '0'; } catch { return false; }
+  }
+  return localCopyIsCurrent(id);
 }
 
 /** Whether the app may show the data for this user now (`who`: the user,
