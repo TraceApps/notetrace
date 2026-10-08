@@ -785,8 +785,119 @@ export async function dbKeepForNewServer() {
     if (t !== 'ai_chat_history') await db.run(`DELETE FROM ${t} WHERE deleted_at IS NOT NULL`, []);
     await db.run(`UPDATE ${t} SET server_id = NULL, sync_status = 'pending'`, []);
   }
+  // Items and pictures keep their uuid: on a server that already has it
+  // for this account it's the same item, and one that is another account's
+  // is answered `uuid_taken` and gets a uuid of its own then (dbNewUuid).
   await db.run(`UPDATE user_settings SET sync_status = 'pending'`, []);
   await db.run(`DELETE FROM sync_meta WHERE key = 'last_pull_at'`, []);
+}
+
+// A uuid derived from another and an account: always the same pair, the same result.
+function _uuidFor(uuid, account) {
+  const base = String(uuid || '').replace(/~[0-9a-f]{8}$/, '');
+  if (!account) return base;
+  let h = 0x811c9dc5;
+  for (const ch of `${account}|${base}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+  return `${base}~${h.toString(16).padStart(8, '0')}`;
+}
+
+/** Rows the server answered `deleted` ([table, local id, reason, the
+ *  updated_at it went up with] tuples): removed here, a note with
+ *  everything hanging off it. A row changed again since it went up stays
+ *  (its next push decides). Returns the notes ({ id, title }) whose edits
+ *  went because what they changed was deleted elsewhere, to say so; a
+ *  tombstone, or a share taken away, isn't an edit lost. */
+export async function dbDropRows(drops) {
+  if (!isNative || !drops?.length) return [];
+  const db = await getDb();
+  const lost = new Map();
+  const one = async (sql, args) => (await db.query(sql, args))?.values?.[0];
+  for (const [table, id, reason = 'deleted', sentAt = null] of drops) {
+    if (!SYNC_TABLES.includes(table)) continue;
+    const row = await one(`SELECT * FROM ${table} WHERE id = ?`, [id]);
+    if (!row) continue;
+    if (sentAt != null && row.updated_at !== sentAt) continue;
+    const noteId = table === 'notes' ? id : row.note_id;
+    if (reason === 'deleted' && row.deleted_at == null && noteId != null && !lost.has(noteId)) {
+      const note = await one(`SELECT title FROM notes WHERE id = ?`, [noteId]);
+      if (note) lost.set(noteId, { id: noteId, title: note.title });
+    }
+    if (table === 'notes') {
+      for (const c of ['checklist_items', 'note_attachments', 'note_labels', 'note_versions']) await db.run(`DELETE FROM ${c} WHERE note_id = ?`, [id]);
+      await db.run(`DELETE FROM notes WHERE id = ?`, [id]);
+    } else {
+      await db.run(`DELETE FROM ${table} WHERE id = ?`, [id]);
+    }
+  }
+  return [...lost.values()];
+}
+
+/** Waiting items, pictures and labels of notes this phone has as deleted
+ *  ([table, local id] pairs). */
+export async function dbOrphansOfDeletedNotes() {
+  if (!isNative) return [];
+  const db = await getDb();
+  const out = [];
+  for (const t of ['checklist_items', 'note_attachments', 'note_labels']) {
+    const r = await db.query(`SELECT c.id FROM ${t} c JOIN notes n ON n.id = c.note_id WHERE c.sync_status = 'pending' AND n.deleted_at IS NOT NULL AND n.sync_status = 'synced'`, []);
+    for (const row of r?.values || []) out.push([t, row.id]);
+  }
+  return out;
+}
+
+/** A row's parent is gone from the server: the parent goes up again (as
+ *  new, once), so the row has something to belong to. */
+export async function dbParentGoneOnServer(table, id, fk, answered = null) {
+  if (!isNative) return;
+  const parentTable = SYNC_PARENTS[table]?.[fk];
+  if (!parentTable) return;
+  const db = await getDb();
+  const parent = (await db.query(`SELECT ${fk} AS p FROM ${table} WHERE id = ?`, [id]))?.values?.[0]?.p;
+  // A parent this same push answered has its id now: the row goes with it next time.
+  if (parent == null || answered?.has(`${parentTable}:${parent}`)) return;
+  await db.run(`UPDATE ${parentTable} SET server_id = NULL, sync_status = 'pending' WHERE id = ?`, [parent]);
+}
+
+/** The row's uuid is another account's on the server: one of its own,
+ *  derived from it and this account, so the same copy gets the same one
+ *  every time (a second restore finds the first instead of a twin). */
+export async function dbNewUuid(table, id, account = '') {
+  if (!isNative || !['checklist_items', 'note_attachments'].includes(table)) return;
+  const db = await getDb();
+  const row = (await db.query(`SELECT uuid FROM ${table} WHERE id = ?`, [id]))?.values?.[0];
+  if (!row) return;
+  const next = _uuidFor(row.uuid, account || 'copy');
+  if (next === row.uuid) return;
+  await db.run(`UPDATE ${table} SET uuid = ?, sync_status = 'pending' WHERE id = ?`, [next, id]);
+}
+
+/** After a pull from the start: rows this account owns here with a server
+ *  id the server didn't send go up again as new (its create key keeps that
+ *  to once). A note shared with this account is someone else's: left out. */
+export async function dbServerIdsMissingFromPull(payload) {
+  if (!isNative || !payload?.tables) return;
+  const db = await getDb();
+  for (const t of SYNC_TABLES) {
+    const sent = new Set((payload.tables[t] || []).map(r => r.id));
+    const ownOnly = t === 'notes' ? ` AND (share_role IS NULL OR share_role = 'owner')`
+      : (t === 'checklist_items' || t === 'note_attachments') ? ` AND note_id IN (SELECT id FROM notes WHERE share_role IS NULL OR share_role = 'owner')` : '';
+    const rows = (await db.query(`SELECT id, server_id FROM ${t} WHERE server_id IS NOT NULL${ownOnly}`, []))?.values || [];
+    for (const r of rows) {
+      if (!sent.has(r.server_id)) await db.run(`UPDATE ${t} SET server_id = NULL, sync_status = 'pending' WHERE id = ?`, [r.id]);
+    }
+  }
+}
+
+/** Notes shared with the account a backup came from: someone else's notes,
+ *  left out when that backup is restored into another account. */
+export async function dbDropSharedIn() {
+  if (!isNative) return;
+  const db = await getDb();
+  const ids = ((await db.query(`SELECT id FROM notes WHERE share_role IN ('view', 'edit')`, []))?.values || []).map(r => r.id);
+  for (const id of ids) {
+    for (const c of ['checklist_items', 'note_attachments', 'note_labels', 'note_versions']) await db.run(`DELETE FROM ${c} WHERE note_id = ?`, [id]);
+    await db.run(`DELETE FROM notes WHERE id = ?`, [id]);
+  }
 }
 
 /** This install's id: with a row's own id and when it was made, the key

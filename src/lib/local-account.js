@@ -34,7 +34,7 @@
  */
 import { writable, get } from 'svelte/store';
 import { getServerUrl, getAuthToken, forgetServerCookies } from './platform.js';
-import { dbGetMeta, dbSetMeta, dbCountUnsynced, dbClearUserData, dbKeepForNewServer, dbResetPullCursor } from './db-native.js';
+import { dbGetMeta, dbSetMeta, dbCountUnsynced, dbClearUserData, dbKeepForNewServer, dbResetPullCursor, dbDropSharedIn } from './db-native.js';
 import { resetUserState } from './user-state.js';
 
 const META_KEY = 'account';
@@ -153,6 +153,7 @@ export async function matchOwner(owner, userId, serverUrl = getServerUrl(), crea
  * block. Online, it also fills in the server's id on the tag.
  */
 export async function localDataIsThisAccount(token = getAuthToken()) {
+  if (_restoring) return false;
   const id = tokenUserId(token);
   if (id == null) return true;
   const owner = await _readOwner();
@@ -217,6 +218,58 @@ export async function cameFromThisAccount(serverUrl, user, { sameServer = _askSa
 export async function forgetCopyOrigin() {
   const owner = await _readOwner();
   if (owner?.local && owner.was) await dbSetMeta(META_KEY, JSON.stringify({ local: true }));
+}
+
+/** Whose copy this is (a backup carries it, lib/local-backup.js). */
+export async function copyTag() {
+  return _readOwner();
+}
+
+/** A local backup is about to replace the copy: nothing still running
+ *  writes into it, and no sync starts, until afterRestore (or endRestore,
+ *  if the restore fails). */
+let _restoring = false;
+export async function beforeRestore() {
+  _restoring = true;
+  await _syncIdle();
+}
+export function endRestore() { _restoring = false; }
+
+/**
+ * A local backup was restored into the copy. Connected to a server:
+ *   - made from this same account on this same server (its tag): its rows
+ *     keep their ids, and the next pull goes from the start; rows the
+ *     server no longer has go up again once (lib/sync.js);
+ *   - from another account, another server, local mode, or with no tag:
+ *     none of its ids mean anything here. Its rows go up as this
+ *     account's, new, once (their create keys), and notes shared with
+ *     that other account stay out. Nothing is ever written into another
+ *     account's rows.
+ * In local mode, where the data came from is no longer known.
+ */
+export async function afterRestore(backupTag) {
+  try {
+    const cur = await _readOwner();
+    if (!getServerUrl() || cur?.local) { await forgetCopyOrigin(); return 'local'; }
+    // A backup taken in local mode after a Disconnect carries the account
+    // its data came from (`was`).
+    const raw = backupTag && typeof backupTag === 'object' ? backupTag : null;
+    const t = raw?.local ? (raw.was || null) : raw;
+    const same = !!(t && t.u != null && cur && !_unowned(cur) && String(t.u) === String(cur.u)
+      && (t.s === cur.s || (t.i && cur.i && t.i === cur.i))
+      && !(t.i && cur.i && t.i !== cur.i)
+      && (!t.c || !cur.c || t.c === cur.c));
+    if (same) {
+      await dbResetPullCursor();
+      await dbSetMeta('reconcile_missing', '1');
+      return 'same';
+    }
+    await dbDropSharedIn();
+    await dbKeepForNewServer();
+    return 'other';
+  } finally {
+    _restoring = false;
+  }
 }
 
 /**

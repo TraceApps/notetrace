@@ -24,7 +24,7 @@
  * rewrites image paths if the platform reassigns file URIs.
  */
 
-import { isNative } from './platform.js';
+import { isNative, getServerUrl } from './platform.js';
 import { getDb, LOCAL_USER_ID } from './db-native.js';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 
@@ -63,10 +63,16 @@ export async function exportLocalSnapshot(opts = {}) {
     if (row && row.key) settingsMap[row.key] = row.value;
   }
 
+  // Whose copy this is (server, account, when it was made), so a restore
+  // knows whether its ids mean anything there (lib/local-account.js).
+  let account = null;
+  try { account = await (await import('./local-account.js')).copyTag(); } catch { /* untagged */ }
+
   const out = {
     format: 'notetrace-local-snapshot',
     version: 1,
     created_at: new Date().toISOString(),
+    account,
     tables,
     settings: settingsMap,
   };
@@ -131,6 +137,7 @@ export async function exportLocalZip() {
     format: snapshot.format,
     version: snapshot.version,
     created_at: snapshot.created_at,
+    account: snapshot.account,
     tables: snapshot.tables,
     settings: snapshot.settings,
   }, null, 2));
@@ -209,45 +216,54 @@ export async function importLocalSnapshot(snapshot) {
     throw new Error('Not a NoteTrace local snapshot');
   }
   const db = await getDb();
+  // Nothing still syncing writes into the copy while it's replaced.
+  const la = await import('./local-account.js');
+  if (getServerUrl()) await la.beforeRestore();
+  try {
 
-  // Tables — clear + bulk insert. Each row keeps its id so cross-FK
-  // references inside the snapshot remain valid after import.
-  for (const t of TABLES) {
-    const rows = snapshot.tables?.[t];
-    if (!Array.isArray(rows)) continue;
-    await db.run(`DELETE FROM ${t}`, []);
-    for (const row of rows) {
-      const cols = Object.keys(row);
-      const values = cols.map(k => {
-        const v = row[k];
-        if (v === undefined) return null;
-        if (typeof v === 'object' && v !== null) return JSON.stringify(v);
-        return v;
-      });
-      const ph = cols.map(() => '?').join(', ');
-      try {
-        await db.run(`INSERT INTO ${t} (${cols.join(', ')}) VALUES (${ph})`, values);
-      } catch {}
-    }
-  }
-
-  // Images — write each base64 blob back to Data/uploads.
-  if (snapshot.images && typeof snapshot.images === 'object') {
-    for (const [path, b64] of Object.entries(snapshot.images)) {
-      if (!path || !b64) continue;
-      try {
-        await Filesystem.writeFile({
-          path: path.replace(/^\/+/, ''),
-          data: b64,
-          directory: Directory.Data,
-          recursive: true,
+    // Tables — clear + bulk insert. Each row keeps its id so cross-FK
+    // references inside the snapshot remain valid after import.
+    for (const t of TABLES) {
+      const rows = snapshot.tables?.[t];
+      if (!Array.isArray(rows)) continue;
+      await db.run(`DELETE FROM ${t}`, []);
+      for (const row of rows) {
+        const cols = Object.keys(row);
+        const values = cols.map(k => {
+          const v = row[k];
+          if (v === undefined) return null;
+          if (typeof v === 'object' && v !== null) return JSON.stringify(v);
+          return v;
         });
-      } catch {}
+        const ph = cols.map(() => '?').join(', ');
+        try {
+          await db.run(`INSERT INTO ${t} (${cols.join(', ')}) VALUES (${ph})`, values);
+        } catch {}
+      }
     }
-  }
 
-  // Where the phone's data came from is no longer known: connecting to a
-  // server again sends all of it up as new (lib/local-account.js).
-  try { await (await import('./local-account.js')).forgetCopyOrigin(); } catch { /* not tagged */ }
-  return { ok: true };
+    // Images — write each base64 blob back to Data/uploads.
+    if (snapshot.images && typeof snapshot.images === 'object') {
+      for (const [path, b64] of Object.entries(snapshot.images)) {
+        if (!path || !b64) continue;
+        try {
+          await Filesystem.writeFile({
+            path: path.replace(/^\/+/, ''),
+            data: b64,
+            directory: Directory.Data,
+            recursive: true,
+          });
+        } catch {}
+      }
+    }
+
+    // Connected to a server: the backup's ids are kept only when it was made
+    // from this same account there; otherwise its rows go up as new, once.
+    // In local mode, where the data came from is no longer known.
+  } catch (e) {
+    la.endRestore();
+    throw e;
+  }
+  const as = await la.afterRestore(snapshot.account);
+  return { ok: true, as };
 }

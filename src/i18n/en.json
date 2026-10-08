@@ -336,6 +336,8 @@
     "account_check_failed_title": "Couldn't Open Your Data",
     "account_check_failed": "This device couldn't check whose data it holds, so nothing is shown yet. Try again, or sign out.",
     "account_checking": "Checking your data",
+    "dropped_deleted": "{count, plural, one {An edit made here to \"{title}\" wasn't kept: what it changed was deleted on another device first.} other {Edits made here to # notes weren't kept: what they changed was deleted on another device first.}}",
+    "untitled": "Untitled note",
     "connection": {
       "server_fallback":  "server",
       "no_network_title": "No network connection",

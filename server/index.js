@@ -93,6 +93,9 @@ router.use(/^\/api\/notes(\/\d+\/attachments(\/[^/]+)?)?$/, express.json({ limit
 // headroom so one is never refused for its size after the person has already
 // been told it was saved.
 const EMBEDDED_PHOTO_LIMIT = '6mb';
+// The sync push's clock correction is measured from when the request
+// arrived, before its body uploads, so a slow upload doesn't read as a slow clock.
+router.use('/api/sync/push', (req, res, next) => { req.receivedAt = Date.now(); next(); });
 for (const path of ['/api/notes', '/api/auth/profile']) {
   router.use(path, express.json({ limit: EMBEDDED_PHOTO_LIMIT }));
 }

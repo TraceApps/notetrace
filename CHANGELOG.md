@@ -37,6 +37,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Note templates and other list settings changed in the Android app reach the server intact.** They went up as plain text and came back broken on every device.
 - **Closing "Is This the Same Server?" without choosing no longer clears the phone's data.** Nothing is cleared or sent, and the app asks again the next time you sign in.
 - **Pull to refresh in the Android app gets what changed on the server while a sync was already running.**
+- **A note edited in the Android app after it was deleted elsewhere comes back with your edit on every device**, checklist items included. An edit made before the delete isn't kept: the app removes the note and says so, instead of trying to send it forever.
+- **Restoring a backup in the Android app while connected to a server no longer leaves notes out of step.** A backup of the same account catches up with the server without making copies; one from another account or server, or from an older version, goes up as new notes, once, and never changes the other account's.
 
 ### Security
 

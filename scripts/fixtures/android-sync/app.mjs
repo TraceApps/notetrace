@@ -11,6 +11,8 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // instance id (`noInstanceId`).
 const realFetch = globalThis.fetch;
 const net = { offline: false, dropAnswer: null, noInstanceId: false, sent: [] };
+// The web, while the phone is offline (the test's own requests).
+net.web = (url, init) => realFetch(url, init);
 const delayMax = Number(process.env.PHONE_DELAY_MS || 0);
 globalThis.fetch = async (url, init) => {
   const u = String(url);
@@ -43,6 +45,9 @@ export async function open() {
   let la = null;
   try { la = await import(SRC + 'lib/local-account.js'); } catch { /* none */ }
   const asked = [];
+  // What the app reports about edits it couldn't keep (lib/sync.js).
+  const dropped = [];
+  globalThis.addEventListener('note:sync-dropped', e => dropped.push(...(e.detail?.titles || [])));
   let answer = true, sameServer = true;
   const tokens = JSON.parse(process.env.PHONE_TOKENS || '{}');
 
@@ -75,7 +80,7 @@ export async function open() {
   }
 
   const p = {
-    SRC, S, db, dbn, syncMod: sync, auth, settings, reminders, platform, NotesNative, la, net, asked, sleep, get,
+    SRC, S, db, dbn, syncMod: sync, auth, settings, reminders, dropped, platform, NotesNative, la, net, asked, sleep, get,
     answerWaiting(v) { answer = v; },
     answerSameServer(v) { sameServer = v; },
     // First-run setup (NativeSetup.svelte) and the sign-in screen
@@ -103,6 +108,9 @@ export async function open() {
       return own.map(n => n.title).sort();
     },
     async rows(table = 'notes') { return (await db.query(`SELECT * FROM ${table}`, [])).values; },
+    // Changes waiting to go up (notes, items and the rest; settings aside).
+    async waiting() { return dbn.dbCountUnsynced ? dbn.dbCountUnsynced({ settings: false }) : -1; },
+    async items(noteId) { return (await db.query(`SELECT text FROM checklist_items WHERE note_id = ? AND deleted_at IS NULL ORDER BY text`, [noteId])).values.map(r => r.text); },
     async offline(fn) { net.offline = true; try { return await fn(); } finally { net.offline = false; } },
     done(x) { console.log('RESULT ' + JSON.stringify(x ?? null)); process.exit(0); },
   };

@@ -20,6 +20,7 @@ import {
   dbSetServerId, dbApplyPull,
   dbGetMeta, dbSetMeta, dbMarkSettingsSynced, dbMarkTableSynced,
   dbCountUnsynced, dbInstallId, createKeyOf,
+  dbDropRows, dbParentGoneOnServer, dbNewUuid, dbOrphansOfDeletedNotes, dbServerIdsMissingFromPull,
   SYNC_PARENTS,
 } from './db-native.js';
 import { localDataIsThisAccount, accountGeneration } from './local-account.js';
@@ -414,7 +415,9 @@ async function pushChanges({ token = getAuthToken(), signal = null, gen = accoun
     const out = [];
     for (const r of rows) {
       const row = { ...r, client_id: r.id, server_id: r.server_id || null };
-      if (!row.server_id && install) row.client_key = createKeyOf(install, table, r);
+      // Every row goes with it: also one whose server id that server no
+      // longer has (it goes in as new, once).
+      if (install) row.client_key = createKeyOf(install, table, r);
       delete row.id;
       delete row.sync_status;
       // Local FK ids become server ids. A parent with no server id yet is
@@ -442,7 +445,9 @@ async function pushChanges({ token = getAuthToken(), signal = null, gen = accoun
     method: 'POST',
     headers: _headers(token),
     signal: _deadline(signal),
-    body: JSON.stringify({ tables: tablesToSend, settings }),
+    // client_now puts this phone's edit times on the server's clock when
+    // an edit meets a delete made elsewhere.
+    body: JSON.stringify({ tables: tablesToSend, settings, client_now: new Date().toISOString() }),
   });
   if (!res.ok) {
     if (res.status === 401 && live() && getAuthToken() === token) await _handleSyncAuthError();
@@ -468,12 +473,22 @@ async function pushChanges({ token = getAuthToken(), signal = null, gen = accoun
     if (m.size) snapshotByTable[table] = m;
   }
 
+  // Rows the server answered `deleted` (deleted elsewhere after this
+  // edit, or no longer this account's to change): dropped here, and said.
+  const drops = [];
+  const answered = new Set();
   for (const [table, results] of Object.entries(body.tables || {})) {
     if (!Array.isArray(results)) continue;
     const snap = snapshotByTable[table];
     const updatedRowsForBulkMark = [];
     for (const r of results) {
       if (!live()) return { pushed: 0, stopped: true };
+      if (r.client_id != null) answered.add(`${table}:${r.client_id}`);
+      if (r.deleted) { drops.push([table, r.client_id, r.reason || 'deleted', snap?.get(r.client_id) ?? null]); continue; }
+      // Its parent is gone from the server: the parent goes up again first.
+      if (r.missing_parent) { await dbParentGoneOnServer(table, r.client_id, r.missing_parent, answered); continue; }
+      // Its uuid is another account's row there: it takes a new one.
+      if (r.uuid_taken) { await dbNewUuid(table, r.client_id, await _accountSalt()); continue; }
       if (r.client_id && r.server_id) {
         // Newly-created row: server assigned a server_id. Stamp it +
         // mark synced gated on updated_at.
@@ -490,10 +505,49 @@ async function pushChanges({ token = getAuthToken(), signal = null, gen = accoun
     }
   }
   if (!live()) return { pushed: 0, stopped: true };
+  // An older server answers nothing for an item of a note it deleted: once
+  // this phone has the note as deleted too, its waiting items go with it,
+  // rather than being sent forever.
+  for (const [table, clientId] of await dbOrphansOfDeletedNotes()) {
+    const sent = (pending[table] || []).find(r => r.id === clientId);
+    if (sent && !answered.has(`${table}:${clientId}`)) drops.push([table, clientId, 'deleted', sent.updated_at]);
+  }
+  if (drops.length) _reportDropped(await dbDropRows(drops));
+  // A note, label or chat line sent with a server id and not answered at
+  // all: an older server no longer has that row (a newer one answers every
+  // one). It goes up again as new, once.
+  for (const table of ['notes', 'labels', 'ai_chat_history']) {
+    if (!Array.isArray(body.tables?.[table])) continue; // that table failed there: next sync
+    for (const r of pending[table] || []) {
+      if (r.server_id && !answered.has(`${table}:${r.id}`) && live()) {
+        await db.run(`UPDATE ${table} SET server_id = NULL WHERE id = ? AND server_id = ?`, [r.id, r.server_id]);
+      }
+    }
+  }
   if (settings.length) {
     await dbMarkSettingsSynced(settings.map(s => ({ key: s.key, updated_at: s.updated_at })));
   }
   return { pushed: total };
+}
+
+// Edits this phone made that didn't stay (what they changed was deleted
+// elsewhere first): said once, like other refused changes, and kept in the
+// diagnostic log. `notes`: [{ id, title }], one per note.
+function _reportDropped(notes) {
+  const list = notes || [];
+  if (!list.length) return;
+  const titles = list.map(n => String(n.title || '').trim());
+  console.warn(`[sync] ${list.length} note(s) with edits made here that were deleted elsewhere first; the edits were not kept`);
+  try { window.dispatchEvent(new CustomEvent('note:sync-dropped', { detail: { titles } })); } catch {}
+  Promise.all([import('../stores/toast.js'), import('svelte-i18n'), import('svelte/store')]).then(([toast, i18n, store]) => {
+    const say = store.get(i18n._);
+    toast.showInfo(say('sync.dropped_deleted', { values: { count: list.length, title: titles[0] || say('sync.untitled') } }));
+  }).catch(() => {});
+}
+
+// The account a copy is for, to derive a uuid of its own (dbNewUuid).
+async function _accountSalt() {
+  try { const t = await (await import('./local-account.js')).copyTag(); return t && t.u != null ? `${t.s}#${t.u}` : ''; } catch { return ''; }
 }
 
 async function pullChanges({ token = getAuthToken(), signal = null, gen = accountGeneration() } = {}) {
@@ -517,6 +571,13 @@ async function pullChanges({ token = getAuthToken(), signal = null, gen = accoun
   if (!live() || !(await localDataIsThisAccount(token))) return { pulled: 0, stopped: true };
   const done = await dbApplyPull(body, { live });
   if (done === false || !live()) return { pulled: 0, stopped: true };
+  // After a backup of this account was restored, the pull went from the
+  // start: rows it holds an id for that the server no longer has go up
+  // again, once (their create keys), instead of staying here alone.
+  if (since.startsWith('1970') && (await dbGetMeta('reconcile_missing')) === '1') {
+    await dbServerIdsMissingFromPull(body);
+    await dbSetMeta('reconcile_missing', null);
+  }
   await dbSetMeta(LAST_PULL_KEY, body.now || new Date().toISOString());
   let pulled = 0;
   for (const arr of Object.values(body.tables || {})) {

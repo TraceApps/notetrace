@@ -624,3 +624,205 @@ test('a forced sync asked for before a change of account never runs after it', a
     p.done((await forced).reason);`, { PHONE_DELAY_MS: '40' });
   assert.equal(r, 'stopped');
 });
+
+// ── A note edited on the phone and deleted elsewhere; restored backups ──
+
+const liveItems = (srv, noteId) => srv.q(`SELECT text FROM checklist_items WHERE note_id = ? AND deleted_at IS NULL ORDER BY text`, noteId).map(r => r.text);
+const noteRow = (srv, id) => srv.q(`SELECT title, deleted_at IS NOT NULL AS gone FROM notes WHERE id = ?`, id)[0];
+const list = async (title) => web(A, 'carol', 'POST', '/api/notes', { title, kind: 'checklist', items: [{ text: 'eggs' }, { text: 'milk' }] });
+
+test('an edit made on the phone after the note was deleted elsewhere brings it back, items and all, everywhere', async (t) => {
+  if (skip(t)) return;
+  const n = await list('A1 list');
+  const r = phone('a1', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const local = (await p.rows()).find(x => x.server_id === ${n.id});
+    await p.offline(async () => {
+      // Deleted on the web while this phone is offline, then edited here.
+      await p.net.web(p.S + '/api/notes/${n.id}/forever', { method: 'DELETE', headers: { Authorization: 'Bearer ' + p.platform.getAuthToken() } });
+      await p.sleep(1100);
+      await p.NotesNative.updateNote(local.id, { title: 'A1 list edited' });
+      const milk = (await p.NotesNative.getNote(local.id)).items.find(i => i.text === 'milk');
+      await p.NotesNative.updateItem(local.id, milk.uuid, { text: 'oat milk' });
+    });
+    await p.sync(); await p.sync();
+    p.done({ shown: (await p.shown()).filter(x => x.startsWith('A1')), items: await p.items(local.id), waiting: await p.waiting(), dropped: p.dropped });`);
+  assert.deepEqual({ ...r, server: noteRow(A, n.id), serverItems: liveItems(A, n.id) }, {
+    shown: ['A1 list edited'], items: ['eggs', 'oat milk'], waiting: 0, dropped: [],
+    server: { title: 'A1 list edited', gone: 0 }, serverItems: ['eggs', 'oat milk'],
+  });
+});
+
+test('an edit older than the delete is dropped on the phone, reported, and never left waiting', async (t) => {
+  if (skip(t)) return;
+  const n = await list('A2 list');
+  const r = phone('a2', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const local = (await p.rows()).find(x => x.server_id === ${n.id});
+    await p.offline(async () => {
+      await p.NotesNative.updateNote(local.id, { title: 'A2 list edited' });
+      const milk = (await p.NotesNative.getNote(local.id)).items.find(i => i.text === 'milk');
+      await p.NotesNative.updateItem(local.id, milk.uuid, { text: 'oat milk' });
+      await p.sleep(1100);
+      // Deleted on the web after the phone's offline edit.
+      await p.net.web(p.S + '/api/notes/${n.id}/forever', { method: 'DELETE', headers: { Authorization: 'Bearer ' + p.platform.getAuthToken() } });
+    });
+    await p.sync(); await p.sync();
+    p.done({ shown: (await p.shown()).filter(x => x.startsWith('A2')), waiting: await p.waiting(), dropped: p.dropped });`);
+  assert.deepEqual({ ...r, server: noteRow(A, n.id) }, {
+    shown: [], waiting: 0, dropped: ['A2 list edited'], server: { title: 'A2 list', gone: 1 },
+  });
+});
+
+test('only a checklist item edited after the delete still brings the note back', async (t) => {
+  if (skip(t)) return;
+  const n = await list('A3 list');
+  const r = phone('a3', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const local = (await p.rows()).find(x => x.server_id === ${n.id});
+    await p.offline(async () => {
+      await p.net.web(p.S + '/api/notes/${n.id}/forever', { method: 'DELETE', headers: { Authorization: 'Bearer ' + p.platform.getAuthToken() } });
+      await p.sleep(1100);
+      const eggs = (await p.NotesNative.getNote(local.id)).items.find(i => i.text === 'eggs');
+      await p.NotesNative.updateItem(local.id, eggs.uuid, { checked: true });
+    });
+    await p.sync(); await p.sync();
+    p.done({ shown: (await p.shown()).filter(x => x.startsWith('A3')), waiting: await p.waiting() });`);
+  assert.deepEqual({ ...r, server: noteRow(A, n.id), serverItems: liveItems(A, n.id) }, {
+    shown: ['A3 list'], waiting: 0, server: { title: 'A3 list', gone: 0 }, serverItems: ['eggs', 'milk'],
+  });
+});
+
+test("a row the server no longer has, or another account's, goes up once as this account's and never touches the other", async (t) => {
+  if (skip(t)) return;
+  const alices = await web(A, 'alice', 'POST', '/api/notes', { title: 'alice private A4', body_md: 'hers' });
+  const r = phone('a4', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const lost = await p.NotesNative.createNote({ title: 'A4 lost on the server' });
+    const foreign = await p.NotesNative.createNote({ title: 'A4 points at alice' });
+    await p.db.run('UPDATE notes SET server_id = 987654 WHERE id = ?', [lost.id]);
+    await p.db.run('UPDATE notes SET server_id = ? WHERE id = ?', [${alices.id}, foreign.id]);
+    await p.sync(); await p.sync(); await p.sync();
+    p.done({ waiting: await p.waiting() });`);
+  assert.equal(r.waiting, 0);
+  assert.deepEqual(owners(A, 'A4 lost on the server'), ['carol']);
+  assert.deepEqual(owners(A, 'A4 points at alice'), ['carol']);
+  assert.deepEqual(A.q(`SELECT title, body_md FROM notes WHERE id = ?`, alices.id), [{ title: 'alice private A4', body_md: 'hers' }], "alice's note untouched");
+});
+
+test('a backup from this account restored while connected keeps its ids, catches up with the server, and makes nothing twice', async (t) => {
+  if (skip(t)) return;
+  const keep = await web(A, 'carol', 'POST', '/api/notes', { title: 'B1 kept', body_md: 'v1' });
+  const gone = await web(A, 'carol', 'POST', '/api/notes', { title: 'B1 deleted later', body_md: '' });
+  const r = phone('b1', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const { exportLocalSnapshot, importLocalSnapshot } = await import(p.SRC + 'lib/local-backup.js');
+    const snap = JSON.parse(JSON.stringify(await exportLocalSnapshot({ includeImages: false })));
+    const H = { 'Content-Type': 'application/json', Authorization: 'Bearer ' + p.platform.getAuthToken() };
+    await fetch(p.S + '/api/notes/${keep.id}', { method: 'PATCH', headers: H, body: JSON.stringify({ body_md: 'v2 from the web' }) });
+    await fetch(p.S + '/api/notes/${gone.id}/forever', { method: 'DELETE', headers: H });
+    await p.sync();
+    await importLocalSnapshot(snap);
+    await p.sync(); await p.sync();
+    const rows = await p.rows();
+    p.done({ shown: (await p.shown()).filter(x => x.startsWith('B1')), kept: rows.find(x => x.title === 'B1 kept')?.body_md, waiting: await p.waiting() });`);
+  assert.deepEqual(r, { shown: ['B1 kept'], kept: 'v2 from the web', waiting: 0 });
+  assert.deepEqual(A.q(`SELECT title, COUNT(*) AS n FROM notes WHERE title LIKE 'B1 %' GROUP BY title ORDER BY title`), [{ title: 'B1 deleted later', n: 1 }, { title: 'B1 kept', n: 1 }]);
+});
+
+test("a backup from another account, or with no account, goes up as new once and never writes into the other account's notes", async (t) => {
+  if (skip(t)) return;
+  await web(A, 'alice', 'POST', '/api/notes', { title: 'B2 alice note', body_md: 'alice body' });
+  const snapFile = join(dir, 'alice-snapshot.json');
+  phone('b2-alice', A, `
+    await p.setupSignIn('alice'); await p.sync();
+    const one = (await p.rows()).find(x => x.title === 'B2 alice note');
+    await p.NotesNative.updateNote(one.id, { body_md: 'edited in the backup' });
+    const { exportLocalSnapshot } = await import(p.SRC + 'lib/local-backup.js');
+    (await import('node:fs')).writeFileSync(${JSON.stringify(snapFile)}, JSON.stringify(await exportLocalSnapshot({ includeImages: false })));
+    p.done(true);`);
+  const aliceBefore = A.q(`SELECT id, title, body_md, deleted_at FROM notes n WHERE user_id = (SELECT id FROM users WHERE username = 'alice') ORDER BY id`);
+  const r = phone('b2', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const { importLocalSnapshot } = await import(p.SRC + 'lib/local-backup.js');
+    const snap = JSON.parse((await import('node:fs')).readFileSync(${JSON.stringify(snapFile)}, 'utf8'));
+    await importLocalSnapshot(snap); await p.sync(); await p.sync();
+    await importLocalSnapshot(snap); await p.sync(); await p.sync();
+    const untagged = { ...snap }; delete untagged.account;
+    await importLocalSnapshot(untagged); await p.sync(); await p.sync();
+    p.done({ waiting: await p.waiting(), shown: (await p.shown()).filter(x => x.startsWith('B2')) });`);
+  assert.deepEqual(r, { waiting: 0, shown: ['B2 alice note'] });
+  assert.deepEqual(A.q(`SELECT title, body_md, COUNT(*) AS n FROM notes WHERE user_id = (SELECT id FROM users WHERE username = 'carol') AND title = 'B2 alice note' GROUP BY title, body_md`),
+    [{ title: 'B2 alice note', body_md: 'edited in the backup', n: 1 }], "once in carol's account, whatever the re-runs");
+  assert.deepEqual(A.q(`SELECT id, title, body_md, deleted_at FROM notes n WHERE user_id = (SELECT id FROM users WHERE username = 'alice') ORDER BY id`), aliceBefore, "alice's notes untouched");
+});
+
+test("deleting a note forever on the phone deletes it on the server, quietly, and never brings it back", async (t) => {
+  if (skip(t)) return;
+  const n = await list('A5 list');
+  const r = phone('a5', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const local = (await p.rows()).find(x => x.server_id === ${n.id});
+    await p.NotesNative.trashNote(local.id);
+    await p.NotesNative.deleteNoteForever(local.id);
+    await p.sleep(1100);
+    await p.sync(); await p.sync();
+    p.done({ waiting: await p.waiting(), dropped: p.dropped });`, { PHONE_DELAY_MS: '40' });
+  assert.deepEqual({ ...r, server: noteRow(A, n.id), serverItems: liveItems(A, n.id) }, { waiting: 0, dropped: [], server: { title: 'A5 list', gone: 1 }, serverItems: [] });
+});
+
+test("a note that points at another account's note goes up as this account's with its items, and the other account's stays as it was", async (t) => {
+  if (skip(t)) return;
+  const alices = await web(A, 'alice', 'POST', '/api/notes', { title: 'alice list A6', kind: 'checklist', items: [{ text: 'hers' }] });
+  const r = phone('a6', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const mine = await p.offline(() => p.NotesNative.createNote({ title: 'A6 points at alice', kind: 'checklist', items: [{ text: 'tea' }, { text: 'jam' }] }));
+    await p.db.run('UPDATE notes SET server_id = ? WHERE id = ?', [${alices.id}, mine.id]);
+    await p.sync(); await p.sync(); await p.sync();
+    p.done({ waiting: await p.waiting(), items: await p.items(mine.id), copies: (await p.db.query('SELECT COUNT(*) AS n FROM notes WHERE title = ?', ['A6 points at alice'])).values[0].n });`);
+  assert.deepEqual(r, { waiting: 0, items: ['jam', 'tea'], copies: 1 });
+  const carolsNotes = A.q(`SELECT id FROM notes WHERE title = 'A6 points at alice' AND user_id = (SELECT id FROM users WHERE username = 'carol') AND deleted_at IS NULL`);
+  assert.equal(carolsNotes.length, 1);
+  assert.deepEqual(liveItems(A, carolsNotes[0].id), ['jam', 'tea']);
+  assert.deepEqual({ note: noteRow(A, alices.id), items: liveItems(A, alices.id) }, { note: { title: 'alice list A6', gone: 0 }, items: ['hers'] });
+});
+
+test('a note edit older than the delete with an item edit newer than it: the note comes back with both', async (t) => {
+  if (skip(t)) return;
+  const n = await list('A7 list');
+  const r = phone('a7', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const local = (await p.rows()).find(x => x.server_id === ${n.id});
+    await p.offline(async () => {
+      await p.NotesNative.updateNote(local.id, { title: 'A7 list edited first' });
+      await p.sleep(1100);
+      await p.net.web(p.S + '/api/notes/${n.id}/forever', { method: 'DELETE', headers: { Authorization: 'Bearer ' + p.platform.getAuthToken() } });
+      await p.sleep(1100);
+      const eggs = (await p.NotesNative.getNote(local.id)).items.find(i => i.text === 'eggs');
+      await p.NotesNative.updateItem(local.id, eggs.uuid, { text: 'brown eggs' });
+    });
+    await p.sync(); await p.sync();
+    p.done({ shown: (await p.shown()).filter(x => x.startsWith('A7')), items: await p.items(local.id), waiting: await p.waiting(), dropped: p.dropped });`);
+  assert.deepEqual({ ...r, server: noteRow(A, n.id), serverItems: liveItems(A, n.id) }, {
+    shown: ['A7 list edited first'], items: ['brown eggs', 'milk'], waiting: 0, dropped: [],
+    server: { title: 'A7 list edited first', gone: 0 }, serverItems: ['brown eggs', 'milk'],
+  });
+});
+
+test('a backup taken in local mode after a Disconnect from this account counts as this account\'s', async (t) => {
+  if (skip(t)) return;
+  await web(A, 'carol', 'POST', '/api/notes', { title: 'B4 from the web', body_md: '' });
+  const r = phone('b4', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    await p.la.setLocalOwner();
+    const { exportLocalSnapshot, importLocalSnapshot } = await import(p.SRC + 'lib/local-backup.js');
+    const snap = JSON.parse(JSON.stringify(await exportLocalSnapshot({ includeImages: false })));
+    // Connected again as carol (the account check claims the copy).
+    const me = await (await fetch(p.S + '/api/auth/me', { headers: { Authorization: 'Bearer ' + p.platform.getAuthToken() } })).json();
+    await p.la.claimForServer(p.S, me.user.id, { created: me.user.created_at, sameAccount: true });
+    const res = await importLocalSnapshot(snap);
+    await p.sync(); await p.sync();
+    p.done({ as: res.as, waiting: await p.waiting() });`);
+  assert.deepEqual(r, { as: 'same', waiting: 0 });
+  assert.deepEqual(A.q(`SELECT COUNT(*) AS n FROM notes WHERE title = 'B4 from the web'`), [{ n: 1 }]);
+});
