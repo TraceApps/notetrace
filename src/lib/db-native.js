@@ -667,6 +667,25 @@ export async function dbApplyPull(payload, { live = () => true } = {}) {
     }
   }
 
+  // Trace chat deleted on the server (Clear Chat, the trim to the newest
+  // messages): the pull lists every message the account has now, and this
+  // copy keeps only those, so cleared chat doesn't stay here or go back up
+  // later (Connect with Upload sends every row). Also when it's waiting to
+  // go up (Push All marks every row): Trace writes chat on the server,
+  // never here, so a message with a server id is the server's. One not
+  // sent yet has no server id and stays. Not right after a backup of this
+  // account was restored: what it put back that the server no longer has
+  // goes up again (reconcile_missing, lib/sync.js), chat included.
+  if (!live()) return false;
+  if (Array.isArray(payload.chat_ids) && (await dbGetMeta('reconcile_missing')) !== '1') {
+    const there = new Set(payload.chat_ids);
+    const here = (await db.query(`SELECT id, server_id FROM ai_chat_history WHERE server_id IS NOT NULL`, []))?.values || [];
+    for (const r of here) {
+      if (!live()) return false;
+      if (!there.has(r.server_id)) await db.run(`DELETE FROM ai_chat_history WHERE id = ?`, [r.id]);
+    }
+  }
+
   // Shared notes this account can no longer see (removed, left, or the
   // owner trashed or deleted them): drop the local copy and its rows.
   if (!live()) return false;

@@ -826,3 +826,159 @@ test('a backup taken in local mode after a Disconnect from this account counts a
   assert.deepEqual(r, { as: 'same', waiting: 0 });
   assert.deepEqual(A.q(`SELECT COUNT(*) AS n FROM notes WHERE title = 'B4 from the web'`), [{ n: 1 }]);
 });
+
+// ── Trace chat deleted on the server ───────────────────────────────────
+// Trace reads and clears chat on the server; the phone keeps a synced copy
+// (which Connect with Upload and Push All send up again). Chat deleted on
+// the server (Clear Chat, the trim to the newest messages) has to leave
+// that copy, or it stays on the phone and in its backups, and can come
+// back. And chat the phone sends up was refused by the server.
+
+const chat = (srv, user, content) => web(srv, user, 'POST', '/api/ai/history', { role: 'user', content });
+const chatOn = (srv, user) => srv.q(`SELECT c.content FROM ai_chat_history c JOIN users u ON u.id = c.user_id WHERE u.username = ? ORDER BY c.id`, user).map(r => r.content);
+
+test('chat cleared on the web leaves the phone at the next sync, and only that account\'s', async (t) => {
+  if (skip(t)) return;
+  for (const m of ['bob asks 1', 'bob asks 2']) await chat(A, 'bob', m);
+  await chat(A, 'alice', 'alice asks');
+  const first = phone('chat-bob', A, `
+    await p.setupSignIn('bob'); await p.sync();
+    p.done((await p.rows('ai_chat_history')).map(r => r.content));`);
+  await web(A, 'bob', 'DELETE', '/api/ai/history');
+  await chat(A, 'bob', 'bob asks again');
+  const after = phone('chat-bob', A, `
+    await p.loginSignIn('bob'); await p.sync();
+    p.done((await p.rows('ai_chat_history')).map(r => r.content));`);
+  assert.deepEqual(first, ['bob asks 1', 'bob asks 2']);
+  assert.deepEqual(after, ['bob asks again'], 'the cleared messages are gone, the new one is there');
+  assert.deepEqual(chatOn(A, 'alice'), ['alice asks'], "another account's chat is untouched");
+});
+
+test('chat cleared while the phone was disconnected is gone after it connects again', async (t) => {
+  if (skip(t)) return;
+  await chat(A, 'carol', 'carol asks before');
+  const before = phone('chat-carol', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    await p.la?.setLocalOwner?.();
+    p.platform.setServerUrl(null); p.platform.setAuthToken(null); p.platform.setNativeMode('local');
+    p.done((await p.rows('ai_chat_history')).map(r => r.content));`);
+  await web(A, 'carol', 'DELETE', '/api/ai/history');
+  const after = phone('chat-carol', A, `
+    // Settings > Server > Connect as carol, Upload Phone to Server.
+    const tok = JSON.parse(process.env.PHONE_TOKENS)[p.S].carol;
+    p.platform.setAuthToken(tok);
+    const me = await (await fetch(p.S + '/api/auth/me', { headers: { Authorization: 'Bearer ' + tok } })).json();
+    const same = await p.la.cameFromThisAccount(p.S, me.user);
+    const { uploadLocalToServer } = await import(p.SRC + 'lib/migrate.js');
+    await uploadLocalToServer({ serverUrl: p.S, authToken: tok, keepIds: same });
+    await p.la.claimForServer(p.S, me.user.id, { created: me.user.created_at, sameAccount: same });
+    localStorage.setItem('note:cachedUser', JSON.stringify(me.user));
+    p.platform.setServerUrl(p.S); p.platform.setNativeMode('server');
+    await p.sync(); await p.sync();
+    p.done({ same, chat: (await p.rows('ai_chat_history')).map(r => r.content) });`);
+  assert.deepEqual(before, ['carol asks before']);
+  assert.deepEqual(after, { same: true, chat: [] });
+  assert.deepEqual(chatOn(A, 'carol'), [], 'and it never went back up');
+});
+
+test('Upload to another account takes the chat once; chat cleared before never goes', async (t) => {
+  if (skip(t)) return;
+  for (const m of ['alice on b asks 1', 'alice on b asks 2']) await chat(B, 'alice', m);
+  phone('chat-move', B, `
+    await p.setupSignIn('alice'); await p.sync();
+    p.done(null);`);
+  await web(B, 'alice', 'DELETE', '/api/ai/history');
+  await chat(B, 'alice', 'alice on b keeps');
+  const r = phone('chat-move', B, `
+    await p.loginSignIn('alice'); await p.sync();
+    const left = (await p.rows('ai_chat_history')).map(r => r.content);
+    // Disconnect, then Connect to server A as bob with Upload.
+    await p.la?.setLocalOwner?.();
+    p.platform.setServerUrl(null); p.platform.setAuthToken(null); p.platform.setNativeMode('local');
+    const A = ${JSON.stringify(A.base)};
+    const tok = JSON.parse(process.env.PHONE_TOKENS)[A].bob;
+    p.platform.setAuthToken(tok);
+    const me = await (await fetch(A + '/api/auth/me', { headers: { Authorization: 'Bearer ' + tok } })).json();
+    const { uploadLocalToServer } = await import(p.SRC + 'lib/migrate.js');
+    await uploadLocalToServer({ serverUrl: A, authToken: tok, keepIds: false });
+    await p.la.claimForServer(A, me.user.id, { created: me.user.created_at, sameAccount: false });
+    localStorage.setItem('note:cachedUser', JSON.stringify(me.user));
+    p.platform.setServerUrl(A); p.platform.setNativeMode('server');
+    await p.sync(); await p.sync(); await p.sync();
+    p.done({ left, waiting: (await p.rows('ai_chat_history')).filter(r => r.sync_status !== 'synced').length });`);
+  assert.deepEqual(r, { left: ['alice on b keeps'], waiting: 0 }, 'it went up and nothing is left waiting');
+  assert.deepEqual(chatOn(A, 'bob').filter(c => c.startsWith('alice on b')), ['alice on b keeps'], 'once, and none of the cleared chat');
+});
+
+test('a phone can send chat the server already has, and new chat, without an error', async (t) => {
+  if (skip(t)) return;
+  await chat(B, 'carol', 'carol on b');
+  const id = B.q(`SELECT c.id FROM ai_chat_history c JOIN users u ON u.id = c.user_id WHERE u.username = 'carol'`)[0].id;
+  const res = await web(B, 'carol', 'POST', '/api/sync/push', { tables: { ai_chat_history: [
+    { client_id: 1, server_id: id, role: 'user', content: 'carol on b', updated_at: '2030-01-01 00:00:00' },
+    { client_id: 2, server_id: null, role: 'assistant', content: 'carol on b answer', updated_at: '2030-01-01 00:00:00' },
+  ] } });
+  assert.ok(Array.isArray(res.tables.ai_chat_history), JSON.stringify(res.tables.ai_chat_history));
+  assert.deepEqual(res.tables.ai_chat_history.map(r => r.client_id), [1, 2]);
+  assert.deepEqual(chatOn(B, 'carol'), ['carol on b', 'carol on b answer']);
+});
+
+test('Push All after chat was cleared on the web leaves nothing waiting and brings nothing back', async (t) => {
+  if (skip(t)) return;
+  for (const m of ['carol push all 1', 'carol push all 2']) await chat(B, 'carol', m);
+  const r = phone('chat-pushall', B, `
+    await p.setupSignIn('carol'); await p.sync();
+    const had = (await p.rows('ai_chat_history')).filter(r => r.content.startsWith('carol push all')).length;
+    await fetch(p.S + '/api/ai/history', { method: 'DELETE', headers: { Authorization: 'Bearer ' + p.platform.getAuthToken(), 'X-CSRF-Token': 'test' } });
+    // Settings > Server > Push All, before the phone heard of the clear.
+    await p.syncMod.pushAllFromDevice();
+    await p.sync();
+    p.done({ had, rows: (await p.rows('ai_chat_history')).map(r => [r.content, r.sync_status]) });`);
+  assert.deepEqual(r, { had: 2, rows: [] });
+  assert.deepEqual(chatOn(B, 'carol'), [], 'nothing came back');
+});
+
+test('a phone sending chat the server has deleted gets an answer, so it stops sending it', async (t) => {
+  if (skip(t)) return;
+  await chat(B, 'bob', 'bob gone');
+  const id = B.q(`SELECT c.id FROM ai_chat_history c JOIN users u ON u.id = c.user_id WHERE c.content = 'bob gone'`)[0].id;
+  await web(B, 'bob', 'DELETE', '/api/ai/history');
+  const res = await web(B, 'bob', 'POST', '/api/sync/push', { tables: { ai_chat_history: [
+    { client_id: 7, server_id: id, role: 'user', content: 'bob gone', updated_at: '2030-01-01 00:00:00' },
+  ] } });
+  assert.deepEqual(res.tables.ai_chat_history, [{ client_id: 7 }], 'an app before these answers marks it sent');
+  const now = await web(B, 'bob', 'POST', '/api/sync/push', { client_now: new Date().toISOString(), tables: { ai_chat_history: [
+    { client_id: 8, server_id: id, role: 'user', content: 'bob gone', updated_at: '2030-01-01 00:00:00' },
+  ] } });
+  assert.deepEqual(now.tables.ai_chat_history, [{ client_id: 8, deleted: true, reason: 'deleted' }], 'this app drops it');
+  assert.deepEqual(chatOn(B, 'bob'), [], 'never made again');
+});
+
+test('a backup of this account restored after Clear Chat puts the chat back, once', async (t) => {
+  if (skip(t)) return;
+  for (const m of ['carol restore 1', 'carol restore 2']) await chat(A, 'carol', m);
+  const r = phone('chat-restore', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const { exportLocalSnapshot, importLocalSnapshot } = await import(p.SRC + 'lib/local-backup.js');
+    const snap = JSON.parse(JSON.stringify(await exportLocalSnapshot({ includeImages: false })));
+    await fetch(p.S + '/api/ai/history', { method: 'DELETE', headers: { Authorization: 'Bearer ' + p.platform.getAuthToken() } });
+    await p.sync();
+    const afterClear = (await p.rows('ai_chat_history')).filter(r => r.content.startsWith('carol restore')).length;
+    await importLocalSnapshot(snap);
+    await p.sync(); await p.sync(); await p.sync();
+    p.done({ afterClear, phone: (await p.rows('ai_chat_history')).filter(r => r.content.startsWith('carol restore')).map(r => r.content), waiting: await p.waiting() });`);
+  assert.deepEqual(r, { afterClear: 0, phone: ['carol restore 1', 'carol restore 2'], waiting: 0 });
+  assert.deepEqual(chatOn(A, 'carol').filter(c => c.startsWith('carol restore')), ['carol restore 1', 'carol restore 2'], 'back on the server, once each');
+});
+
+test("every pull lists the account's chat as it is now, and only that account's", async (t) => {
+  if (skip(t)) return;
+  await chat(B, 'bob', 'bob on b');
+  const id = B.q(`SELECT c.id FROM ai_chat_history c JOIN users u ON u.id = c.user_id WHERE c.content = 'bob on b'`)[0].id;
+  const cursor = (await web(B, 'bob', 'GET', '/api/sync/pull')).now;
+  const since = `?since=${encodeURIComponent(cursor)}`;
+  assert.deepEqual((await web(B, 'bob', 'GET', '/api/sync/pull' + since)).chat_ids, [id]);
+  assert.ok(!(await web(B, 'carol', 'GET', '/api/sync/pull' + since)).chat_ids.includes(id), "not in another account's");
+  await web(B, 'bob', 'DELETE', '/api/ai/history');
+  assert.deepEqual((await web(B, 'bob', 'GET', '/api/sync/pull' + since)).chat_ids, []);
+});

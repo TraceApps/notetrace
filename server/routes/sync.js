@@ -35,7 +35,9 @@
  *     keys=1 (the app that sends client_key): rows come with it. Older apps
  *     store every column a row comes with, so they never get it.
  *     response: { now: 'ISO', tables: { [name]: [{ id, ...cols, updated_at, deleted_at }] },
- *                 revoked_notes: [serverNoteId, ...] }
+ *                 revoked_notes: [serverNoteId, ...], chat_ids: [serverChatId, ...] }
+ *     chat_ids: every chat message the account has now; the app drops the
+ *     rest of its copy (chat is deleted outright here, never soft-deleted).
  *
  * Shared notes: a member's devices pull the notes shared with them (with
  * the member's own pin/archive/Show in Tasks, no reminder) plus share_role / share_owner
@@ -226,6 +228,16 @@ router.post('/push', wrap((req, res) => {
           // Someone else's row this account was never given: never written.
           // Like a row this server no longer has, it goes in as new below.
           if (existing && !_reachable(name, existing, u)) existing = null;
+          // Chat isn't made again: the server deleted it on purpose (Clear
+          // Chat, the trim to the newest messages), or it's another
+          // account's. Answered, so the phone stops sending it: the app
+          // drops it now; an app before these answers marks it sent, and
+          // its pull drops it (chat_ids). Chat a restored backup puts back
+          // comes without a server id and goes in as new.
+          if (!existing && name === 'ai_chat_history') {
+            results[name].push(newApp ? { client_id: row.client_id, deleted: true, reason: 'deleted' } : { client_id: row.client_id });
+            continue;
+          }
           if (!existing && !whole) continue; // as before: nothing to make it from
         }
         if (!existing && spec.uniqueKey) {
@@ -317,7 +329,8 @@ router.post('/push', wrap((req, res) => {
             db.prepare(_buildUpdateSql(name, spec, present)).run(
               ...present.map(c => _coerce(translated[c])),
               translated.updated_at || _now(),
-              spec.softDelete ? (translated.deleted_at ?? null) : null,
+              // Only tables that have deleted_at (chat doesn't) take one.
+              ...(spec.softDelete ? [translated.deleted_at ?? null] : []),
               existing.id
             );
           }
@@ -334,7 +347,7 @@ router.post('/push', wrap((req, res) => {
             rowOwner(),
             ...present.map(c => _coerce(translated[c])),
             translated.updated_at || _now(),
-            spec.softDelete ? (translated.deleted_at ?? null) : null
+            ...(spec.softDelete ? [translated.deleted_at ?? null] : [])
           );
           const serverId = Number(info.lastInsertRowid);
           setCreateKey(name, serverId, createKey);
@@ -426,7 +439,15 @@ router.get('/pull', wrap((req, res) => {
       WHERE ${userClause(u)} AND synced_at >= ?`
   ).all(...userArgs(u), since).filter(r => !isServerOnlyKey(r.key));
 
-  res.json({ now, tables: out, revoked_notes: revokedNoteIds(u, since) });
+  // Every chat message this account has now. Clear Chat and the trim to
+  // the newest messages delete chat outright, so the changed rows above
+  // can't say so; the app keeps only these (db-native.js dbApplyPull).
+  // Usually a couple of hundred ids at most (routes/ai.js MAX_HISTORY
+  // trims on each new message); one id per message either way.
+  const chat_ids = db.prepare(`SELECT id FROM ai_chat_history WHERE ${userClause(u)}`)
+    .all(...userArgs(u)).map(r => r.id);
+
+  res.json({ now, tables: out, revoked_notes: revokedNoteIds(u, since), chat_ids });
 }));
 
 // ── Helpers ──────────────────────────────────────────────────────────
