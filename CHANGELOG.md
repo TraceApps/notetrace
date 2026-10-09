@@ -7,60 +7,62 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+---
+
+## [1.1.0-dev04] - 2026-10-09 (pre-release)
+
+A dev pre-release of the 1.1.0 minor. Public links for notes, SSO fixes, a round of Android sync fixes, and security updates.
+
 ### Added
 
-- **Public links for notes** (#15). The owner can make a read-only link to a note from the Share dialog, for people without an account. It shows the note, its checklist, and its pictures, and nothing about who owns it or who else it's shared with. Chat apps show the note's title, a line of its text, and its first picture. Removing the link stops it at once, and a note in the trash isn't readable until it's restored.
+- **Public links for notes** (#15). From the Share dialog, the owner can make a read-only link for people without an account. It shows the note, its checklist and its pictures, never who owns it or who else it's shared with, and chat apps show a preview of it. Removing the link stops it at once.
 
 ### Changed
 
-- **Trace's attach button offers Camera or Gallery on phones and in the Android app**, the same as the other Trace apps. Each choice goes straight to the camera or the photo picker; on a computer the button opens the file picker.
+- **Trace's attach button offers Camera or Gallery** on phones and in the Android app, the same as the other Trace apps.
+- **Send to CookTrace reaches a CookTrace on your own network without `ALLOW_PRIVATE_COOKTRACE_URLS`**, which is no longer used. It only ever calls CookTrace's shopping API.
 
 ### Fixed
 
-- **Signing in through SSO with an email that already has an account no longer creates a second account.** When the identity provider doesn't mark the email verified (Authentik's default since 2025.10), the sign-in is refused with a pointer to link the provider from your profile, instead of landing you in a new, empty account.
+- **SSO no longer creates a second account for an email that already has one.** When the provider doesn't mark the email verified (Authentik's default since 2025.10), the sign-in is refused with a pointer to link the provider from your profile.
 - **SSO works with Authelia 4.39 and later out of the box.** Email, username and groups are read from the provider's userinfo when the ID token leaves them out.
-- **The SSO callback also works without the provider number, and at `/api/oidc/callback`**, the address older docs gave. Both used to end on a blank page.
-- **`OIDC_ENABLE_EMAIL_PASSWORD_LOGIN` works for providers added in Settings.** It was ignored unless a provider was also defined through env vars.
-- **Signing in on a plain-HTTP address says what's wrong instead of looping.** The sign-in cookie only works over HTTPS unless `INSECURE_COOKIES=1` is set, so signing in from an `http://` address dropped you back on the login page with no error. The sign-in and setup screens now explain it and link to the fix, the app no longer flashes before sending you back, and the server log says so too.
-- **Sharing works in the Android app connected to a server.** The Share dialog asked the server about the phone's own copy of the note, so it could show the wrong people or none.
-- **Popovers stay on the screen when their contents load late.** The Share dialog opened near the bottom of a note ran off the screen once its list arrived.
-- **The app no longer loads behind the sign-in screen.** Opened signed out, it asked the server for your data and was refused before the sign-in screen replaced it. It now waits to learn who is signed in.
-- **The installed app works when NoteTrace is served from a subpath.** With `BASE_URL` set (say `/notetrace`), every visit after the first sent the app's requests to the site root instead, online and offline. Thanks @kgenerozov for the fix in LiftTrace and NutriTrace.
-- **Trace works with OpenAI-compatible endpoints that stream unless told not to** ([nutritrace#258](https://github.com/TraceApps/nutritrace/issues/258), reported by @jsapede). Chat answers and reading pictures failed with "Unexpected non-whitespace character after JSON"; every request now asks for a single answer.
-- **The Android app stores each note once.** The first sync stored every note twice, and a note written offline could go up twice.
-- **The Android app no longer writes your notes to the device log.** Debug builds logged every note the app read or saved.
-- **Signing out of the Android app with no connection goes to the sign-in screen.** It showed the app with nobody signed in.
-- **A note made offline in the Android app keeps the date it was made.** The first sync replaced it with the time the note reached the server.
-- **A setting changed in the Android app before it reached the server is no longer lost** when another account signs in on the phone and the sign-in is canceled, or set back when your settings load from the server. It goes up with the next sync.
-- **Reminders stop when you sign out of the Android app**, and the previous account's don't fire after another account signs in. Your own come back when you sign back in.
-- **Connecting the Android app back to the account it was disconnected from no longer uploads a second copy of every note.** Only what you made, changed or deleted while disconnected goes up.
-- **Note templates and other list settings changed in the Android app reach the server intact.** They went up as plain text and came back broken on every device.
-- **Closing "Is This the Same Server?" without choosing no longer clears the phone's data.** Nothing is cleared or sent, and the app asks again the next time you sign in.
-- **Pull to refresh in the Android app gets what changed on the server while a sync was already running.**
-- **A note edited in the Android app after it was deleted elsewhere comes back with your edit on every device**, checklist items included. An edit made before the delete isn't kept: the app removes the note and says so, instead of trying to send it forever.
-- **Restoring a backup in the Android app while connected to a server no longer leaves notes out of step.** A backup of the same account catches up with the server without making copies; one from another account or server, or from an older version, goes up as new notes, once, and never changes the other account's.
-- **Trace chat cleared on the server leaves the Android app's copy too**, including chat cleared while the phone was disconnected, so it no longer stays on the phone and in its backups. Found while fixing the same bug in LiftTrace ([lifttrace#139](https://github.com/TraceApps/lifttrace/issues/139), reported by @surfingbytes).
-- **Trace chat in the Android app reaches the server with Push All, or when you connect with Upload or Merge.** It was refused, stayed counted as a change waiting to sync, and was sent again with every sync.
-- **Trace shows your newest messages when you open it.** It loaded the oldest 100, so once a chat passed 100 messages the latest ones never appeared.
+- **The SSO callback works without the provider number, and at `/api/oidc/callback`**, the address older docs gave. Both ended on a blank page.
+- **`OIDC_ENABLE_EMAIL_PASSWORD_LOGIN` works for providers added in Settings.** It was ignored unless a provider was also set through env vars.
+- **Signing in on a plain-HTTP address explains what's wrong instead of looping.** The sign-in and setup screens link to the fix (HTTPS, or `INSECURE_COOKIES=1`), and the server log says so too.
+- **The app no longer loads behind the sign-in screen**, where it asked the server for your data and was refused.
+- **The installed app works when NoteTrace is served from a subpath** (`BASE_URL`). Thanks @kgenerozov for the fix in LiftTrace and NutriTrace.
+- **Trace works with OpenAI-compatible endpoints that stream unless told not to** ([nutritrace#258](https://github.com/TraceApps/nutritrace/issues/258), reported by @jsapede). Chat and reading pictures failed with "Unexpected non-whitespace character after JSON".
+- **Trace shows your newest messages when you open it**, not the oldest 100.
+- **Popovers stay on the screen when their contents load late.** The Share dialog opened near the bottom of a note ran off the screen.
+- **Sharing works in the Android app connected to a server.** The Share dialog could show the wrong people or none.
+- **The Android app stores each note once.** The first sync stored every note twice, a note written offline could go up twice, and reconnecting to the same account uploaded a second copy of every note.
+- **A note made offline in the Android app keeps the date it was made**, instead of the time it reached the server.
+- **Debug builds of the Android app no longer write your notes to the device log.**
+- **Signing out of the Android app with no connection goes to the sign-in screen**, not the app with nobody signed in.
+- **Settings changed in the Android app reach the server intact.** A change made before it synced is no longer lost or set back, and note templates and other list settings no longer come back broken.
+- **Reminders stop when you sign out of the Android app**, and another account's don't fire for you. Yours come back when you sign back in.
+- **Closing "Is This the Same Server?" without choosing no longer clears the phone's data.** The app asks again the next time you sign in.
+- **Pull to refresh gets what changed on the server while a sync was already running.**
+- **A note edited in the Android app after it was deleted elsewhere comes back with your edit on every device**, checklist items included. An edit made before the delete is dropped, and the app says so.
+- **Restoring a backup in the Android app while connected to a server keeps notes in step.** A backup of the same account catches up without copies; one from another account, server or version goes up once as new notes.
+- **Trace chat stays in step between the Android app and the server.** Chat cleared on the server is cleared on the phone and in its backups too, found while fixing the same bug in LiftTrace ([lifttrace#139](https://github.com/TraceApps/lifttrace/issues/139), reported by @surfingbytes). Chat from the phone reaches the server instead of being sent again with every sync.
 
 ### Security
 
-- **The image proxy passes images only.** For its image hosts it passed through whatever came back from the app's own address, a web page included, before sign-in. Anything that isn't an image is refused now, and images can't act as a page.
-- **A password reset link can no longer be pointed at someone else's site.** The link took its address from the request, so anyone could ask for another person's reset with a forged host and have the real email, token included, send them to it. Reset, invite emails now link to `PUBLIC_URL` when it's set, or to an address an admin uses. Links also keep the `BASE_URL` subpath now.
-- **Names in emails can no longer carry markup.** A name, or a title someone shared, went into the email as-is, so HTML or a link typed into it became real markup in the recipient's inbox. Affected the SMTP test and invite emails. Everything an email shows is escaped now.
-- **Link previews, Send to CookTrace and push notifications connect only to the address they checked**, so a name can't answer the check with one address and the connection with another, and they never reach cloud-metadata addresses.
-- **Send to CookTrace works with a CookTrace on your own network without `ALLOW_PRIVATE_COOKTRACE_URLS`**, which is no longer used. It only ever calls CookTrace's shopping API.
-- **A failed push test no longer shows the other server's raw reply**, and push follows a redirect only on the same server. The open `/api/proxy` checks every redirect too.
-- **The Android app's SSO sign-in no longer passes the session token through the `notetrace://` link**, which another app could intercept. The link carries a single-use code that only the app that started the sign-in can redeem.
-- **Uploaded files get unguessable names.** The random part of the name was made with `Math.random()`, which can be predicted from its own output.
-- **The server answers as the account whose token a request carries, never as the one a leftover sign-in cookie names.** After one account signed out of the Android app and another signed in, the first account's cookie stayed on the phone, so some of the app's requests could be answered, and saved, as the first account. The app also forgets NoteTrace's sign-in cookie whenever the account changes.
-- **Signing in to another account in the Android app shows only that account's notes, and downloads all of them.** The previous account's notes stayed on the phone, its changes that hadn't synced went up into the new account, and the new account's older notes never downloaded. If the previous account left changes that haven't synced, the app asks first; Cancel signs out and keeps them for that account. Settings are kept per account and per server, and the home screen widget shows nothing while signed out.
-- **The diagnostic log never holds a secret.** It recorded every link the app opened, sign-in codes included, and in diagnostic mode the value of every setting sent to the server, AI API keys included. It now records only which setting changed, and hides anything that looks like a key, token or password.
-- **@capacitor/android** bumped 8.3.0 to 8.5.3 and **@capacitor/core** 8.4.0 to 8.5.3, closes [GHSA-rvm3-566m-v7fv](https://github.com/advisories/GHSA-rvm3-566m-v7fv) (critical: a tapped link could load another site's page inside the app as if it were the app, with your sign-in and the app's phone features). The Android app was exposed: a link in a note shared with you as view-only could do this. **@capacitor/ios** moves to 8.5.3 with them; NoteTrace has no iOS app.
-- **proxy-addr** bumped 2.0.7 to 2.0.8 on the server, closes [GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h) (critical: some IPv6-style trusted-proxy ranges trusted every client's forwarded address). NoteTrace sets no trusted proxy, so it wasn't exposed.
+- **The image proxy passes images only**, and an image can't act as a page. Before sign-in it passed on whatever its image hosts sent back, a web page included, from the app's own address.
+- **Password reset and invite emails can no longer be pointed at someone else's site.** Their links took the address from the request, so a forged host could send someone's reset token elsewhere. They now use `PUBLIC_URL` when it's set, or an address an admin uses, and keep the `BASE_URL` subpath.
+- **Names in emails can no longer carry markup.** A name or shared title went into invite and SMTP test emails as-is.
+- **Link previews, Send to CookTrace and push notifications connect only to the address they checked**, never to cloud-metadata addresses. A failed push test no longer shows the other server's raw reply, push follows a redirect only on the same server, and `/api/proxy` checks every redirect.
+- **The Android app's SSO sign-in no longer passes the session token through the `notetrace://` link**, which another app could intercept. It carries a single-use code that only the app that started the sign-in can redeem.
+- **The server answers as the account a request's token names, never as a leftover sign-in cookie.** After switching accounts in the Android app, some requests could be answered, and saved, as the previous account.
+- **Signing in to another account in the Android app shows only that account's notes, and downloads all of them.** The previous account's notes stayed on the phone and its unsynced changes went into the new account. If any are left unsynced, the app asks first. Settings are kept per account and per server.
+- **The diagnostic log never holds a secret.** It recorded sign-in codes and, in diagnostic mode, setting values, AI API keys included.
+- **Uploaded files get unguessable names.** Their random part came from `Math.random()`, which can be predicted from its own output.
+- **@capacitor/android** bumped 8.3.0 to 8.5.3 and **@capacitor/core** 8.4.0 to 8.5.3, closes [GHSA-rvm3-566m-v7fv](https://github.com/advisories/GHSA-rvm3-566m-v7fv) (critical: a tapped link could load another site's page inside the app, with your sign-in and the app's phone features). A link in a note shared with you as view-only could do this. **@capacitor/ios** moves to 8.5.3 with them; NoteTrace has no iOS app.
+- **proxy-addr** bumped 2.0.7 to 2.0.8 on the server, closes [GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h) (critical: some IPv6-style trusted-proxy ranges trusted every client). NoteTrace sets no trusted proxy, so it wasn't exposed.
 - **@modelcontextprotocol/sdk** bumped 1.30.0 to 1.32.1 on the server, closes [GHSA-6qxp-vccf-f47h](https://github.com/advisories/GHSA-6qxp-vccf-f47h) (high: its OAuth client could send credentials to a server the other side picked). NoteTrace uses only its MCP server, so it wasn't exposed.
-- **ip-address** bumped 10.7.0 to 10.7.3 and **fast-uri** 3.1.7 to 3.1.8 on the server, closes [GHSA-j6r3-76f7-8jcv](https://github.com/advisories/GHSA-j6r3-76f7-8jcv), [GHSA-h3mg-xc3c-68pw](https://github.com/advisories/GHSA-h3mg-xc3c-68pw) and [GHSA-hrr3-gc8f-f4qj](https://github.com/advisories/GHSA-hrr3-gc8f-f4qj) (moderate: a subnet check that mixed IPv4 and IPv6, a slow parse of a long address, and inconsistent host names in URLs). Both come in with the MCP SDK, for parts NoteTrace doesn't use, so it wasn't exposed.
-- **devalue** bumped 5.9.2 to 5.9.4, closes [GHSA-j22f-vq7h-c4qm](https://github.com/advisories/GHSA-j22f-vq7h-c4qm), [GHSA-mcm9-63f2-9j32](https://github.com/advisories/GHSA-mcm9-63f2-9j32), [GHSA-x5rw-q4pp-hg5g](https://github.com/advisories/GHSA-x5rw-q4pp-hg5g), [GHSA-hx4r-w6wj-j8fg](https://github.com/advisories/GHSA-hx4r-w6wj-j8fg), [GHSA-4q55-j62x-fr9h](https://github.com/advisories/GHSA-4q55-j62x-fr9h) and [GHSA-wf3x-273g-mvxv](https://github.com/advisories/GHSA-wf3x-273g-mvxv) (high: slow or oversized output and a prototype check bypass when serializing data). Only Svelte's server-side rendering uses it, which NoteTrace doesn't, so it wasn't exposed.
+- **ip-address** bumped 10.7.0 to 10.7.3 and **fast-uri** 3.1.7 to 3.1.8 on the server, closes [GHSA-j6r3-76f7-8jcv](https://github.com/advisories/GHSA-j6r3-76f7-8jcv), [GHSA-h3mg-xc3c-68pw](https://github.com/advisories/GHSA-h3mg-xc3c-68pw) and [GHSA-hrr3-gc8f-f4qj](https://github.com/advisories/GHSA-hrr3-gc8f-f4qj) (moderate). Both come in with the MCP SDK, for parts NoteTrace doesn't use, so it wasn't exposed.
+- **devalue** bumped 5.9.2 to 5.9.4, closes [GHSA-j22f-vq7h-c4qm](https://github.com/advisories/GHSA-j22f-vq7h-c4qm), [GHSA-mcm9-63f2-9j32](https://github.com/advisories/GHSA-mcm9-63f2-9j32), [GHSA-x5rw-q4pp-hg5g](https://github.com/advisories/GHSA-x5rw-q4pp-hg5g), [GHSA-hx4r-w6wj-j8fg](https://github.com/advisories/GHSA-hx4r-w6wj-j8fg), [GHSA-4q55-j62x-fr9h](https://github.com/advisories/GHSA-4q55-j62x-fr9h) and [GHSA-wf3x-273g-mvxv](https://github.com/advisories/GHSA-wf3x-273g-mvxv) (high). Only Svelte's server-side rendering uses it, which NoteTrace doesn't, so it wasn't exposed.
 - **brace-expansion** (5.0.9 to 5.0.12, 2.1.4 to 2.1.7), **source-map-js** 1.2.1 to 1.2.2 and **fast-uri** 3.1.7 to 3.1.8 in the build tools, closes [GHSA-q2hr-2g5m-vwhr](https://github.com/advisories/GHSA-q2hr-2g5m-vwhr), [GHSA-qhr7-859c-m2p7](https://github.com/advisories/GHSA-qhr7-859c-m2p7), [GHSA-6j4f-fj2g-mc7p](https://github.com/advisories/GHSA-6j4f-fj2g-mc7p), [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q) and [GHSA-hrr3-gc8f-f4qj](https://github.com/advisories/GHSA-hrr3-gc8f-f4qj) (high: slow or crashing input). They only run while building NoteTrace, never in the app or server.
 - `npm audit` reports 0 vulnerabilities for the app and the server.
 
