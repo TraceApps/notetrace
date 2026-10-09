@@ -41,6 +41,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Restoring a backup in the Android app while connected to a server no longer leaves notes out of step.** A backup of the same account catches up with the server without making copies; one from another account or server, or from an older version, goes up as new notes, once, and never changes the other account's.
 - **Trace chat cleared on the server leaves the Android app's copy too**, including chat cleared while the phone was disconnected, so it no longer stays on the phone and in its backups. Found while fixing the same bug in LiftTrace ([lifttrace#139](https://github.com/TraceApps/lifttrace/issues/139), reported by @surfingbytes).
 - **Trace chat in the Android app reaches the server with Push All, or when you connect with Upload or Merge.** It was refused, stayed counted as a change waiting to sync, and was sent again with every sync.
+- **Trace shows your newest messages when you open it.** It loaded the oldest 100, so once a chat passed 100 messages the latest ones never appeared.
 
 ### Security
 
