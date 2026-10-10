@@ -4,6 +4,7 @@ import { wrap } from '../logger.js';
 import { getAiConfig } from '../ai.js';
 import { makeRateLimiter } from '../middleware/rate-limit.js';
 import { getOpenAIChatParams } from '../lib/openai-chat-params.js';
+import { createToolSupportMemory, sendWithToolFallback } from '../lib/tool-support.js';
 import db from '../db.js';
 import multer from 'multer';
 import { transcribeAudio, transcribeFile, readImageText } from '../lib/ai-extract.js';
@@ -182,6 +183,10 @@ export function relayRequest(cfg, body) {
   return { url: `${base}/v1/chat/completions`, headers, body: out };
 }
 
+// Models the relay found can't use tools, by endpoint and model
+// (TraceApps/nutritrace#259).
+const relayToolSupport = createToolSupportMemory();
+
 router.post('/relay', requireAuth, aiChatLimit, wrap(async (req, res) => {
   const body = req.body?.body;
   if (!body || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: { message: 'body object required' } });
@@ -190,14 +195,30 @@ router.post('/relay', requireAuth, aiChatLimit, wrap(async (req, res) => {
   if (!cfg.apiKey && !local) return res.status(503).json({ error: { message: 'AI not configured on server. Set AI_API_KEY in environment.' } });
   if (local && (!cfg.baseUrl || !cfg.model)) return res.status(503).json({ error: { message: 'AI_PROVIDER=oai-compat requires AI_BASE_URL and AI_MODEL in environment.' } });
   const r = relayRequest(cfg, body);
-  let upstream;
+  const send = async (b) => {
+    const upstream = await fetch(r.url, { method: 'POST', headers: r.headers, body: JSON.stringify(b), signal: AbortSignal.timeout(120_000) });
+    const data = await upstream.json().catch(() => ({ error: { message: `AI provider error ${upstream.status}` } }));
+    return { ok: upstream.ok, status: upstream.status, data };
+  };
+  // An OpenAI-compatible model that can't use tools gets the request again
+  // without them, so older apps get an answer too; trace_tools_unsupported
+  // lets the app say so.
+  const openai = cfg.provider !== 'claude' && cfg.provider !== 'gemini';
+  let out;
   try {
-    upstream = await fetch(r.url, { method: 'POST', headers: r.headers, body: JSON.stringify(r.body), signal: AbortSignal.timeout(120_000) });
+    out = openai
+      ? await sendWithToolFallback(r.body, send, { memory: relayToolSupport, baseUrl: r.url, model: r.body.model })
+      : await send(r.body);
   } catch (e) {
     return res.status(502).json({ error: { message: e?.name === 'TimeoutError' ? 'The AI provider didn\'t answer in time.' : 'Couldn\'t reach the AI provider.' } });
   }
-  const data = await upstream.json().catch(() => ({ error: { message: `AI provider error ${upstream.status}` } }));
-  res.status(upstream.status).json(data);
+  if (out.toolsDropped && out.data && typeof out.data === 'object' && !Array.isArray(out.data)) {
+    out.data.trace_tools_unsupported = true;
+    // The refusal named another model than the one asked for (a gateway
+    // that routes one name to many models).
+    if (out.toolsRouted) out.data.trace_tools_routed = true;
+  }
+  res.status(out.status).json(out.data);
 }));
 
 router.post('/read-image', requireAuth, aiChatLimit, wrap(async (req, res) => {

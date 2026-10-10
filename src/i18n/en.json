@@ -1740,7 +1740,10 @@
       "voice_needs_https_smart": "Voice needs HTTPS. Smart Log won't work over plain HTTP, set up TLS or use the public domain.",
       "mic_denied":              "Microphone permission denied",
       "pick_image":              "Pick an image file."
-    }
+    },
+    "tools_unsupported":         "This model can't use tools: it can answer, but it can't search or change your notes. Pick a model with tool support in Settings.",
+    "tools_unsupported_server":  "This model can't use tools: it can answer, but it can't search or change your notes. Your admin can set a model with tool support.",
+    "tools_unsupported_routed":  "The model that answered can't use tools, so no notes were searched or changed."
   },
   "profile_ct": {
     "toast": {

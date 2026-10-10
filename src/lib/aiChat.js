@@ -18,6 +18,7 @@
  * loosely coupled so we can iterate on either independently.
  */
 import { getOpenAIChatParams } from './openai-chat-params.js';
+import { createToolSupportMemory, sendWithToolFallback } from './tool-support.js';
 import { NOTE_TOOLS } from './trace-note-tools.js';
 
 // ── Provider catalog (kept in NoteTrace's `id`-keyed shape so the
@@ -80,13 +81,15 @@ export const TOOLS = NOTE_TOOLS;
  * Trace is set by environment variables: pass the server's provider and
  * model. Tools still run here, on the device, like with a personal key.
  */
-export async function callAI({ provider, apiKey, model, messages, systemPrompt, tools, onToolCall, onToolResult, baseUrl, relay = false }) {
+// onToolsUnsupported runs when the model can't use tools and answered
+// without them (TraceApps/nutritrace#259).
+export async function callAI({ provider, apiKey, model, messages, systemPrompt, tools, onToolCall, onToolResult, onToolsUnsupported, baseUrl, relay = false }) {
   // 'custom' is the legacy NoteTrace name for the same OpenAI-compatible
   // path that NutriTrace calls 'oai-compat'. Both are accepted.
   if (!relay && !apiKey && provider !== 'custom' && provider !== 'oai-compat') {
     throw new Error('No API key configured. Add one in Settings → Trace Assistant.');
   }
-  const cb = { onToolCall, onToolResult, relay };
+  const cb = { onToolCall, onToolResult, onToolsUnsupported, relay };
   if (relay) {
     apiKey = apiKey || 'relay';
     baseUrl = baseUrl || 'relay';
@@ -203,8 +206,11 @@ async function _callClaudeWithTools(apiKey, model, messages, systemPrompt, tools
 }
 
 // ── OpenAI / OpenAI-compatible ─────────────────────────────────────────────
+// Models found unable to use tools, by base URL and model (TraceApps/nutritrace#259).
+const toolSupport = createToolSupportMemory();
+
 async function _callOpenAIWithTools(apiKey, model, messages, systemPrompt, tools, cb, baseUrl = 'https://api.openai.com') {
-  const { onToolCall, onToolResult } = cb || {};
+  const { onToolCall, onToolResult, onToolsUnsupported } = cb || {};
   const openaiTools = (tools || []).map(t => ({
     type: 'function',
     function: { name: t.name, description: t.description, parameters: t.parameters },
@@ -229,9 +235,13 @@ async function _callOpenAIWithTools(apiKey, model, messages, systemPrompt, tools
     if (openaiTools.length) body.tools = openaiTools;
     const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
     if (apiKey && apiKey !== 'no-key') headers['Authorization'] = `Bearer ${apiKey}`;
-    const res = await _post(cb?.relay, `${baseUrl}/v1/chat/completions`, headers, body);
-    const data = res.data;
-    if (!res.ok) throw new Error(data.error?.message || `AI API error ${res.status}`);
+    const send = (b) => _post(cb?.relay, `${baseUrl}/v1/chat/completions`, headers, b);
+    // A model that can't use tools gets the request again without them.
+    // Through the relay the server may already have done that (it says so
+    // with trace_tools_unsupported).
+    const { ok, status, data, toolsDropped, toolsRouted } = await sendWithToolFallback(body, send, { memory: toolSupport, baseUrl, model: selectedModel });
+    if (!ok) throw new Error(data.error?.message || `AI API error ${status}`);
+    if (toolsDropped || data.trace_tools_unsupported) onToolsUnsupported?.({ routed: toolsRouted || !!data.trace_tools_routed });
 
     const choice = data.choices[0];
     const msg = choice.message;

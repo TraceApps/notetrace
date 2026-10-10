@@ -36,6 +36,8 @@
        Undo has to be clickable wherever the action was taken. */
     z-index: 900;
     pointer-events: none;
+    /* As wide as the longest message, up to the screen; longer ones wrap. */
+    width: max-content;
     max-width: calc(100vw - 32px);
   }
   .toast {
@@ -50,7 +52,7 @@
     font-size: 14px;
     font-weight: 500;
     color: var(--text-1);
-    white-space: nowrap;
+    overflow-wrap: anywhere;
     backdrop-filter: var(--backdrop-blur);
     -webkit-backdrop-filter: var(--backdrop-blur);
   }
