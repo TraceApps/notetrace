@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  applyOps, listView, overlayList, buildPush, createdIds, isOfflineError, isTempId, tasksDueCount, matchesQuery, stamp,
+  applyOps, listView, overlayList, buildPush, createdIds, isOfflineError, isUnavailableError, isTempId, tasksDueCount, matchesQuery, stamp,
 } from '../src/lib/offline-edits.js';
 
 const T0 = Date.parse('2026-09-16T12:00:00Z');
@@ -19,6 +19,26 @@ test('network failures count as offline, server refusals do not', () => {
   assert.equal(isOfflineError(new Error('API error 502')), true);
   assert.equal(isOfflineError(Object.assign(new Error('Invalid CSRF token'), { status: 403 })), false);
   assert.equal(isOfflineError(new Error('Note not found')), false);
+});
+
+test('a fresh install\'s "Setup required" answer is the server reached, not offline', () => {
+  // server/index.js answers every data request on a fresh install with
+  // 503 { error: 'Setup required', setup_required: true }; api.js marks it.
+  assert.equal(isOfflineError(Object.assign(new Error('Setup required'), { status: 503, setupRequired: true })), false);
+  // A 503 from a proxy in front of a server that is down still is.
+  assert.equal(isOfflineError(Object.assign(new Error('API error 503'), { status: 503 })), true);
+});
+
+test('a server with no account yet still keeps edits: the local copy answers and they wait', () => {
+  // A server reset while a tab stayed open answers "Setup required": not
+  // offline (no Offline pill), but nothing can go up, so reads use the local
+  // copy and edits are queued, as when it can't be reached.
+  const setup = Object.assign(new Error('Setup required'), { status: 503, setupRequired: true });
+  assert.equal(isUnavailableError(setup), true);
+  assert.equal(isOfflineError(setup), false);
+  assert.equal(isUnavailableError(new TypeError('Failed to fetch')), true);
+  assert.equal(isUnavailableError(Object.assign(new Error('Invalid CSRF token'), { status: 403 })), false);
+  assert.equal(isUnavailableError(new Error('Note not found')), false);
 });
 
 test('edits apply in order and stamp the note', () => {

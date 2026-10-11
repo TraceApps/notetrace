@@ -35,7 +35,7 @@ import integrationsRoutes from './routes/integrations.js';
 import linkPreviewRoutes from './routes/link-preview.js';
 import publicNoteRoutes from './routes/public-note.js';
 import { logger }   from './logger.js';
-import { authenticate, userMgmtActive } from './middleware/auth.js';
+import { authenticate, userMgmtActive, setupRequired } from './middleware/auth.js';
 import { csrfProtect } from './middleware/csrf.js';
 import { seedSmtpFromEnv } from './email.js';
 import { seedAiFromEnv } from './ai.js';
@@ -196,6 +196,11 @@ router.get('/api/oidc/callback', (req, res) => {
 // the setup gate so a link keeps working in single-user mode.
 router.use('/api/n', publicNoteRoutes);
 
+// Health answers before setup too: the server is up and only needs its first
+// account, which the Android app's connect screen says instead of "not
+// reachable". A server that is set up still answers exactly { ok: true }.
+router.get('/api/health', (req, res) => res.json(setupRequired() ? { ok: true, setup_required: true } : { ok: true }));
+
 // Setup enforcement — block data APIs until the first user account is created.
 // /api/auth/* is allowed so the client can register the admin.
 //
@@ -206,9 +211,7 @@ router.use('/api/n', publicNoteRoutes);
 // NutriTrace #34 part-2 fix.
 router.use('/api', (req, res, next) => {
   if (req.path.startsWith('/auth')) return next();
-  if (userMgmtActive()) return next();             // users exist — normal operation
-  const singleUser = db.prepare(`SELECT value FROM app_config WHERE key = 'single_user_mode'`).get()?.value === '1';
-  if (singleUser) return next();                   // intentional single-user mode — let data APIs through
+  if (!setupRequired()) return next();              // set up, or single-user mode by choice
   res.status(503).json({ error: 'Setup required', setup_required: true });
 });
 
@@ -240,7 +243,6 @@ router.use('/api/admin/webhooks', webhooksRoutes);
 router.use('/api/mcp',          mcpRoutes);
 router.use('/api/integrations', integrationsRoutes);
 router.use('/api/link-preview', linkPreviewRoutes);
-router.get('/api/health', (req, res) => res.json({ ok: true }));
 
 // Web Share Target (installed PWA). The service worker normally takes the
 // POST (public/sw-extras.js) and keeps any photos; these routes cover a share

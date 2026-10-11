@@ -7,7 +7,7 @@
   import { cubicOut } from 'svelte/easing';
   import { portal } from './lib/portal.js';
   import { handleBack } from './lib/back-stack.js';
-  import Router, { location, push } from 'svelte-spa-router';
+  import Router, { location, push, replace } from 'svelte-spa-router';
 
   import BottomNav from './components/layout/BottomNav.svelte';
   import Sidebar   from './components/layout/Sidebar.svelte';
@@ -23,6 +23,7 @@
   import { currentUser, userMgmtActive, setupRequired, loadAuthState, handleOidcCallback } from './stores/auth.js';
   import { needsNativeSetup, isNative, getNativeMode, getServerUrl, apiUrl, getAuthToken } from './lib/platform.js';
   import { writable, get as getStore } from 'svelte/store';
+  import { createSetupCheck } from './lib/setup-gate.js';
   import { notesChanged, signalNotesChanged } from './stores/notes.js';
   import { accountGate, ensureLocalAccount, accountReadyFor } from './lib/local-account.js';
   import { notifLocalEnabled, appLockEnabled } from './stores/settings.js';
@@ -549,13 +550,15 @@
     }
 
     try { await loadAuthState(); } finally { authLoaded = true; }
-    await handleOidcCallback();
+    // Never left on the blank page below: the setup redirect still has to run.
+    try { await handleOidcCallback(); } catch (e) { console.warn('[app] OIDC sign-in callback failed:', e?.message || e); }
 
     // Env-lock state for AI / SMTP / OIDC. Fetched globally so the Trace
     // FAB knows about env-set AI_ENABLED without waiting for Settings to
     // load. Mirrors NutriTrace #36. Signed out it would only be refused;
     // signing in loads it (see _wasNeedsLogin below).
-    if (!($userMgmtActive && !$currentUser)) loadEnvLocks();
+    // A fresh install refuses it until setup is done (see _setupFirst).
+    if (!($userMgmtActive && !$currentUser) && (isNative || !$setupRequired)) loadEnvLocks();
 
     // Wizard gate. The web "no user + no user management" case is fully
     // covered by $setupRequired (the server distinguishes a fresh install
@@ -566,9 +569,19 @@
     const _isNativeServer = isNative && getNativeMode() === 'server';
     const _isNativeLocal = isNative && getNativeMode() === 'local';
     if (!isNative && $setupRequired) {
-      window.location.hash = '#/wizard';
+      // Replaced, not pushed: Back from the wizard leaves the app instead
+      // of landing on a page that can't load before setup.
+      replace('/wizard');
     } else if (_isNativeLocal && !DB.getSetting('setupComplete', false)) {
       window.location.hash = '#/wizard';
+    }
+    _setupRouted = true;
+    // Back in view during setup: the first account may have been made in
+    // another tab or on another device meanwhile (see lib/setup-gate.js).
+    if (!isNative) {
+      const _backInView = () => { if (!document.hidden && getStore(setupRequired)) _recheckSetup(); };
+      document.addEventListener('visibilitychange', _backInView);
+      window.addEventListener('focus', _backInView);
     }
 
     // Sync engine — native server-connected mode only.
@@ -632,6 +645,27 @@
   // check knows whose it is.
   let authLoaded = isNative && getNativeMode() !== 'server';
   $: needsLogin = $userMgmtActive && !$currentUser && !AUTH_BYPASS.includes($location);
+  // A fresh install opens on setup, and nothing else renders until it gets
+  // there: every other page asks for data the server refuses until the
+  // first account exists ("Setup required"), and those refusals read as
+  // the server being down (the Offline pill on the welcome screen). Once
+  // the account is made, the settings that were refused load.
+  $: _setupFirst = !isNative && $setupRequired;
+  $: _setupPending = _setupFirst && $location !== '/wizard';
+  // Going anywhere else before setup is done comes back to it, once the
+  // server confirms setup is still needed; if it was done elsewhere, the
+  // tab goes to sign-in instead.
+  let _setupRouted = false;
+  const _recheckSetup = createSetupCheck({
+    reload: loadAuthState,
+    setupRequired,
+    goWizard: () => { if (getStore(location) !== '/wizard') replace('/wizard'); },
+    goHome: () => replace('/'),
+  });
+  $: if (_setupRouted && _setupPending) _recheckSetup();
+  let _wasSetupFirst = false;
+  $: if (_setupFirst) _wasSetupFirst = true;
+  else if (_wasSetupFirst) { _wasSetupFirst = false; if (!($userMgmtActive && !$currentUser)) loadEnvLocks(); }
 
   // Android, server mode: the phone's copy of the data must be this
   // account's before the app shows any of it (lib/local-account.js). A
@@ -697,8 +731,8 @@
   <NativeSetup />
   <Toast />
 
-{:else if !authLoaded}
-  <!-- Asking the server who is signed in: a blank page, never the app. -->
+{:else if !authLoaded || _setupPending}
+  <!-- Asking the server who is signed in, or on the way to setup: a blank page, never the app. -->
 {:else if needsLogin}
   <Login />
 {:else if !accountReady}
@@ -723,7 +757,8 @@
 
 {#if $appLocked}<LockScreen />{/if}
 
-<Sidebar bind:open={sidebarOpen} persistent={sidebarPinned} {railStore} on:close={() => { if (!sidebarPinned) sidebarOpen = false; }} />
+<!-- Its labels and reminder counts are refused until setup is done. -->
+{#if !_setupFirst}<Sidebar bind:open={sidebarOpen} persistent={sidebarPinned} {railStore} on:close={() => { if (!sidebarPinned) sidebarOpen = false; }} />{/if}
 
 
 <!-- In-app update banner (native only). Renders only if the OS-level
@@ -817,7 +852,7 @@
 {/if}
 
 <Toast />
-<Trace />
+{#if !_setupFirst}<Trace />{/if}
 {#if !isNative}<OfflineStatus />{/if}
 
 {/if}

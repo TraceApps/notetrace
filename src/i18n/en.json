@@ -1783,7 +1783,8 @@
       "enter_url":               "Enter your server URL",
       "enter_credentials":       "Enter your credentials",
       "connected_to_server":     "Connected to server",
-      "cant_open_signin":        "Could not open sign-in browser"
+      "cant_open_signin":        "Could not open sign-in browser",
+      "server_needs_setup":      "This server isn't set up yet. Open it in a browser to create the first account, then connect here."
     },
     "app_name":                  "NoteTrace",
     "tagline":                   "Trace Every Thought",

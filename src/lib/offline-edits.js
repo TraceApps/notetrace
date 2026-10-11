@@ -29,8 +29,21 @@ export function isOfflineError(err) {
   if (!err) return false;
   if (err.offline) return true;
   if (err.name === 'TypeError') return true; // fetch: Failed to fetch, NetworkError, Load failed
+  // A fresh install answers 503 "Setup required" until its first account
+  // exists: the server was reached, so this is not being offline.
+  if (err.setupRequired) return false;
   const status = err.status ?? Number(String(err.message || '').match(/API error (\d{3})/)?.[1]);
   return status === 502 || status === 503 || status === 504;
+}
+
+/**
+ * The server can't take this right now, so the local copy answers and an
+ * edit waits in the outbox: no connection (isOfflineError), or a server
+ * with no account yet ("Setup required", e.g. reset while this tab stayed
+ * open). Only the first one is being offline.
+ */
+export function isUnavailableError(err) {
+  return isOfflineError(err) || !!err?.setupRequired;
 }
 
 // SQLite on the server takes 0 and 1, not true and false.

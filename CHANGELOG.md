@@ -9,6 +9,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **A fresh install's welcome screen no longer says it's offline.** Opened before the first account existed, the notes and the sidebar loaded behind it and the server refused them with "Setup required", which was taken for the server being down. Setup now opens first, nothing else asks the server for data until it's done, and that answer never counts as offline.
+- **Turning update checks on or off in the browser reaches the server.** The setup wizard, Settings and the Updates banner were all refused, so the server kept its old setting.
+- **The Android app says when a server isn't set up yet.** Connecting to a fresh install said the server couldn't be reached (or that only HTTPS works). Now it says to open the server in a browser and create the first account first; Android apps from before this get the same answer when they sign in. `/api/health` answers before setup too, with `setup_required: true`, so a container healthcheck passes from the first start.
 - **The Android app syncs half as often, and does less when nothing changed.** It ran two 30-second syncs, and one of them kept going with the app hidden. Now one runs while the app is on screen, and a sync with nothing new no longer reads every attachment twice or rewrites the picture list it already has.
 - **Trace answers with models that can't use tools** ([nutritrace#259](https://github.com/TraceApps/nutritrace/issues/259)). With an OpenAI-compatible model that has no tool support, every chat failed with `tool use is not supported`. Trace now asks again without tools and says once that the model can't search or change your notes. Thanks @jsapede for the report.
 - **Long messages wrap** instead of running off the screen.

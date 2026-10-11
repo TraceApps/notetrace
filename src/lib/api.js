@@ -52,6 +52,8 @@ const _NoteApiHttp = {
       const e = await res.json().catch(() => ({}));
       const err = new Error(e.error || `API error ${res.status}`);
       err.status = res.status;
+      // The server's own "no account yet" answer: it is there, not down.
+      if (e.setup_required) err.setupRequired = true;
       throw err;
     }
     if (res.status === 204) return null;

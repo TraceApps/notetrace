@@ -18,7 +18,7 @@
 import { writable, get } from 'svelte/store';
 import { _ } from 'svelte-i18n';
 import {
-  applyOps, overlayList, listView, buildPush, createdIds, isOfflineError, isTempId,
+  applyOps, overlayList, listView, buildPush, createdIds, isOfflineError, isUnavailableError, isTempId,
   tasksDueCount, touchedIds, NOTE_FIELDS,
 } from './offline-edits.js';
 // Loaded with everything else, never fetched on demand: a picture is kept
@@ -306,6 +306,7 @@ async function _flushOnce() {
         done.add(op.key);
       } catch (err) {
         if (isOfflineError(err)) { _publish({ syncing: false, online: false }); _scheduleFlush(_backoff()); return false; }
+        if (err.setupRequired) { _publish({ syncing: false, error: null, online: true }); _scheduleFlush(_backoff()); return false; }
         console.error(`[offline] your server refused ${op.kind}: ${err.message}`);
         _publish({ syncing: false, error: err.message || 'failed', online: true });
         _scheduleFlush(_backoff());
@@ -336,6 +337,8 @@ async function _flushOnce() {
   try {
     response = await _http.post('/api/sync/push', payload);
   } catch (err) {
+    // Not set up yet (no account to send them to): the edits wait, nothing failed.
+    if (err.setupRequired) { _publish({ syncing: false, error: null, online: true }); _scheduleFlush(_backoff()); return false; }
     _publish({ syncing: false, error: isOfflineError(err) ? null : (err.message || 'failed'), online: _online() && !isOfflineError(err) });
     _scheduleFlush(_backoff());
     return false;
@@ -431,8 +434,8 @@ export function createOfflineApi(http) {
         if (ops.length) _scheduleFlush();
         return ops.length && overlay ? overlay(result, ops) : result;
       } catch (err) {
-        if (!isOfflineError(err)) throw err;
-        offlineState.update(s => ({ ...s, online: false }));
+        if (!isUnavailableError(err)) throw err;
+        if (isOfflineError(err)) offlineState.update(s => ({ ...s, online: false }));
       }
     }
     return fromLocal();
@@ -449,8 +452,8 @@ export function createOfflineApi(http) {
         await remember(result);
         return result;
       } catch (err) {
-        if (!isOfflineError(err)) throw err;
-        offlineState.update(s => ({ ...s, online: false }));
+        if (!isUnavailableError(err)) throw err;
+        if (isOfflineError(err)) offlineState.update(s => ({ ...s, online: false }));
       }
     }
     return queue(op);
@@ -468,8 +471,8 @@ export function createOfflineApi(http) {
         try {
           return await http.uploadImage(file);
         } catch (err) {
-          if (!isOfflineError(err)) throw err;
-          _publish({ online: false });
+          if (!isUnavailableError(err)) throw err;
+          if (isOfflineError(err)) _publish({ online: false });
         }
       }
       // The same shape the real one answers with: a url string.
@@ -482,8 +485,8 @@ export function createOfflineApi(http) {
         try {
           return await http.uploadFile(file);
         } catch (err) {
-          if (!isOfflineError(err)) throw err;
-          _publish({ online: false });
+          if (!isUnavailableError(err)) throw err;
+          if (isOfflineError(err)) _publish({ online: false });
         }
       }
       // Only pictures are small enough to carry inside a row; anything else
@@ -498,8 +501,8 @@ export function createOfflineApi(http) {
         try {
           return await http.updateProfile(data);
         } catch (err) {
-          if (!isOfflineError(err)) throw err;
-          _publish({ online: false });
+          if (!isUnavailableError(err)) throw err;
+          if (isOfflineError(err)) _publish({ online: false });
         }
       }
       await queueRequest({ kind: 'your profile', key: 'profile', method: 'PUT', path: '/api/auth/profile', body: data });
@@ -513,8 +516,8 @@ export function createOfflineApi(http) {
         try {
           return await http.addAttachments(real, attachments);
         } catch (err) {
-          if (!isOfflineError(err)) throw err;
-          _publish({ online: false });
+          if (!isUnavailableError(err)) throw err;
+          if (isOfflineError(err)) _publish({ online: false });
         }
       }
       await queueRequest({
@@ -646,7 +649,7 @@ export function createOfflineApi(http) {
         try {
           return await value.apply(http, args);
         } catch (err) {
-          if (isOfflineError(err)) throw _offlineError();
+          if (isUnavailableError(err)) throw _offlineError();
           throw err;
         }
       };
