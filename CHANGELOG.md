@@ -9,6 +9,237 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.1.0] - 2026-10-11
+
+Minor release. Big themes: public links for notes, clearing a checklist in one tap, pictures and settings that work with no connection, foldable layouts that use the crease, a round of Android sync and account fixes, SSO fixes, and security hardening.
+
+> **Upgrade note.** Nothing to change for most installs. Three things to know:
+>
+> - **Set `PUBLIC_URL`** if people get password reset or invite emails. Those links now use it, or else an address an admin has opened the app at; until an admin has opened the app once, no reset email goes out.
+> - **SSO with an unverified email.** If your provider doesn't mark emails verified (Authentik's default since 2025.10), a sign-in that would have matched an existing account by email is refused. Link the provider from **Profile** once.
+> - **Update the Android app too.** Most sync and account fixes, and the critical Capacitor fix, are in the app.
+
+### Added
+
+- **Public links for notes** ([#15](https://github.com/TraceApps/notetrace/issues/15)). From the Share dialog, the owner can make a read-only link for people without an account. It shows the note, its checklist and its pictures, never who owns it or who else it's shared with, and chat apps show a preview of it. Removing the link stops it at once. Thanks @Firnin for the idea.
+- **Clear a checklist in one tap** ([#7](https://github.com/TraceApps/notetrace/issues/7)). The checked-items bar offers **Uncheck All** and **Delete Checked**, each with a single undo. Both work offline, and Uncheck All is on the watch too. Thanks @bonsairobo for the request.
+- **Pictures work offline.** A picture or drawing added with no connection saves with the note and becomes a file on your server when the queue goes up. Photos are scaled so your server accepts them and keep their transparency, and a format the browser can only read (an iPhone's HEIC, say) is converted. Other files still need a connection.
+- **Settings and your profile work offline**, picture included, and go up with everything else.
+- **Settings has a Support page**, next to About: Ko-fi and GitHub Sponsors, plus free ways to help (star the repo, report a bug, translate).
+
+### Changed
+
+- **Foldables use the crease instead of reaching across it.** Half open like a book:
+  - Notes are dealt into columns either side of the fold.
+  - Settings puts its section list on one side and the section itself on the other, at any width.
+  - Menus and pickers slide clear of the crease, while drawing keeps the whole screen.
+  - Trace takes a panel of its own. In laptop posture it sits on the flat half, leaving your notes readable on the half standing up.
+  - Settings, Diagnostics reports what the hinge is doing, open flat included, so you can tell whether your phone reports one at all.
+- **Trace's attach button offers Camera or Gallery** on phones and in the Android app, the same as the other Trace apps.
+- **Trace's model lists are current.** Claude Haiku 5.5 is the new default; Claude Sonnet 5.5 and Opus 5.5, GPT-6 Luna, GPT-5.6 Sol, and Gemini 3.8 Flash and 3.1 Flash Lite are added; Gemini 3.1 Pro is listed as the preview it is; and Gemini 2.5 leaves the list (open to existing Google users only). A model you already chose keeps working, and shut-down Gemini models switch to the default.
+- **The in-app updater reuses an update it already downloaded.** Coming back to Updates goes straight to installing, and the button says Install. Older downloads are cleared.
+- **Send to CookTrace reaches a CookTrace on your own network without `ALLOW_PRIVATE_COOKTRACE_URLS`**, which is no longer used. It only ever calls CookTrace's shopping API.
+- **About links to the TraceApps family** instead of naming the other apps.
+
+### Fixed
+
+- **SSO no longer creates a second account for an email that already has one.** When the provider doesn't mark the email verified, the sign-in is refused with a pointer to link the provider from your profile.
+- **SSO works with Authelia 4.39 and later out of the box.** Email, username and groups are read from the provider's userinfo when the ID token leaves them out.
+- **The SSO callback works without the provider number, and at `/api/oidc/callback`**, the address older docs gave. Both ended on a blank page.
+- **`OIDC_ENABLE_EMAIL_PASSWORD_LOGIN` works for providers added in Settings.** It was ignored unless a provider was also set through env vars.
+- **Signing in on a plain-HTTP address explains what's wrong instead of looping.** The sign-in and setup screens link to the fix (HTTPS, or `INSECURE_COOKIES=1`), the server log says so too, and every doc explains `INSECURE_COOKIES` the same way.
+- **A connection problem says what kind it was** ([#11](https://github.com/TraceApps/notetrace/issues/11)). The diagnostic log records whether it was a timeout, an address that wouldn't resolve, a refused connection or a rejected certificate, where all of them used to read "Failed to fetch". Thanks @mmBesar for the report.
+- **A fresh install opens on setup**, not a welcome screen saying it's offline, and the app no longer loads behind the sign-in screen asking for data it would be refused.
+- **The Android app says when a server isn't set up yet**, instead of saying it can't be reached. `/api/health` answers before setup too, so a container healthcheck passes from the first start.
+- **The installed app works when NoteTrace is served from a subpath** (`BASE_URL`). Thanks @kgenerozov for the fix in LiftTrace and NutriTrace.
+- **Accents no longer hide what you're looking for.** Labels, the [[link]] picker and Settings search ignore them like note search already did, so "Mañana" turns up when you type "manana".
+- **Trace works with models that can't use tools** ([nutritrace#259](https://github.com/TraceApps/nutritrace/issues/259)), and **with OpenAI-compatible endpoints that stream unless told not to** ([nutritrace#258](https://github.com/TraceApps/nutritrace/issues/258)). With a model without tool support it answers without them and says once that it can't search or change your notes. Thanks @jsapede for both reports.
+- **Trace shows your newest messages when you open it**, not the oldest 100.
+- **The Trace button no longer covers sheets and dialogs.**
+- **"Update Ready" on the web reloads**, instead of using the Android wording with a button that could do nothing, and a tab left open all day notices new versions again.
+- **The updater can no longer offer a phone the watch build.**
+- **Settings pages line up with the section list, and the list keeps its place**, on desktop and foldables.
+- **Popovers stay on the screen when their contents load late**, and long pop-up messages wrap instead of running off it.
+- **Sharing works in the Android app connected to a server.** The Share dialog could show the wrong people or none.
+- **The Android app stores each note once.** The first sync stored every note twice, a note written offline could go up twice, and reconnecting to the same account uploaded a second copy of every note.
+- **The Android app syncs half as often, and does less when nothing changed.** One sync runs while the app is on screen, instead of two with one still running in the background.
+- **A note made offline in the Android app keeps the date it was made**, instead of the time it reached the server.
+- **Settings changed in the Android app reach the server intact.** A change made before it synced is no longer lost or set back, and note templates and other list settings no longer come back broken.
+- **Reminders stop when you sign out of the Android app**, and another account's don't fire for you.
+- **Signing out of the Android app with no connection goes to the sign-in screen**, and closing "Is This the Same Server?" without choosing no longer clears the phone's data.
+- **A note edited in the Android app after it was deleted elsewhere comes back with your edit on every device.** An edit made before the delete is dropped, and the app says so.
+- **Restoring a backup in the Android app while connected to a server keeps notes in step**, without copies, and pull to refresh gets what changed while a sync was already running.
+- **Trace chat stays in step between the Android app and the server.** Chat cleared on the server is cleared on the phone too, found while fixing the same bug in LiftTrace ([lifttrace#139](https://github.com/TraceApps/lifttrace/issues/139)); thanks @surfingbytes for the report.
+- **Debug builds of the Android app no longer write your notes to the device log.**
+- **The web app keeps what you did offline.** Something deleted while online stays deleted when the connection goes, the copy the browser keeps has a ceiling and makes way for unsent work, every way of signing out sends the queue first and asks before discarding it, and a change your server refuses says why in Settings, Diagnostics.
+
+### Security
+
+- **Update checks are off until you turn them on, and your server does the asking.** Every browser and phone used to ask GitHub directly every 4 hours. Setup now asks, so a new install contacts nothing on its own; existing installs keep checking, and `UPDATE_CHECK=off` overrides the setting. Reported on r/selfhosted.
+- **Fonts are served by your own instance**, so Google no longer sees the address of everyone who opens the app. Reported on r/selfhosted.
+- **Password reset and invite emails can no longer be pointed at someone else's site.** Their links took the address from the request, so a forged host could send someone's reset token elsewhere. They now use `PUBLIC_URL`, or an address an admin uses, and keep the `BASE_URL` subpath.
+- **Names in emails can no longer carry markup.** A name or shared title went into invite and SMTP test emails as-is.
+- **The image proxy passes images only**, and an image can't act as a page. Before sign-in it passed on whatever its image hosts sent back, a web page included.
+- **Link previews, Send to CookTrace and push notifications connect only to the address they checked**, never to cloud-metadata addresses. A failed push test no longer shows the other server's raw reply, push follows a redirect only on the same server, and `/api/proxy` checks every redirect.
+- **The Android app's SSO sign-in no longer passes the session token through the `notetrace://` link**, which another app could intercept. It carries a single-use code that only the app that started the sign-in can redeem.
+- **The server answers as the account a request's token names, never as a leftover sign-in cookie.** After switching accounts in the Android app, some requests could be answered, and saved, as the previous account.
+- **Signing in to another account in the Android app shows only that account's notes, and downloads all of them.** The previous account's notes stayed on the phone and its unsynced changes went into the new account. If any are left unsynced, the app asks first. Settings are kept per account and per server.
+- **The diagnostic log never holds a secret.** It recorded sign-in codes and, in diagnostic mode, setting values, AI API keys included.
+- **Uploaded files get unguessable names.** Their random part came from `Math.random()`, which can be predicted from its own output.
+- **Dependency updates:**
+  - **@capacitor/android** 8.3.0 and **@capacitor/core** 8.4.0 to 8.5.3, closes [GHSA-rvm3-566m-v7fv](https://github.com/advisories/GHSA-rvm3-566m-v7fv) (critical: a tapped link could load another site's page inside the app, with your sign-in and the app's phone features). The Android app was exposed through a link in a note shared with you as view-only. **@capacitor/ios** moves with them; NoteTrace has no iOS app.
+  - **nodemailer** 9.1.1 to 10.0.12 on the server (and out of the web app, where nothing used it), closes [GHSA-v53p-9fqp-m79j](https://github.com/advisories/GHSA-v53p-9fqp-m79j) and [GHSA-prgh-xp8r-p3m5](https://github.com/advisories/GHSA-prgh-xp8r-p3m5) (high: slow parsing of crafted addresses), [GHSA-8vvx-rff5-p5rq](https://github.com/advisories/GHSA-8vvx-rff5-p5rq), [GHSA-g57g-f23g-4646](https://github.com/advisories/GHSA-g57g-f23g-4646) and [GHSA-6vj9-mwq6-2f5v](https://github.com/advisories/GHSA-6vj9-mwq6-2f5v) (moderate). NoteTrace mails only addresses saved on accounts or typed by an admin, so these needed a signed-in account.
+  - **multer** 2.3.0 to 2.4.0, closes [GHSA-3pph-fpjx-jg34](https://github.com/advisories/GHSA-3pph-fpjx-jg34) (moderate: an upload cut off at the wrong moment could leave its file on disk). Uploads require signing in.
+  - **proxy-addr** 2.0.7 to 2.0.8, closes [GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h) (critical). NoteTrace sets no trusted proxy, so it wasn't exposed.
+  - **@modelcontextprotocol/sdk** 1.30.0 to 1.32.1, closes [GHSA-6qxp-vccf-f47h](https://github.com/advisories/GHSA-6qxp-vccf-f47h) (high), with **ip-address** 10.7.0 to 10.7.3 and **fast-uri** 3.1.7 to 3.1.8, closes [GHSA-j6r3-76f7-8jcv](https://github.com/advisories/GHSA-j6r3-76f7-8jcv), [GHSA-h3mg-xc3c-68pw](https://github.com/advisories/GHSA-h3mg-xc3c-68pw) and [GHSA-hrr3-gc8f-f4qj](https://github.com/advisories/GHSA-hrr3-gc8f-f4qj) (moderate). They sit in parts of the SDK NoteTrace doesn't use, so it wasn't exposed.
+  - **devalue** 5.9.2 to 5.9.4, closes [GHSA-j22f-vq7h-c4qm](https://github.com/advisories/GHSA-j22f-vq7h-c4qm), [GHSA-mcm9-63f2-9j32](https://github.com/advisories/GHSA-mcm9-63f2-9j32), [GHSA-x5rw-q4pp-hg5g](https://github.com/advisories/GHSA-x5rw-q4pp-hg5g), [GHSA-hx4r-w6wj-j8fg](https://github.com/advisories/GHSA-hx4r-w6wj-j8fg), [GHSA-4q55-j62x-fr9h](https://github.com/advisories/GHSA-4q55-j62x-fr9h) and [GHSA-wf3x-273g-mvxv](https://github.com/advisories/GHSA-wf3x-273g-mvxv) (high). Only Svelte's server-side rendering uses it, which NoteTrace doesn't.
+  - **brace-expansion** (5.0.9 to 5.0.12, 2.1.4 to 2.1.7), **source-map-js** 1.2.1 to 1.2.2 and **fast-uri** 3.1.7 to 3.1.8 in the build tools, closes [GHSA-q2hr-2g5m-vwhr](https://github.com/advisories/GHSA-q2hr-2g5m-vwhr), [GHSA-qhr7-859c-m2p7](https://github.com/advisories/GHSA-qhr7-859c-m2p7), [GHSA-6j4f-fj2g-mc7p](https://github.com/advisories/GHSA-6j4f-fj2g-mc7p) and [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q) (high: slow or crashing input). They only run while building NoteTrace.
+- `npm audit` reports 0 vulnerabilities for the app and the server.
+
+---
+
+## [1.1.0-dev04] - 2026-10-09 (pre-release)
+
+A dev pre-release of the 1.1.0 minor. Public links for notes, SSO fixes, a round of Android sync fixes, and security updates.
+
+### Added
+
+- **Public links for notes** (#15). From the Share dialog, the owner can make a read-only link for people without an account. It shows the note, its checklist and its pictures, never who owns it or who else it's shared with, and chat apps show a preview of it. Removing the link stops it at once.
+
+### Changed
+
+- **Trace's attach button offers Camera or Gallery** on phones and in the Android app, the same as the other Trace apps.
+- **Send to CookTrace reaches a CookTrace on your own network without `ALLOW_PRIVATE_COOKTRACE_URLS`**, which is no longer used. It only ever calls CookTrace's shopping API.
+
+### Fixed
+
+- **SSO no longer creates a second account for an email that already has one.** When the provider doesn't mark the email verified (Authentik's default since 2025.10), the sign-in is refused with a pointer to link the provider from your profile.
+- **SSO works with Authelia 4.39 and later out of the box.** Email, username and groups are read from the provider's userinfo when the ID token leaves them out.
+- **The SSO callback works without the provider number, and at `/api/oidc/callback`**, the address older docs gave. Both ended on a blank page.
+- **`OIDC_ENABLE_EMAIL_PASSWORD_LOGIN` works for providers added in Settings.** It was ignored unless a provider was also set through env vars.
+- **Signing in on a plain-HTTP address explains what's wrong instead of looping.** The sign-in and setup screens link to the fix (HTTPS, or `INSECURE_COOKIES=1`), and the server log says so too.
+- **The app no longer loads behind the sign-in screen**, where it asked the server for your data and was refused.
+- **The installed app works when NoteTrace is served from a subpath** (`BASE_URL`). Thanks @kgenerozov for the fix in LiftTrace and NutriTrace.
+- **Trace works with OpenAI-compatible endpoints that stream unless told not to** ([nutritrace#258](https://github.com/TraceApps/nutritrace/issues/258), reported by @jsapede). Chat and reading pictures failed with "Unexpected non-whitespace character after JSON".
+- **Trace shows your newest messages when you open it**, not the oldest 100.
+- **Popovers stay on the screen when their contents load late.** The Share dialog opened near the bottom of a note ran off the screen.
+- **Sharing works in the Android app connected to a server.** The Share dialog could show the wrong people or none.
+- **The Android app stores each note once.** The first sync stored every note twice, a note written offline could go up twice, and reconnecting to the same account uploaded a second copy of every note.
+- **A note made offline in the Android app keeps the date it was made**, instead of the time it reached the server.
+- **Debug builds of the Android app no longer write your notes to the device log.**
+- **Signing out of the Android app with no connection goes to the sign-in screen**, not the app with nobody signed in.
+- **Settings changed in the Android app reach the server intact.** A change made before it synced is no longer lost or set back, and note templates and other list settings no longer come back broken.
+- **Reminders stop when you sign out of the Android app**, and another account's don't fire for you. Yours come back when you sign back in.
+- **Closing "Is This the Same Server?" without choosing no longer clears the phone's data.** The app asks again the next time you sign in.
+- **Pull to refresh gets what changed on the server while a sync was already running.**
+- **A note edited in the Android app after it was deleted elsewhere comes back with your edit on every device**, checklist items included. An edit made before the delete is dropped, and the app says so.
+- **Restoring a backup in the Android app while connected to a server keeps notes in step.** A backup of the same account catches up without copies; one from another account, server or version goes up once as new notes.
+- **Trace chat stays in step between the Android app and the server.** Chat cleared on the server is cleared on the phone and in its backups too, found while fixing the same bug in LiftTrace ([lifttrace#139](https://github.com/TraceApps/lifttrace/issues/139), reported by @surfingbytes). Chat from the phone reaches the server instead of being sent again with every sync.
+
+### Security
+
+- **The image proxy passes images only**, and an image can't act as a page. Before sign-in it passed on whatever its image hosts sent back, a web page included, from the app's own address.
+- **Password reset and invite emails can no longer be pointed at someone else's site.** Their links took the address from the request, so a forged host could send someone's reset token elsewhere. They now use `PUBLIC_URL` when it's set, or an address an admin uses, and keep the `BASE_URL` subpath.
+- **Names in emails can no longer carry markup.** A name or shared title went into invite and SMTP test emails as-is.
+- **Link previews, Send to CookTrace and push notifications connect only to the address they checked**, never to cloud-metadata addresses. A failed push test no longer shows the other server's raw reply, push follows a redirect only on the same server, and `/api/proxy` checks every redirect.
+- **The Android app's SSO sign-in no longer passes the session token through the `notetrace://` link**, which another app could intercept. It carries a single-use code that only the app that started the sign-in can redeem.
+- **The server answers as the account a request's token names, never as a leftover sign-in cookie.** After switching accounts in the Android app, some requests could be answered, and saved, as the previous account.
+- **Signing in to another account in the Android app shows only that account's notes, and downloads all of them.** The previous account's notes stayed on the phone and its unsynced changes went into the new account. If any are left unsynced, the app asks first. Settings are kept per account and per server.
+- **The diagnostic log never holds a secret.** It recorded sign-in codes and, in diagnostic mode, setting values, AI API keys included.
+- **Uploaded files get unguessable names.** Their random part came from `Math.random()`, which can be predicted from its own output.
+- **@capacitor/android** bumped 8.3.0 to 8.5.3 and **@capacitor/core** 8.4.0 to 8.5.3, closes [GHSA-rvm3-566m-v7fv](https://github.com/advisories/GHSA-rvm3-566m-v7fv) (critical: a tapped link could load another site's page inside the app, with your sign-in and the app's phone features). A link in a note shared with you as view-only could do this. **@capacitor/ios** moves to 8.5.3 with them; NoteTrace has no iOS app.
+- **proxy-addr** bumped 2.0.7 to 2.0.8 on the server, closes [GHSA-jqcg-44mw-7w3h](https://github.com/advisories/GHSA-jqcg-44mw-7w3h) (critical: some IPv6-style trusted-proxy ranges trusted every client). NoteTrace sets no trusted proxy, so it wasn't exposed.
+- **@modelcontextprotocol/sdk** bumped 1.30.0 to 1.32.1 on the server, closes [GHSA-6qxp-vccf-f47h](https://github.com/advisories/GHSA-6qxp-vccf-f47h) (high: its OAuth client could send credentials to a server the other side picked). NoteTrace uses only its MCP server, so it wasn't exposed.
+- **ip-address** bumped 10.7.0 to 10.7.3 and **fast-uri** 3.1.7 to 3.1.8 on the server, closes [GHSA-j6r3-76f7-8jcv](https://github.com/advisories/GHSA-j6r3-76f7-8jcv), [GHSA-h3mg-xc3c-68pw](https://github.com/advisories/GHSA-h3mg-xc3c-68pw) and [GHSA-hrr3-gc8f-f4qj](https://github.com/advisories/GHSA-hrr3-gc8f-f4qj) (moderate). Both come in with the MCP SDK, for parts NoteTrace doesn't use, so it wasn't exposed.
+- **devalue** bumped 5.9.2 to 5.9.4, closes [GHSA-j22f-vq7h-c4qm](https://github.com/advisories/GHSA-j22f-vq7h-c4qm), [GHSA-mcm9-63f2-9j32](https://github.com/advisories/GHSA-mcm9-63f2-9j32), [GHSA-x5rw-q4pp-hg5g](https://github.com/advisories/GHSA-x5rw-q4pp-hg5g), [GHSA-hx4r-w6wj-j8fg](https://github.com/advisories/GHSA-hx4r-w6wj-j8fg), [GHSA-4q55-j62x-fr9h](https://github.com/advisories/GHSA-4q55-j62x-fr9h) and [GHSA-wf3x-273g-mvxv](https://github.com/advisories/GHSA-wf3x-273g-mvxv) (high). Only Svelte's server-side rendering uses it, which NoteTrace doesn't, so it wasn't exposed.
+- **brace-expansion** (5.0.9 to 5.0.12, 2.1.4 to 2.1.7), **source-map-js** 1.2.1 to 1.2.2 and **fast-uri** 3.1.7 to 3.1.8 in the build tools, closes [GHSA-q2hr-2g5m-vwhr](https://github.com/advisories/GHSA-q2hr-2g5m-vwhr), [GHSA-qhr7-859c-m2p7](https://github.com/advisories/GHSA-qhr7-859c-m2p7), [GHSA-6j4f-fj2g-mc7p](https://github.com/advisories/GHSA-6j4f-fj2g-mc7p), [GHSA-68fv-2mgg-jv7q](https://github.com/advisories/GHSA-68fv-2mgg-jv7q) and [GHSA-hrr3-gc8f-f4qj](https://github.com/advisories/GHSA-hrr3-gc8f-f4qj) (high: slow or crashing input). They only run while building NoteTrace, never in the app or server.
+- `npm audit` reports 0 vulnerabilities for the app and the server.
+
+---
+
+## [1.1.0-dev03] - 2026-09-29 (pre-release)
+
+A dev pre-release of the 1.1.0 minor. A Support page in Settings, two Settings layout fixes, and security updates.
+
+### Added
+
+- **Settings has a Support page**, next to About: Ko-fi and GitHub Sponsors, plus free ways to help (star the repo, report a bug, translate). It replaces the support row that used to sit in About.
+
+### Changed
+
+- **The in-app updater reuses an update it already downloaded.** Coming back to Updates goes straight to installing instead of downloading the whole APK again, and the button says Install. Older downloads are cleared so they stop piling up on the phone.
+- **About links to the TraceApps family** instead of naming the other apps.
+
+### Fixed
+
+- **Settings pages line up with the section list** on desktop and foldables. Every page started 12px below the list beside it.
+- **The Settings section list keeps its place** on desktop and foldables. Every click in it scrolled the list back to Profile.
+
+### Security
+
+- **multer** bumped 2.3.0 to 2.4.0, closes [GHSA-3pph-fpjx-jg34](https://github.com/advisories/GHSA-3pph-fpjx-jg34) (moderate: an upload cut off at just the wrong moment could leave its file behind on disk). Uploads and backup restore require signing in.
+- **nodemailer** bumped 9.1.1 to 10.0.12 on the server, closes [GHSA-6vj9-mwq6-2f5v](https://github.com/advisories/GHSA-6vj9-mwq6-2f5v) (moderate: separate mail transports could share one TLS server name). Removed from the web app's own dependencies, where nothing used it.
+- `npm audit` reports 0 vulnerabilities for the app and the server.
+
+---
+
+## [1.1.0-dev02] - 2026-09-27 (pre-release)
+
+A dev pre-release of the 1.1.0 minor. A first pass at foldables, and search that no longer cares about accents.
+
+### Added
+
+- **Preliminary foldable support.** Half open like a book, the crease becomes a divider rather than something content sits across:
+  - Notes are dealt into columns either side of the fold.
+  - Settings puts its section list on one side and the section itself on the other.
+  - Menus and pickers slide clear instead of being split by it.
+  - Trace takes the panel beside the crease. In laptop posture it sits on the flat half, leaving your notes readable on the half standing up.
+  - Drawing keeps the whole screen, since an opened foldable is a bigger sheet to draw on.
+  - Settings, Diagnostics reports what the hinge is doing, so you can tell whether your phone reports one at all.
+
+### Fixed
+
+- **Accents no longer hide what you were looking for.** Searching notes already ignored them; labels, the [[link]] picker and Settings search did not, so a label called "Mañana" or a note titled "Répétition" went missing unless you typed the accent. They all ignore accents now, the match is highlighted in the result, and local mode on Android answers the same as the server. Text without accents matches exactly as before.
+- **A connection problem says what kind it was.** When the app cannot reach your server, the diagnostic log now records the kind of failure and how long it waited. A timeout, an address that would not resolve, a refused connection and a rejected certificate all used to read "Failed to fetch".
+
+### Security
+
+- No dependency changes. `npm audit --omit=dev` reports 0 vulnerabilities for the app and the server.
+
+---
+
+## [1.1.0-dev01] - 2026-09-24 (pre-release)
+
+A dev pre-release of the 1.1.0 minor. Pictures, settings and your profile now work without a connection, a checklist can be cleared in one tap either way, and update checks are off until you ask for them.
+
+### Added
+
+- **Clear a checklist in one tap.** The checked-items bar now offers **Uncheck All** and **Delete Checked**, each with a single undo. Both work offline, and Uncheck All is on the watch too. ([#7](https://github.com/TraceApps/notetrace/issues/7), requested by @bonsairobo)
+- **Pictures work offline.** A picture or drawing added with no connection saves with the note and becomes a file on your server when the queue goes up. One too large to keep says so. Other files still need a connection.
+- **Settings changed offline are kept** and go up with everything else, rather than being applied here and forgotten.
+- **Your profile works offline, picture included**, the same as in NutriTrace, LiftTrace and CookTrace.
+
+### Fixed
+
+- **The updater can no longer offer a phone the watch build.** Both APKs ship in one release under the same package id, and the updater took whichever was listed first. It now picks the phone's build by name.
+- **"A New Version Is Available" on the web says what it means, and Reload works.** It used the Android wording, and the button could do nothing at all. It now says "Update Ready", reloads either way, and a tab left open all day notices new versions again. Same fix in all four Trace apps.
+- **The Trace button no longer covers sheets and dialogs.** It stays above the page and below anything opened on top of it. Same fix as NutriTrace [#233](https://github.com/TraceApps/nutritrace/issues/233).
+- **Something deleted while online stays deleted when the connection goes.** A stale copy from before sign-in could bring it back.
+- **Photos kept offline survive the trip.** They are scaled so your server accepts them, they keep their transparency, and a format this browser can only read (an iPhone's HEIC, say) is converted rather than refused in silence. One that cannot be read at all says it needs a connection.
+- **Adding a photo offline works in the installed app.** The code for it was fetched on demand, which is the one moment there is nothing to fetch from.
+- **The copy this browser keeps has a ceiling**, and if storage runs out, your unsent work is kept and the copy makes way for it.
+- **Nothing waiting is lost at sign-out.** Every way of signing out sends the queue first and asks before discarding it, and the queue is no longer stranded under a name nothing reads after an offline reload.
+- **Your profile saves to your account** rather than to local settings when you save it before the app has finished checking your server.
+- **Something your server refuses says why** in Settings, Diagnostics, instead of only flashing past.
+
+### Security
+
+- **Update checks are off until you turn them on, and your server does the asking.** Every browser and phone used to ask GitHub directly every 4 hours. Setup now asks, and skipping the question leaves checks off, so a new install contacts nothing on its own. Nothing about you or your instance is sent either way. Existing installs keep checking as before, and `UPDATE_CHECK=off` overrides the setting. Reported on r/selfhosted.
+- **Fonts are served by your own instance**, so Google no longer sees the address of everyone who opens the app. They are still split by script, so a page downloads only the alphabets it needs. Medium-weight text also renders correctly in the Android app for the first time. Reported on r/selfhosted.
+- No dependency changes. `npm audit --omit=dev` reports 0 vulnerabilities for the app and the server.
+
+---
+
 ## [1.0.1] - 2026-09-20
 
 A fix-only release. One editor fix for everyone, three for the Android app.
@@ -23,8 +254,6 @@ A fix-only release. One editor fix for everyone, three for the Android app.
 ### Security
 
 - No dependency changes. `npm audit --omit=dev` reports 0 vulnerabilities for the app and the server.
-
-NoteTrace is free and always will be. The [iOS fund](https://ko-fi.com/traceapps) is raising $1,300 toward a Mac and an iPhone, so the Trace apps can run properly on iPhone.
 
 ---
 
@@ -46,8 +275,6 @@ First stable release. NoteTrace is a self-hosted home for everyday notes: notes,
 ### Security
 
 - `npm audit --omit=dev` reports 0 vulnerabilities for the app and the server. Tokens for linked apps are stored encrypted and never reach the browser, outbound links and webhooks go through an SSRF guard, and uploads are stored under their real type and served with a sandboxing policy.
-
-NoteTrace is free and always will be. The [iOS fund](https://ko-fi.com/traceapps) is raising $1,300 toward a Mac and an iPhone, so the Trace apps can run properly on iPhone.
 
 ---
 
@@ -82,4 +309,3 @@ Second dev pre-release of the 1.0.0 major. Adds the Wear OS app: your notes, che
 
 **Watch testers:** the watch app has had one wrist on it so far. If something feels slow or awkward, or a phrase you say doesn't set the time you meant, open an issue with the watch model and, for a spoken time, what you said.
 
-NoteTrace is free and always will be. The [iOS fund](https://ko-fi.com/traceapps) is raising $1,300 toward a Mac and an iPhone, so the Trace apps can run properly on iPhone.

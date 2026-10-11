@@ -48,7 +48,8 @@ test('sync covers every note table in parent-first order', () => {
 });
 
 test('sync checks that a pushed parent id belongs to the same owner', () => {
-  assert.match(syncJs, /SELECT user_id FROM \$\{parentTable\} WHERE id = \?/);
+  assert.match(syncJs, /SELECT user_id, deleted_at FROM \$\{parentTable\} WHERE id = \?/);
+  assert.match(syncJs, /if \(!parent \|\| !own\(parent\)\) return \{ __missingParent: fk \};/);
 });
 
 test('sync never lets an older device copy overwrite a newer server row', () => {

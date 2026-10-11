@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { rememberAdminOrigin } from './lib/public-url.js';
 // Forward-proxy support (#177). Self-installs an undici
 // EnvHttpProxyAgent as the global fetch dispatcher when
 // HTTP_PROXY / HTTPS_PROXY / NO_PROXY (or lowercase equivalents)
@@ -32,21 +33,28 @@ import webhooksRoutes     from './routes/webhooks.js';
 import mcpRoutes          from './routes/mcp.js';
 import integrationsRoutes from './routes/integrations.js';
 import linkPreviewRoutes from './routes/link-preview.js';
+import publicNoteRoutes from './routes/public-note.js';
 import { logger }   from './logger.js';
-import { authenticate, userMgmtActive } from './middleware/auth.js';
+import { authenticate, userMgmtActive, setupRequired } from './middleware/auth.js';
 import { csrfProtect } from './middleware/csrf.js';
 import { seedSmtpFromEnv } from './email.js';
 import { seedAiFromEnv } from './ai.js';
+import { initUpdateCheckSetting } from './lib/update-check.js';
 import { seedOidcFromEnv } from './lib/oidc-env.js';
 
 // Initialise DB (runs schema)
 import db from './db.js';
 import { isPrivateUploadPath, UPLOAD_RESPONSE_HEADERS, uploadDisposition } from './lib/upload-paths.js';
+import { getPublicNote } from './lib/notes.js';
+import { publicNoteHead, injectPublicNoteHead, publicPageHtml } from './lib/public-note-meta.js';
 
 // Seed config from env vars if provided (env vars take priority over UI)
 seedSmtpFromEnv();
 seedAiFromEnv();
 seedOidcFromEnv();
+
+// Update checks: existing instances keep checking, fresh ones wait for setup to ask.
+initUpdateCheckSetting();
 
 const app  = express();
 const PORT = process.env.PORT || 3004;
@@ -79,6 +87,18 @@ router.use('/api/ai/read-image', express.json({ limit: '12mb' }));
 // repeated large requests. Anything above belongs on a per-route opt-in.
 // A drawing's strokes travel with its attachment and can run to a few MB.
 router.use(/^\/api\/notes(\/\d+\/attachments(\/[^/]+)?)?$/, express.json({ limit: '6mb' }));
+// A picture taken with no connection travels inside the note it belongs to,
+// since there is nowhere to upload it to, and is turned into a file on
+// arrival. The web app keeps those well under a megabyte; these routes allow
+// headroom so one is never refused for its size after the person has already
+// been told it was saved.
+const EMBEDDED_PHOTO_LIMIT = '6mb';
+// The sync push's clock correction is measured from when the request
+// arrived, before its body uploads, so a slow upload doesn't read as a slow clock.
+router.use('/api/sync/push', (req, res, next) => { req.receivedAt = Date.now(); next(); });
+for (const path of ['/api/notes', '/api/auth/profile']) {
+  router.use(path, express.json({ limit: EMBEDDED_PHOTO_LIMIT }));
+}
 router.use(express.json({ limit: '1mb' }));
 router.use(cookieParser());
 
@@ -141,6 +161,12 @@ router.use('/uploads', express.static(uploadsPath, {
 router.use('/api/proxy', proxyRoutes);
 
 router.use(authenticate);   // attach req.user on every request
+// Remember the address an admin uses, so emailed links (password reset,
+// invite, sharing) go there instead of to whatever Host a request claims.
+router.use((req, res, next) => {
+  if (req.user?.role === 'admin') rememberAdminOrigin(req);
+  next();
+});
 router.use(csrfProtect);   // CSRF protection for cookie-based sessions
 
 // ── Request logging ────────────────────────────────────────────────────────
@@ -157,6 +183,24 @@ router.use((req, res, next) => {
 // Prevent browser/proxy caching of all API responses
 router.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
 
+// Older docs gave the OIDC callback as /api/oidc/callback. An IdP set up from
+// them sends people here; forward to the real callback (which finds the
+// provider from the sign-in state) instead of letting the SPA fallback show
+// a blank page. Before the setup gate so OIDC-first installs work too.
+router.get('/api/oidc/callback', (req, res) => {
+  const q = req.originalUrl.indexOf('?');
+  res.redirect(307, `${BASE_URL}/api/auth/oidc/callback${q >= 0 ? req.originalUrl.slice(q) : ''}`);
+});
+
+// Public note links read one note by its token, with no account. Ahead of
+// the setup gate so a link keeps working in single-user mode.
+router.use('/api/n', publicNoteRoutes);
+
+// Health answers before setup too: the server is up and only needs its first
+// account, which the Android app's connect screen says instead of "not
+// reachable". A server that is set up still answers exactly { ok: true }.
+router.get('/api/health', (req, res) => res.json(setupRequired() ? { ok: true, setup_required: true } : { ok: true }));
+
 // Setup enforcement — block data APIs until the first user account is created.
 // /api/auth/* is allowed so the client can register the admin.
 //
@@ -167,9 +211,7 @@ router.use('/api', (req, res, next) => { res.set('Cache-Control', 'no-store'); n
 // NutriTrace #34 part-2 fix.
 router.use('/api', (req, res, next) => {
   if (req.path.startsWith('/auth')) return next();
-  if (userMgmtActive()) return next();             // users exist — normal operation
-  const singleUser = db.prepare(`SELECT value FROM app_config WHERE key = 'single_user_mode'`).get()?.value === '1';
-  if (singleUser) return next();                   // intentional single-user mode — let data APIs through
+  if (!setupRequired()) return next();              // set up, or single-user mode by choice
   res.status(503).json({ error: 'Setup required', setup_required: true });
 });
 
@@ -201,7 +243,6 @@ router.use('/api/admin/webhooks', webhooksRoutes);
 router.use('/api/mcp',          mcpRoutes);
 router.use('/api/integrations', integrationsRoutes);
 router.use('/api/link-preview', linkPreviewRoutes);
-router.get('/api/health', (req, res) => res.json({ ok: true }));
 
 // Web Share Target (installed PWA). The service worker normally takes the
 // POST (public/sw-extras.js) and keeps any photos; these routes cover a share
@@ -249,6 +290,25 @@ try {
 } catch (e) {
   logger.warn(`[server] could not pre-template dist/index.html: ${e.message}`);
 }
+
+// A public note link. Same app page, with the note's title, a line of its
+// text, and its first picture in <head> so chat apps can preview the link.
+// An unknown or removed token still gets the page (it says the link is
+// gone) but with a 404, so a preview shows nothing.
+router.get('/n/:token', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.set('Referrer-Policy', 'no-referrer');
+  res.set('X-Robots-Tag', 'noindex, nofollow');
+  if (!_indexHtmlTemplated) return res.sendFile(_indexHtmlPath);
+  const html = publicPageHtml(_indexHtmlTemplated, BASE_URL);
+  const note = getPublicNote(req.params.token);
+  if (!note) return res.status(404).set('Content-Type', 'text/html').send(html);
+  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
+  const origin = `${proto}://${req.headers['x-forwarded-host'] || req.get('host')}`;
+  const pageUrl = `${origin}${BASE_URL}/n/${encodeURIComponent(req.params.token)}`;
+  const head = publicNoteHead(note, { origin, basePath: BASE_URL, pageUrl });
+  res.set('Content-Type', 'text/html').send(injectPublicNoteHead(html, head));
+});
 
 // SPA fallback — serves the templated index.html for any route under BASE_URL.
 // Express 5 / path-to-regexp 8 requires named splat syntax for catch-alls;

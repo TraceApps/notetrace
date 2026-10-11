@@ -2,7 +2,7 @@
   import Toggle from './Toggle.svelte';
   import { _ } from 'svelte-i18n';
   import { aiEnabled, aiProvider, aiApiKey, aiModel, aiBaseUrl, aiAssistantName, aiKeyVerified, smartLogEnabled, smartLogVoiceLang, autoTranscribe, autoSummarizeLong, autoReadImages, aiTranscribeModel, envLocks as envLocksStore } from '../../stores/settings.js';
-  import { AI_PROVIDERS, AI_DEFAULT_MODELS, AI_MODELS, AI_MODEL_LABELS, AI_MODEL_CUSTOM, callAI, callAIProxy } from '../../lib/aiChat.js';
+  import { AI_PROVIDERS, AI_DEFAULT_MODELS, AI_MODELS, AI_MODEL_LABELS, AI_MODEL_CUSTOM, renamedModel, callAI, callAIProxy } from '../../lib/aiChat.js';
   import { showError, showSuccess } from '../../stores/toast.js';
   import ConnectionStatus from './ConnectionStatus.svelte';
 
@@ -84,6 +84,12 @@
   let aiModelSelectVal;
   let aiCustomModelVal = '';
   {
+    // A model saved under a name that has since changed shows (and is kept)
+    // under its new name. Not for OpenAI Compatible: its names are the
+    // server's own.
+    if ($aiProvider !== 'custom' && $aiModel && renamedModel($aiModel) !== $aiModel) {
+      aiModel.set(renamedModel($aiModel));
+    }
     const saved = $aiModel;
     const _pm = AI_MODELS[$aiProvider] || [];
     const isPreset = _pm.includes(saved) && saved !== AI_MODEL_CUSTOM;

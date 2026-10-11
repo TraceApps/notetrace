@@ -20,7 +20,7 @@
     open = false;
     current = null;
     confirmRequest.set(null);
-    if (req?.input) req.resolve?.(result ? (text.trim() || (req.input.allowEmpty ? '' : null)) : null);
+    if (req?.input) req.resolve?.(result === true ? (text.trim() || (req.input.allowEmpty ? '' : null)) : null);
     else req?.resolve?.(result);
   }
 
@@ -38,7 +38,7 @@
     cancelText={current.cancelText}
     dangerous={current.dangerous}
     on:confirm={() => finish(true)}
-    on:cancel={() => finish(false)}
+    on:cancel={(e) => finish(e.detail?.dismissed && current && 'dismissed' in current ? current.dismissed : false)}
   >
     {#if current.input}
       <input bind:this={inputEl} class="input dialog-input" type="text" inputmode={current.input.type === 'url' ? 'url' : undefined} autocapitalize={current.input.type === 'url' ? 'none' : undefined} bind:value={text}

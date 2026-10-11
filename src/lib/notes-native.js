@@ -9,6 +9,7 @@
 import { cleanLabelIcon } from '../../server/lib/label-icons.js';
 import { parseWaveform, parseSegments, waveformText, segmentsText } from '../../server/lib/voice-meta.js';
 import { getDb, LOCAL_USER_ID } from './db-native.js';
+import { stripAccents } from './search-text.js';
 import { cleanTaskRepeat, nextDueDate } from '../../server/lib/task-rules.js';
 import { drawingText, parseDrawing } from '../../server/lib/drawing-meta.js';
 import { todayStr } from './due-dates.js';
@@ -124,16 +125,35 @@ async function _note(id) {
 // Local search matches every word somewhere in the title, body, or a
 // checklist item. LIKE instead of FTS5 because the on-device SQLite build
 // isn't guaranteed to ship FTS5; at personal scale it's fast enough.
-function _searchClause(q) {
+// Accents, for the folded pass below. The server's index is declared
+// `remove_diacritics 2` so it folds by itself; on-device SQLite has no such
+// index and no way to register a function, so a column is folded inline with
+// one REPLACE per accented letter. Only the letters listed here fold, which
+// is why this is a fallback and not the default comparison.
+const _ACCENTS = [
+  ['a', 'áàâäãå'], ['e', 'éèêë'], ['i', 'íìîï'],
+  ['o', 'óòôöõ'], ['u', 'úùûü'],
+  ['c', 'çč'], ['n', 'ñń'], ['y', 'ýÿ'], ['s', 'šś'], ['z', 'žż'],
+];
+const _foldCol = (col) => {
+  let expr = `LOWER(${col})`;
+  for (const [plain, accented] of _ACCENTS)
+    for (const ch of accented) expr = `REPLACE(${expr}, '${ch}', '${plain}')`;
+  return expr;
+};
+
+function _searchClause(q, { folded = false } = {}) {
   const words = String(q || '').match(/[\p{L}\p{N}]+/gu) || [];
   if (!words.length) return { sql: '', args: [] };
+  const col = (c) => folded ? _foldCol(c) : c;
   const parts = [];
   const args = [];
   for (const w of words.slice(0, 12)) {
-    const like = `%${w.replace(/[%_]/g, '')}%`;
-    parts.push(`(n.title LIKE ? OR n.body_md LIKE ? OR EXISTS (
-      SELECT 1 FROM checklist_items ci WHERE ci.note_id = n.id AND ci.deleted_at IS NULL AND ci.text LIKE ?) OR EXISTS (
-      SELECT 1 FROM note_attachments na WHERE na.note_id = n.id AND na.deleted_at IS NULL AND na.extracted_text LIKE ?))`);
+    const bare = (folded ? stripAccents(w) : w).replace(/[%_]/g, '');
+    const like = `%${bare}%`;
+    parts.push(`(${col('n.title')} LIKE ? OR ${col('n.body_md')} LIKE ? OR EXISTS (
+      SELECT 1 FROM checklist_items ci WHERE ci.note_id = n.id AND ci.deleted_at IS NULL AND ${col('ci.text')} LIKE ?) OR EXISTS (
+      SELECT 1 FROM note_attachments na WHERE na.note_id = n.id AND na.deleted_at IS NULL AND ${col('na.extracted_text')} LIKE ?))`);
     args.push(like, like, like, like);
   }
   return { sql: ' AND ' + parts.join(' AND '), args };
@@ -305,9 +325,15 @@ export const NotesNative = {
     const order = view === 'notes' ? 'n.pinned DESC, n.updated_at DESC'
       : view === 'reminders' ? 'n.reminder_at ASC'
       : 'n.updated_at DESC';
-    const rows = await _q(
-      `SELECT n.* FROM notes n WHERE ${where.join(' AND ')}${search.sql} ORDER BY ${order}`,
-      [...args, ...search.args]);
+    const _list = (s) => _q(
+      `SELECT n.* FROM notes n WHERE ${where.join(' AND ')}${s.sql} ORDER BY ${order}`,
+      [...args, ...s.args]);
+    let rows = await _list(search);
+    // A search typed without accents cannot match a note that has them, and
+    // folding every row is not free, so retry folded only when the plain
+    // comparison found nothing. Mirrors what the server's index does by
+    // itself, so local mode and server mode answer the same question.
+    if (!rows.length && search.sql) rows = await _list(_searchClause(q, { folded: true }));
     return _hydrate(rows);
   },
 

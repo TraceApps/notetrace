@@ -115,6 +115,27 @@ class WearStore(private val ctx: Context) {
     }
 
     /**
+     * A whole list put back, from the wrist.
+     *
+     * A shopping list is the same list next week, and tapping every item to
+     * start it again is worse on a watch than anywhere else. One ordinary tick
+     * per item underneath, so it queues with no connection and merges the way
+     * every other tick does.
+     */
+    suspend fun uncheckAll(noteId: Long) {
+        val current = _state.value.items[noteId].orEmpty()
+        val back = current.filter { it.checked }
+        if (back.isEmpty()) return
+        val next = current.map { if (it.checked) it.copy(checked = false) else it }
+        _state.value = _state.value.copy(items = _state.value.items + (noteId to next))
+        bumpCounts(noteId, next)
+        back.forEach { Pairing.queue(ctx, Pairing.Op.item(noteId, it.uuid, false)) }
+        _state.value = _state.value.copy(pending = Pairing.outbox(ctx).size)
+        save()
+        Pairing.config(ctx)?.let { flush(it) }
+    }
+
+    /**
      * What the wearer just said becomes a note, now or when there's a connection.
      * A time in the sentence ("tomorrow at nine") becomes the reminder instead
      * of being written down.

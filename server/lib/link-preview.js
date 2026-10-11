@@ -12,7 +12,7 @@
  * ALLOW_PRIVATE_LINK_PREVIEWS=1.
  */
 import db from '../db.js';
-import { assertSafeUrl } from './ssrf-guard.js';
+import { fetchChecked } from './ssrf-guard.js';
 import { parseLinkPreview } from './link-preview-core.js';
 
 const OK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -22,26 +22,22 @@ const IMAGE_MAX_BYTES = 3_000_000;
 const TIMEOUT_MS = 8000;
 const UA = 'Mozilla/5.0 (compatible; NoteTrace link preview)';
 
+// The same for every account, by design: previews load on their own for
+// links other people put in shared notes, so letting an admin's previews
+// reach the home network would let anyone who shares a note use that.
 const allowPrivate = () => /^(1|true|yes|on)$/i.test(String(process.env.ALLOW_PRIVATE_LINK_PREVIEWS || ''));
-const guard = (url) => assertSafeUrl(url, { allowPrivate: allowPrivate(), allowPrivateEnvHint: 'ALLOW_PRIVATE_LINK_PREVIEWS' });
 
-/** fetch() that re-checks every redirect hop against the SSRF guard. */
+/** fetch() through the guard: every redirect hop checked, the connection pinned. */
 async function _guardedFetch(url, accept) {
-  let current = url;
-  for (let hop = 0; hop < 4; hop++) {
-    await guard(current);
-    const res = await fetch(current, {
-      redirect: 'manual',
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-      headers: { 'User-Agent': UA, Accept: accept },
-    });
-    if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
-      current = new URL(res.headers.get('location'), current).href;
-      continue;
-    }
-    return { res, finalUrl: current };
+  const res = await fetchChecked(url, {
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+    headers: { 'User-Agent': UA, Accept: accept },
+  }, { allowPrivate: allowPrivate(), allowPrivateEnvHint: 'ALLOW_PRIVATE_LINK_PREVIEWS', maxRedirects: 3 });
+  if (res.status >= 300 && res.status < 400) {
+    res.body?.cancel?.().catch(() => {});
+    throw new Error('Too many redirects');
   }
-  throw new Error('Too many redirects');
+  return { res, finalUrl: res.url || url };
 }
 
 async function _readCapped(res, max) {

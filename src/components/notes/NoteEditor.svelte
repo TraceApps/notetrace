@@ -222,6 +222,79 @@
       if ('checked' in p || 'due_date' in p) signalCountsChanged();
     });
   }
+  /**
+   * A checklist put back to the start. One line of undo rather than one per
+   * item, and the undo re-checks exactly what was unchecked rather than
+   * everything, since something may have been ticked in between.
+   */
+  function onUncheckAll(e) {
+    touched = true;
+    const { uuids } = e.detail;
+    if (!uuids?.length) return;
+    const today = todayStr();
+    items = items.map(i => (uuids.includes(i.uuid) ? itemAfterPatch(i, { checked: false }, today) : i));
+    for (const uuid of uuids) {
+      enqueue(async () => {
+        if (!noteId) { await ensureNote(); return; }
+        const n = await NoteApi.updateItem(noteId, uuid, { checked: false, today });
+        updatedAt = n?.updated_at ?? updatedAt;
+      });
+    }
+    enqueue(async () => { signalCountsChanged(); });
+    showUndo($_('notes.undo_uncheck_all'), () => recheck(uuids));
+  }
+  function recheck(uuids) {
+    touched = true;
+    const today = todayStr();
+    items = items.map(i => (uuids.includes(i.uuid) ? { ...i, checked: true } : i));
+    checklistRef?.restoreChecked(uuids.map(uuid => ({ uuid })));
+    for (const uuid of uuids) {
+      enqueue(async () => {
+        if (!noteId) return;
+        // A repeating item is never in the checked list to begin with: ticking
+        // one moves its date on and leaves it unchecked, so nothing here can
+        // be pushed forward by being put back.
+        const n = await NoteApi.updateItem(noteId, uuid, { checked: true, today });
+        updatedAt = n?.updated_at ?? updatedAt;
+      });
+    }
+    enqueue(async () => { signalCountsChanged(); });
+  }
+
+  /** Everything done, cleared out, with one way back. */
+  function onDeleteChecked(e) {
+    touched = true;
+    const gone = e.detail.items || [];
+    if (!gone.length) return;
+    const uuids = new Set(gone.map(i => i.uuid));
+    items = items.filter(i => !uuids.has(i.uuid));
+    for (const item of gone) {
+      enqueue(async () => {
+        if (!noteId) return;
+        const n = await NoteApi.deleteItem(noteId, item.uuid);
+        updatedAt = n?.updated_at ?? updatedAt;
+      });
+    }
+    enqueue(async () => { signalCountsChanged(); });
+    showUndo($_('notes.undo_delete_checked', { values: { count: gone.length } }), () => restoreChecked(gone));
+  }
+  function restoreChecked(gone) {
+    touched = true;
+    items = [...items, ...gone].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    checklistRef?.restoreChecked(gone);
+    for (const item of gone) {
+      enqueue(async () => {
+        if (!noteId) return;
+        const n = await NoteApi.addItem(noteId, {
+          uuid: item.uuid, text: item.text, checked: true,
+          position: item.position, due_date: item.due_date || null,
+        });
+        updatedAt = n?.updated_at ?? updatedAt;
+      });
+    }
+    enqueue(async () => { signalCountsChanged(); });
+  }
+
   function onItemDelete(e) {
     touched = true;
     const { uuid } = e.detail;
@@ -1184,7 +1257,8 @@
               placeholder={$_('notes.body_placeholder')} on:change={scheduleText} on:openlink={(e) => openLinked(e.detail)} />
           {:else}
             <ChecklistEditor bind:this={checklistRef} {items} editable={!contentLocked}
-              on:add={onItemAdd} on:update={onItemUpdate} on:delete={onItemDelete} on:reorder={onItemReorder} />
+              on:add={onItemAdd} on:update={onItemUpdate} on:delete={onItemDelete} on:reorder={onItemReorder}
+              on:uncheck-all={onUncheckAll} on:delete-checked={onDeleteChecked} />
           {/if}
         {/key}
 

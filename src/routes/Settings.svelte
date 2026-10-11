@@ -1,3 +1,13 @@
+<script context="module">
+  // The app wraps every route in {#key $location}, so each click in the
+  // Settings rail mounts a new Settings, rail included, and the rail would
+  // snap back to Profile. Its position lives here instead: restored when a
+  // Settings instance replaces another one (the old one is still fading
+  // out, or went a moment ago), reset when Settings is opened from
+  // elsewhere in the app.
+  const _railMemo = { top: 0, alive: 0, leftAt: 0 };
+</script>
+
 <script>
   // Thin router shell (mirrors NutriTrace / LiftTrace). Section bodies
   // live in components/settings/*.svelte and are dispatched to via
@@ -17,6 +27,7 @@
   import { slide, fade } from 'svelte/transition';
 
   import { currentUser, userMgmtActive } from '../stores/auth.js';
+  import { fold } from '../lib/fold.js';
   import { isNative, getServerUrl, resolveAssetUrl } from '../lib/platform.js';
   import {
     bannerStyle, disableAnimations, accentColor, appearance,
@@ -43,9 +54,12 @@
   import SettingsWebhooks        from '../components/settings/SettingsWebhooks.svelte';
   import SettingsCooktrace       from '../components/settings/SettingsCooktrace.svelte';
   import SettingsEmail           from '../components/settings/SettingsEmail.svelte';
+  import SettingsSupport         from '../components/settings/SettingsSupport.svelte';
   import SettingsAbout           from '../components/settings/SettingsAbout.svelte';
   import Profile                 from './Profile.svelte';
   import Sheet                   from '../components/ui/Sheet.svelte';
+  import { foldText } from '../lib/search-text.js';
+
 
   // ── Route param → current section ──────────────────────────────────────
   // svelte-spa-router route `/settings/:section` → params.section.
@@ -78,7 +92,7 @@
 
   // ── Settings search ────────────────────────────────────────────────────
   let settingsSearch = '';
-  $: settingsQuery = settingsSearch.toLowerCase().trim();
+  $: settingsQuery = foldText(settingsSearch).trim();
 
   // On mobile / narrow, typing into the search bar while on a
   // sub-page auto-navigates back to the index with the query so
@@ -112,6 +126,16 @@
   // transition (via _pillReady flag) so it doesn't jump from 0 on
   // initial mount.
   let _railEl;
+  onMount(() => {
+    const withinSettings = _railMemo.alive > 0 || Date.now() - _railMemo.leftAt < 1000;
+    _railMemo.alive += 1;
+    if (!withinSettings) _railMemo.top = 0;
+    else if (_railEl) _railEl.scrollTop = _railMemo.top;
+  });
+  onDestroy(() => {
+    _railMemo.alive -= 1;
+    _railMemo.leftAt = Date.now();
+  });
   let _pillY = 0;
   let _pillH = 0;
   let _pillVisible = false;
@@ -164,6 +188,7 @@
     applock:       { titleKey: 'app_lock.section',                   icon: 'lock' },
     updates:       { titleKey: 'settings.updates.section',           icon: 'system_update' },
     diagnostics:   { titleKey: 'settings.diagnostics.section',       icon: 'troubleshoot' },
+    support:       { titleKey: 'settings.support.section',           icon: 'volunteer_activism' },
     about:         { titleKey: 'settings.about.section',             icon: 'info' },
     profile:       { titleKey: 'profile.title',                      icon: 'person' },
   };
@@ -190,6 +215,7 @@
     applock:       SettingsAppLock,
     updates:       SettingsUpdates,
     diagnostics:   SettingsDiagnostics,
+    support:       SettingsSupport,
     about:         SettingsAbout,
     profile:       Profile,
   };
@@ -203,7 +229,7 @@
     appearance:    ['appearance','theme','dark','light','accent','color','navigation','sidebar','persistent','start page','animations','reduce motion','banner','page banner','force mobile','mobile layout','mobile view','phone layout','narrow layout','auto','foldable','fold','tab bar','bottom bar','icons','rail','navigation style','animation style','style'],
     notes:         ['notes','cards','density','compact','comfortable','dense','card size','note order','label order','sort labels','labels a to z','most used','sort','custom order','drag','reorder','arrange','swipe','gesture','gestures','archive','keyboard','shortcuts','hotkeys','keys','link previews','link preview','previews','tasks','every checklist','checklists in tasks','shopping list','templates','template','new from template','date token','watch','wear','wear os','watch notes','on your watch','pixel watch'],
     regional:      ['regional','date','time','12h','24h','units','energy','kcal','kj','calories','kilojoules','imperial','metric','measurement system','date format','time format','format','language','translation','translations','english','locale'],
-    ai:            ['ai','trace','assistant','provider','model','custom model','model id','api key','chat','claude','openai','gemini','sonnet','opus','haiku','gpt','gemini 3','base url','artificial intelligence','smart log','smartlog','quick log','voice','dictate','hold to record','mic','voice language','voice input','language','transcribe','transcription','whisper','voice notes','summary','summarize','summarise','recap','read text','ocr','image text','endpoint','completions','chat completions','assistant name','recordings','long recordings','summarize recordings'],
+    ai:            ['ai','trace','assistant','provider','model','custom model','model id','api key','chat','claude','openai','gemini','sonnet','opus','haiku','fable','gpt','gpt-6','luna','sol','terra','gemini 3','flash','flash lite','pro preview','base url','artificial intelligence','smart log','smartlog','quick log','voice','dictate','hold to record','mic','voice language','voice input','language','transcribe','transcription','whisper','voice notes','summary','summarize','summarise','recap','read text','ocr','image text','endpoint','completions','chat completions','assistant name','recordings','long recordings','summarize recordings'],
     cooktrace:     ['cooktrace','cook trace','shopping','shopping list','groceries','grocery','send to cooktrace','integration','integrations','link','unlink','api token','token','base url','traceapps','recipes','remove link','remove','test connection'],
     notifications: ['notifications','reminders','tasks due','task digest','due dates','cook day','thaw','alerts','push','apprise','gotify','ntfy','expiration','expiry','expires','expiring','pantry expiry','digest','weekly summary','shopping nudge','device','this device','browser','permission','browser permission','service','push service','exact','exact times','reminder times','note reminders','time','digest time','notification time'],
     email:         ['email','smtp','mail','password reset','invite','from address','tls','outgoing','send test','test email','recipient','test recipient','connection status','change password','change smtp','invites','user invites'],
@@ -217,7 +243,8 @@
     serverconn:    ['server','connection','sync','connect','disconnect','local mode','offline','standalone','android','native','url','login'],
     updates:       ['updates','update','upgrade','version','new version','changelog','release','releases','apk','install','download','check for updates','auto-check','channel','stable','dev','dev-latest','beta','github','server update','docker','compose','docker-compose','check frequency','check interval','how often','hourly','daily','manual','manual only','cadence','banner','notification'],
     diagnostics:   ['diagnostics','logs','verbose','console','export','bug','report','troubleshoot','crash','mode','diagnostic mode','view logs','log level'],
-    about:         ['about','version','notetrace','license','source','github','donate','support'],
+    support:       ['support','donate','donation','sponsor','github sponsors','ko-fi','kofi','tip','star','report a bug','bug','translate','weblate','help'],
+    about:         ['about','version','notetrace','license','source','github'],
   };
 
   // Visibility predicate for section-toggle rows. Only filters when
@@ -265,7 +292,7 @@
   async function _scheduleDeepLinkScroll(q) {
     await tick();
     await new Promise(r => setTimeout(r, 60));
-    const q_norm = q.toLowerCase().trim();
+    const q_norm = foldText(q).trim();
     if (!q_norm) return;
     const scope = document.querySelector('.subpage-view');
     if (!scope) return;
@@ -274,7 +301,7 @@
     );
     let hit = null;
     for (const el of candidates) {
-      if ((el.textContent || '').toLowerCase().includes(q_norm)) { hit = el; break; }
+      if (foldText(el.textContent).includes(q_norm)) { hit = el; break; }
     }
     if (!hit) return;
     const row = hit.closest('.setting-row') || hit;
@@ -377,6 +404,32 @@
   // renders a state-gated "Get Set Up" grid (Server / Goals / Wellness
   // / Appearance). NoteTrace doesn't have equivalent state gates ready
   // yet; add when the surface exists.
+  // Half open like a book, the section list fills the panel on the left of
+  // the crease and the section itself the panel on the right, with the crease
+  // as the divider. It only snaps when both panels are left usable.
+  //
+  // The fold is reported in screen coordinates, so the page's own left edge
+  // comes off first, and that edge is measured rather than worked out from the
+  // sidebar's width: a pinned sidebar is 280px, a rail is 76, an overlay is
+  // none, and a page that is ever centred would be none of those.
+  let paneEl, paneLeft = 0, paneW = 0;
+  function measurePane() {
+    const box = paneEl?.getBoundingClientRect();
+    paneLeft = box?.left ?? 0;
+    paneW = box?.width ?? 0;
+  }
+  onMount(() => {
+    measurePane();
+    const ro = new ResizeObserver(measurePane);
+    if (paneEl) ro.observe(paneEl);
+    return () => ro.disconnect();
+  });
+  // Folding moves the crease without resizing the page.
+  $: if ($fold !== undefined && paneEl) measurePane();
+  $: foldRailW = $fold?.posture === 'book' && paneW > 0 ? $fold.start - paneLeft : null;
+  $: railSnap = foldRailW != null && foldRailW >= 200 && paneW - foldRailW >= 320;
+  $: hingeW = railSnap ? Math.max(0, $fold.end - $fold.start) : 0;
+
 </script>
 
 <!-- Settings section-list snippet. Defined at the top level so it's
@@ -498,6 +551,13 @@
     {/if}
   {/if}
 
+  <!-- App-level pages. Their own group so they don't read as part of Admin. -->
+  <p class="settings-group-label">NoteTrace</p>
+  <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'support')} class:active={currentSection === 'support'} aria-current={currentSection === 'support' ? 'page' : undefined} on:click={() => toggleSection('support')}>
+    <span class="material-symbols-rounded si">volunteer_activism</span>
+    <span>{$_('settings.support.section')}</span>
+    <span class="material-symbols-rounded chevron">expand_more</span>
+  </button>
   <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'about')} class:active={currentSection === 'about'} aria-current={currentSection === 'about' ? 'page' : undefined} on:click={() => toggleSection('about')}>
     <span class="material-symbols-rounded si">info</span>
     <span>{$_('settings.about.section')}</span>
@@ -547,12 +607,14 @@
 
   <div class="page-content settings-content" class:subpage-view={!!currentSection}>
 
-    <div class="settings-two-pane">
+    <div class="settings-two-pane" bind:this={paneEl} class:fold-snap={railSnap}
+      style={railSnap ? `--rail-w:${foldRailW}px; --hinge:${hingeW}px` : ''}>
 
       <!-- Left rail (two panes only, html.wide-content). Always shows the full
            section list so users can jump between sections without
            going back to the index. Hidden on mobile via CSS. -->
-      <aside class="settings-nav-rail" bind:this={_railEl}>
+      <aside class="settings-nav-rail" bind:this={_railEl}
+             on:scroll={() => { _railMemo.top = _railEl.scrollTop; }}>
         <!-- Sliding highlight pill (desktop rail). Mirrors LiftTrace. -->
         <div class="rail-active-pill"
              class:visible={_pillVisible}
@@ -1079,6 +1141,11 @@
       gap: 24px;
       align-items: start;
     }
+    /* The pane's first card starts level with the rail's top edge.
+       .section-body's 12px top padding (right for the phone's stacked
+       view) pushed every section 12px below the rail here. */
+    :global(html.wide-content) .settings-pane :global(.section-body) { padding-top: 0; }
+
 
     :global(html.wide-content) .settings-nav-rail {
       display: flex;
@@ -1274,4 +1341,32 @@
     box-sizing: border-box;
   }
   .cp-apply { height: 44px; margin-top: 4px; width: 100%; }
+
+  /* Half open like a book, at any width. The two-pane layout above waits for
+     a wide enough content area; this turns it on from the crease instead and
+     brings the rail with it, so a narrow fold beside a pinned sidebar behaves
+     like a wide one. Same reasoning as the notes grid. */
+  :global(html.fold-book) .settings-two-pane.fold-snap {
+    display: grid;
+    grid-template-columns: var(--rail-w) minmax(0, 1fr);
+    gap: var(--hinge);
+    align-items: start;
+  }
+  :global(html.fold-book) .settings-two-pane.fold-snap .settings-nav-rail {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    position: sticky;
+    top: calc(var(--page-top, var(--safe-top)) + 12px);
+    max-height: calc(100dvh - var(--page-top, var(--safe-top)) - var(--nav-h, 0px) - var(--safe-bottom, 0px) - 24px);
+    overflow-y: auto;
+    padding: 10px 8px;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-sizing: border-box;
+  }
+  :global(html.fold-book) .settings-two-pane.fold-snap .settings-mobile-index {
+    display: none;
+  }
 </style>

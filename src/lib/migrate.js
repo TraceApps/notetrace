@@ -52,7 +52,7 @@ export async function countLocalData() {
  * onProgress(stage, current, total) is called so the dialog can render
  * progress. `stage` is one of: 'notes', 'settings'.
  */
-export async function uploadLocalToServer({ serverUrl, authToken, onProgress } = {}) {
+export async function uploadLocalToServer({ serverUrl, authToken, onProgress, keepIds = false } = {}) {
   const summary = {
     success: { notes: 0, settings: 0 },
     errors: [],
@@ -68,8 +68,12 @@ export async function uploadLocalToServer({ serverUrl, authToken, onProgress } =
     const db = await getDb();
     for (const t of DOMAIN_TABLES) {
       onProgress?.(t, 0, 1);
-      const r = await db.query(`SELECT COUNT(*) AS n FROM ${t} WHERE deleted_at IS NULL`, []);
-      await db.run(`UPDATE ${t} SET server_id = NULL, sync_status = 'pending'`, []);
+      // What goes up: everything, or (`keepIds`) only what's new or changed.
+      const r = await db.query(`SELECT COUNT(*) AS n FROM ${t} WHERE deleted_at IS NULL${keepIds ? ` AND (server_id IS NULL OR sync_status = 'pending')` : ''}`, []);
+      // Back to the account the data came from (`keepIds`,
+      // lib/local-account.js cameFromThisAccount): rows it already has keep
+      // their ids there; only rows made since go up, as new, once.
+      if (!keepIds) await db.run(`UPDATE ${t} SET server_id = NULL, sync_status = 'pending'`, []);
       if (t in summary.success) summary.success[t] = r?.values?.[0]?.n || 0;
       onProgress?.(t, 1, 1);
     }
@@ -78,7 +82,10 @@ export async function uploadLocalToServer({ serverUrl, authToken, onProgress } =
   }
 
   // ── Settings (bulk endpoint — one round-trip) ───────────────────────────
-  try {
+  // Back to the account the data came from (`keepIds`): settings changed
+  // while disconnected wait in the phone's copy and go up with the sync;
+  // the rest stay as the server has them.
+  if (!keepIds) try {
     const settings = {};
     if (typeof localStorage !== 'undefined') {
       for (let i = 0; i < localStorage.length; i++) {

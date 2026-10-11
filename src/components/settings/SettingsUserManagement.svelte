@@ -7,7 +7,7 @@
   import { DB } from '../../lib/db.js';
   import { NoteApi } from '../../lib/api.js';
   import { currentUser, userMgmtActive, loadAuthState } from '../../stores/auth.js';
-  import { isNative, getServerUrl, resolveAssetUrl, apiUrl, getAuthToken, setAuthToken } from '../../lib/platform.js';
+  import { isNative, getServerUrl, resolveAssetUrl, apiUrl, getAuthToken, setAuthToken, forgetServerCookies } from '../../lib/platform.js';
   import { push } from 'svelte-spa-router';
   import { validatePassword } from '../../lib/validation.js';
   import { confirmDialog } from '../../stores/confirmDialog.js';
@@ -411,7 +411,10 @@
     localStorage.removeItem('note:csrf');
     // Keep nt:cachedUserMgmt — user-management is a server-wide flag, not
     // a per-session one, so don't flicker the post-reload boot into wizard.
-    if (isNative) setAuthToken(null);
+    if (isNative) {
+      setAuthToken(null);
+      await forgetServerCookies();
+    }
     setTimeout(() => window.location.reload(), 300);
   }
 

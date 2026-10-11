@@ -31,6 +31,9 @@ const LEGACY_CLEARED_KEY = 'note:legacyRemindersCleared';
 
 let _timer = null;
 let _listening = false;
+// Moves on every clear (sign-out, another account, Disconnect): a
+// reschedule worked out before it never arms the previous account's.
+let _clearGen = 0;
 let _config = { enabled: true, labels: {} };
 
 /** Device setting and notification strings in the active language. */
@@ -62,7 +65,16 @@ async function _clearLegacy() {
   } catch { /* try again next launch */ }
 }
 
+// Connected to a server: reminders come only from the copy of the account
+// signed in now, once it's known to be theirs (lib/local-account.js).
+// Signed out, or while another account's sign-in is being checked, none.
+async function _mayRemind() {
+  try { return (await import('./local-account.js')).copyMayShowOutside(); } catch { return false; }
+}
+
 async function _reschedule() {
+  if (!(await _mayRemind())) { await NoteReminders.reschedule({ reminders: [] }); return; }
+  const gen = _clearGen;
   const notes = await NoteApi.getNotes({ view: 'reminders' });
   const fallback = _config.labels.reminder || 'Reminder';
   const reminders = notes
@@ -72,7 +84,18 @@ async function _reschedule() {
       return { id: n.id, title, body, at: n.reminder_at, rrule: n.reminder_rrule || null, tz: n.reminder_tz || null };
     });
   reminders.push(...await _taskDigestAlarms());
+  if (gen !== _clearGen || !(await _mayRemind())) return;
   await NoteReminders.reschedule({ reminders });
+}
+
+/** Every reminder this app set is canceled (sign-out, another account,
+ *  Disconnect). They come back from the account's own notes once its copy
+ *  is current (rescheduleReminders). */
+export async function clearReminders() {
+  if (!NoteReminders) return;
+  _clearGen++;
+  clearTimeout(_timer);
+  try { await NoteReminders.reschedule({ reminders: [] }); } catch { /* none set */ }
 }
 
 // Tasks Due: one alarm per upcoming day that has something due, at the

@@ -72,7 +72,7 @@ Stable since v1.0.0. What it does today:
 - **A real editor.** Markdown underneath, with bold, italic, underline, highlight, links, headings, quotes, code, lists that indent, and checkboxes inside a text note. Select text and a small bar offers the common ones; slash commands and keyboard shortcuts cover the rest. Undo for deleted items and attachments.
 - **Templates and printing.** Save a note as a template and start new notes from it. Print a note or save it as a PDF, from the browser or the Android app.
 - **Reminders.** One-off or repeating (daily, weekly, monthly, yearly), kept at the same local time across daylight saving. Android fires them as exact alarms even with the app closed, the browser shows them while NoteTrace is open, and the server delivers them through your push service and a `reminder.fired` webhook.
-- **Sharing.** Share a note or list with other accounts on your server, with view or edit access. Pin, archive, labels, and reminders stay personal.
+- **Sharing.** Share a note or list with other accounts on your server, with view or edit access. Pin, archive, labels, and reminders stay personal. Or make a public link: anyone with it reads the note without an account, and chat apps show a preview of it.
 - **Import and export.** Google Keep (Google Takeout, images included), Evernote (.enex), Memos (straight from your Memos server), Blinko backups, and Markdown files (Obsidian, Joplin, and other Markdown exports). Export everything as a Markdown ZIP with images.
 - **Links and timeline.** `[[Note title]]` links with suggestions as you type and a Linked From section on the linked note; renaming a note updates the links. Switch the grid to a timeline grouped by day.
 - **Voice notes.** Start one from Capture a thought, the + button, a home screen shortcut, or `v`. Pause while recording, with a level meter; the Android app keeps recording with the screen off, for up to 3 hours. Scrub the waveform, change the play speed, and pick up where you left off. Audio files, shared recordings, and Google Keep's voice recordings come in too (converted by the server's built-in ffmpeg when needed). Trace transcribes each one with timestamps you can tap, splitting long recordings to fit the provider.
@@ -157,9 +157,11 @@ Open `http://localhost:3004` and a first-run wizard walks you through creating a
 | `UPLOADS_PATH` | `/data/uploads` | Uploaded images and server-side backups. |
 | `PORT` | `3004` | Port the server listens on inside the container. |
 | `BASE_URL` | - | Mount at a subpath, e.g. `/notetrace`. |
+| `PUBLIC_URL` | - | The full address people open the app at, subpath included (e.g. `https://notes.example.com`). Links in emails (password reset, invites, sharing) use it. Unset, they use an address an admin has opened the app at. |
 | `LOG_LEVEL` | `info` | `error` \| `warn` \| `info` \| `debug`. |
-| `INSECURE_COOKIES` | unset | Set to `1` on plain-HTTP LAN deployments so the auth cookie isn't dropped. |
+| `INSECURE_COOKIES` | `0` | Set `1` to send the sign-in cookie over plain HTTP too. The cookie is HTTPS-only by default, so at a plain `http://` address other than `localhost` (a LAN IP, an Unraid WebUI link) the browser drops it and signing in loops back to the sign-in page; the sign-in and setup screens say so. Use `1` only on a trusted LAN, and leave it `0` behind HTTPS. See [Plain-HTTP LAN](https://traceapps.github.io/docs/getting-started/lan-http/). |
 | `MAX_SESSION_HOURS` | `8760` | Session-length cap in hours. Lower for shared / kiosk machines. |
+| `UPDATE_CHECK` | - | `off` stops the server asking GitHub about new releases for good, whatever Settings, Updates says. Unset, the setting decides (off until someone turns it on). |
 | `BACKUP_UPLOAD_MAX_MB` | `512` | Upload cap for restore-from-zip. |
 | `BACKUP_SCHEDULE` | - | `off` \| `daily` \| `weekly` \| `monthly`. Locks the UI field when set. |
 | `BACKUP_TIME` | - | Auto-backup time (HH:MM, container TZ). Locks the UI field. |
@@ -170,7 +172,6 @@ Open `http://localhost:3004` and a first-run wizard walks you through creating a
 | `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` (or numbered `OIDC_PROVIDER_N_*`) | - | OIDC SSO provider(s). Env-defined providers are read-only in the UI. |
 | `MCP_ENABLED` / `MCP_WRITE_ENABLED` / `MCP_DESTROY_ENABLED` | unset | Model Context Protocol endpoint and its write / destructive tiers. |
 | `WEBHOOKS_ENABLED` | unset | Outgoing signed webhooks. |
-| `ALLOW_PRIVATE_COOKTRACE_URLS` | unset | Allow Send to CookTrace to reach a CookTrace on a LAN or Docker network address. |
 | `ALLOW_PRIVATE_LINK_PREVIEWS` | unset | Show link previews for links to LAN, loopback, or Docker network addresses. |
 | `FFMPEG_PATH` / `FFPROBE_PATH` | `ffmpeg` / `ffprobe` | Audio tools for converting voice recordings and splitting long ones for transcription. The Docker image includes a small audio-only build; set these when running outside Docker. |
 
@@ -217,7 +218,7 @@ NoteTrace is free to self-host and always will be. No paid tier, nothing behind 
 
 Helping doesn't have to cost anything: starring the repo, reporting bugs with detail, and translating all count, and stars are how self-hosted projects get found.
 
-[![Ko-fi](https://img.shields.io/badge/Ko--fi-Toward_a_Mac_and_iPhone-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/traceapps) [![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-Sponsor_monthly-EA4AAA?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/TraceApps)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-Toward_a_Mac_and_iPhone-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/traceapps) [![GitHub Sponsors](https://img.shields.io/badge/GitHub_Sponsors-Sponsor_monthly-EA4AAA?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/TraceApps?metadata_app=notetrace&metadata_from=readme)
 
 ## License
 

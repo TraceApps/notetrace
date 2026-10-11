@@ -1,9 +1,11 @@
 import { Router } from 'express';
+import { linkBase } from '../lib/public-url.js';
+import { localizeDataUrl } from '../lib/image-localizer.js';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import db from '../db.js';
 import { wrap } from '../logger.js';
-import { signToken, sessionMaxAge, userMgmtActive, requireAuth, requireAdmin } from '../middleware/auth.js';
+import { signToken, sessionMaxAge, userMgmtActive, setupRequired, requireAuth, requireAdmin } from '../middleware/auth.js';
 import { listProviders as oidcListProviders, publicProvider as oidcPublicProvider, isPasswordLoginEnabled, listUserLinks } from '../lib/oidc.js';
 import { sendPasswordReset, sendInvite, isEmailConfigured } from '../email.js';
 import { estimate as estimatePasswordStrength, STRONG_MIN_SCORE } from '../lib/password-strength.js';
@@ -82,6 +84,24 @@ const COOKIE_OPTS = {
   secure:   !_insecureCookies,
 };
 
+// A browser drops a Secure cookie on a plain-HTTP page (localhost aside), so
+// signing in from one succeeds and then lands back on the login page with
+// nothing in the log to say why. The browser's Origin header shows the page
+// it was on, whatever proxy sits in between. Said once an hour at most. The
+// login page shows the same thing on screen.
+let _plainHttpWarnedAt = 0;
+function warnIfPlainHttp(req) {
+  if (_insecureCookies) return;
+  const origin = String(req.get('origin') || req.get('referer') || '');
+  if (!/^http:\/\//i.test(origin)) return;
+  if (/^http:\/\/(localhost|127\.\d+\.\d+\.\d+|\[::1\])(:\d+)?(\/|$)/i.test(origin)) return;
+  if (Date.now() - _plainHttpWarnedAt < 60 * 60 * 1000) return;
+  _plainHttpWarnedAt = Date.now();
+  let page = origin;
+  try { page = new URL(origin).origin; } catch {}
+  console.warn(`[WARN] Sign-in from a plain-HTTP page (${page}). The sign-in cookie only works over HTTPS, so the browser drops it and the user lands back on the login page. Serve NoteTrace over HTTPS, or set INSECURE_COOKIES=1 on a trusted LAN. See https://traceapps.github.io/docs/getting-started/lan-http/`);
+}
+
 function safeUser(u) {
   const { password_hash, ...rest } = u;
   // Linked OIDC providers + password-set flag — surfaced so the Profile page
@@ -92,6 +112,15 @@ function safeUser(u) {
 }
 
 // ── Status: is user management active? ────────────────────────────────────
+// This server's random id (see /status), made once and kept in app_config.
+// Made again if a restore emptied app_config.
+function serverInstanceId() {
+  const row = db.prepare(`SELECT value FROM app_config WHERE key = 'instance_id'`).get();
+  if (row?.value) return row.value;
+  db.prepare(`INSERT OR IGNORE INTO app_config (key, value) VALUES ('instance_id', ?)`).run(crypto.randomUUID());
+  return db.prepare(`SELECT value FROM app_config WHERE key = 'instance_id'`).get()?.value || null;
+}
+
 router.get('/status', wrap((req, res) => {
   const active = userMgmtActive();
   // setup_required distinguishes a fresh install (no users, setup needed)
@@ -106,11 +135,20 @@ router.get('/status', wrap((req, res) => {
   const policy = db.prepare(`SELECT value FROM app_config WHERE key = 'password_policy'`).get()?.value || 'standard';
   res.json({
     active,
-    setup_required: !active && !singleUser,
+    setup_required: setupRequired(),
     single_user_mode: singleUser,
     oidc: { providers, enable_email_password_login: isPasswordLoginEnabled() },
     password_policy: policy,                  // 'standard' | 'strong'
     password_min_score: policy === 'strong' ? STRONG_MIN_SCORE : 0,
+    // Whether the sign-in cookie is HTTPS-only, so the login page can say up
+    // front that signing in from a plain-HTTP page will not stick.
+    secure_cookies: !_insecureCookies,
+    // A random id for this server, so the Android app can tell the same
+    // server at another address (LAN IP, domain) from a different one.
+    instance_id: serverInstanceId(),
+    // What the Android sync speaks. 2: a row the app makes carries a key,
+    // so sending it twice makes it once.
+    sync_version: 2,
   });
 }));
 
@@ -129,6 +167,12 @@ router.post('/login', rateLimitLogin, wrap((req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
 
+  // A fresh install has no account to sign in to yet. Said plainly: Android
+  // apps from before /api/health reported it show this message as is.
+  if (setupRequired()) {
+    return res.status(503).json({ error: "This server isn't set up yet. Open it in a browser to create the first account.", setup_required: true });
+  }
+
   const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username.trim().toLowerCase());
   if (!user || !user.password_hash || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: 'Invalid username or password' });
@@ -136,6 +180,7 @@ router.post('/login', rateLimitLogin, wrap((req, res) => {
 
   const token = signToken(user);
   const cookieOpts = { ...COOKIE_OPTS, maxAge: sessionMaxAge() };
+  warnIfPlainHttp(req);
   res.cookie('note_token', token, cookieOpts);
   res.json({ user: safeUser(user), token });
 }));
@@ -177,6 +222,7 @@ router.post('/register', wrap((req, res) => {
   // existed (user_id IS NULL). Stays scoped to NoteTrace's own tables.
   if (isFirst) {
     claimAnonymousData(user.id);
+    warnIfPlainHttp(req);
     res.cookie('note_token', signToken(user), COOKIE_OPTS);
   }
 
@@ -185,7 +231,10 @@ router.post('/register', wrap((req, res) => {
 
 // ── Update own profile ─────────────────────────────────────────────────────
 router.put('/profile', requireAuth, wrap((req, res) => {
-  const { full_name, nickname, birthday, gender, avatar_url, email } = req.body;
+  const { full_name, nickname, birthday, gender, email } = req.body;
+  // A picture chosen with no connection arrives embedded in this request,
+  // since there was nowhere to upload it to. It becomes a file here.
+  const avatar_url = localizeDataUrl(req.body?.avatar_url);
   db.prepare(
     `UPDATE users SET full_name=?, nickname=?, birthday=?, gender=?, avatar_url=?, email=? WHERE id=?`
   ).run(full_name || null, nickname || null, birthday || null, gender || null, avatar_url || null,
@@ -389,10 +438,9 @@ router.post('/forgot-password', rateLimitLogin, wrap(async (req, res) => {
   const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString(); // 1 hour
   db.prepare('INSERT INTO password_reset_tokens (token, user_id, expires_at) VALUES (?, ?, ?)').run(token, user.id, expires);
 
-  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
-  const baseUrl = `${proto}://${req.headers['x-forwarded-host'] || req.get('host')}`;
+  const baseUrl = linkBase(req);
   try {
-    await sendPasswordReset(user.email, `${baseUrl}/#/reset-password?token=${token}`);
+    if (baseUrl) await sendPasswordReset(user.email, `${baseUrl}/#/reset-password?token=${token}`);
   } catch (e) {
     // Don't surface email-send errors to the client — it would leak existence.
     // The token is still issued; the admin can investigate the email backend.
@@ -439,8 +487,8 @@ router.post('/invite', requireAuth, requireAdmin, wrap(async (req, res) => {
   db.prepare('INSERT INTO invite_tokens (token, email, role, created_by, expires_at) VALUES (?, ?, ?, ?, ?)')
     .run(token, email ? email.trim().toLowerCase() : null, role, req.user.id, expires);
 
-  const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'http').split(',')[0].trim();
-  const baseUrl = `${proto}://${req.headers['x-forwarded-host'] || req.get('host')}`;
+  const baseUrl = linkBase(req);
+  if (!baseUrl) return res.status(500).json({ error: 'The app\'s address is unknown. Set PUBLIC_URL, then try again.' });
   const inviteUrl = `${baseUrl}/#/accept-invite?token=${token}`;
 
   if (email && isEmailConfigured()) {

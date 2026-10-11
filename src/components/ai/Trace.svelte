@@ -14,6 +14,7 @@
   import { tick, onMount } from 'svelte';
   import { fly, fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
+  import AttachImageButton from './AttachImageButton.svelte';
   import { closeOnBack } from '../../lib/back-stack.js';
   import { _ } from 'svelte-i18n';
   import TraceFace from './TraceFace.svelte';
@@ -29,6 +30,7 @@
   }
   const Mascot = TraceFace;
   import { showError, showSuccess } from '../../stores/toast.js';
+  import { createToolsNotice, forModel } from '../../lib/tool-support.js';
   import { confirmDialog } from '../../stores/confirmDialog.js';
   import { portal } from '../../lib/portal.js';
   import { NoteApi } from '../../lib/api.js';
@@ -272,6 +274,8 @@
   let busy = false;
   let messagesEl;
   let toolStatus = '';
+  // Says once per conversation that the model can't use tools (TraceApps/nutritrace#259).
+  const toolsNotice = createToolsNotice();
   let attachedImage = null;        // { base64, mimeType, preview }
   // Derive env-lock state from the global envLocks store (populated by
   // App.svelte at startup with the Bearer token attached). Local fetch
@@ -349,21 +353,31 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
       const apiKey = aiEnvLocked ? '' : $aiApiKey;
       const model = aiEnvLocked ? ($envLocks.ai_model || AI_DEFAULT_MODELS[provider] || '') : ($aiModel || AI_DEFAULT_MODELS[provider] || '');
       const baseUrl = $aiBaseUrl;
-      const apiMessages = messages.map(m => ({ role: m.role, content: m.content })).slice(-20);
+      const apiMessages = forModel(messages).map(m => ({ role: m.role, content: m.content })).slice(-20);
       // Inline the image into the last user message in the provider's format.
       if (attachedImage) {
         const lastIdx = apiMessages.length - 1;
         apiMessages[lastIdx] = _buildImageMessage(provider, text || 'Have a look at this.', attachedImage);
       }
+      // The model can't use tools and answered without them: a note in the
+      // conversation says so, once (TraceApps/nutritrace#259). routed: the
+      // gateway picked a model for this request that can't, another may.
+      let toolsNote = null;
+      const onToolsUnsupported = ({ routed } = {}) => {
+        toolsNote = routed ? 'trace_ai_ct.tools_unsupported_routed'
+          : aiEnvLocked ? 'trace_ai_ct.tools_unsupported_server' : 'trace_ai_ct.tools_unsupported';
+      };
       const reply = await callAI({
             provider, apiKey, model, baseUrl: aiEnvLocked ? '' : baseUrl, relay: aiEnvLocked,
             messages: apiMessages,
             systemPrompt: _systemPrompt(smartLog),
             tools: TOOLS,
             onToolCall: (toolName) => { toolStatus = `Calling ${toolName.replace(/_/g, ' ')}…`; },
+            onToolsUnsupported,
           });
       const reply2 = reply || '(no response)';
       messages = [...messages, { role: 'assistant', content: reply2, time: _fmtTime() }];
+      if (toolsNote) messages = toolsNotice.add(messages, $_(toolsNote));
       NoteApi.post('/api/ai/history', { role: 'assistant', content: reply2 })
         .catch(e => console.warn('[Trace] history save (assistant) failed:', e?.message || e));
     } catch (e) {
@@ -530,10 +544,9 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
   }
   let _voicePrefix = null;
 
-  let _imageInput;
-  function _attachClick() { _imageInput?.click(); }
-  function _onImagePicked(e) {
-    const f = e.target.files?.[0];
+  // From the shared attach button: an array of image Files. Trace takes one.
+  function _useImageFiles(files) {
+    const f = files?.[0];
     if (!f) return;
     if (!/^image\//.test(f.type)) { showError($_('trace_ai_ct.toast.pick_image')); return; }
     const reader = new FileReader();
@@ -543,7 +556,6 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
       attachedImage = { base64, mimeType: f.type || 'image/jpeg', preview: dataUrl };
     };
     reader.readAsDataURL(f);
-    e.target.value = '';
   }
   function _clearImage() { attachedImage = null; }
 
@@ -608,6 +620,7 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
       dangerous: true,
     })) return;
     messages = [];
+    toolsNotice.reset();
     // Wipe server-side history too so the cleared state survives a
     // reload + travels across other browsers / devices.
     NoteApi.del('/api/ai/history').catch(() => {});
@@ -740,6 +753,12 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
           </div>
         {/if}
         {#each messages as m}
+          {#if m.role === 'note'}
+            <div class="msg-note" role="status">
+              <span class="material-symbols-rounded">info</span>
+              <span>{m.content}</span>
+            </div>
+          {:else}
           <div class="msg" class:user={m.role === 'user'} class:assistant={m.role === 'assistant'}>
             {#if m.role === 'assistant'}
               <div class="msg-avatar"><svelte:component this={Mascot} size={24} /></div>
@@ -751,6 +770,7 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
               {m.content}
             </div>
           </div>
+          {/if}
         {/each}
         {#if busy}
           <div class="msg assistant">
@@ -776,11 +796,8 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
       {/if}
 
       <footer class="panel-input">
-        <input type="file" accept="image/*" bind:this={_imageInput} on:change={_onImagePicked} style="display:none" />
-        <button class="attach-btn" on:click={_attachClick} disabled={busy}
-          aria-label="Attach Image" title="Attach Image">
-          <span class="material-symbols-rounded">photo_camera</span>
-        </button>
+        <AttachImageButton disabled={busy} title={$_('attach_image.button')}
+          on:files={e => _useImageFiles(e.detail)} />
         <!-- In-chat voice button removed for parity with NutriTrace +
              LiftTrace. Voice input lives only on the FAB hold gesture
              (Smart Log) and on dedicated voice surfaces (Smart Log
@@ -825,7 +842,9 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
     backdrop-filter: blur(12px) saturate(180%);
     -webkit-backdrop-filter: blur(12px) saturate(180%);
     cursor: pointer;
-    z-index: 400;
+    /* Below the lowest sheet (100) and above the bottom bar (50), so the
+       button never draws over an open sheet or dialog. Same as NutriTrace #233. */
+    z-index: 80;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1190,6 +1209,18 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
     border-radius: 8px;
     margin-bottom: 6px;
   }
+  /* A note from the app in the conversation, such as a model that can't
+     use tools (TraceApps/nutritrace#259). */
+  .msg-note {
+    display: flex; align-items: flex-start; gap: 6px;
+    margin-left: 36px;
+    padding: 9px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    font-size: 13px; line-height: 1.4; color: var(--text-2);
+  }
+  .msg-note .material-symbols-rounded { font-size: 18px; color: var(--accent); flex-shrink: 0; }
   .tool-status {
     color: var(--text-3);
     font-size: 12px;
@@ -1243,20 +1274,6 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
     flex-shrink: 0;
   }
   /* Attach (photo_camera) — round, border-only, accent on hover. */
-  .attach-btn {
-    background: none;
-    border: 1px solid var(--border);
-    border-radius: 50%;
-    width: 40px; height: 40px;
-    cursor: pointer;
-    color: var(--text-3);
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-    transition: color var(--dur-fast), border-color var(--dur-fast);
-  }
-  .attach-btn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
-  .attach-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .attach-btn .material-symbols-rounded { font-size: 20px; }
   /* Textarea — NT parity: stronger border, more rounded, taller line
      height, max 120 px scroll. */
   .input {

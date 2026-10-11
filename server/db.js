@@ -383,6 +383,11 @@ if (!columnExists('note_members', 'in_tasks')) db.exec(`ALTER TABLE note_members
 // so "daily at 8:00" stays at 8:00 across daylight-saving changes.
 if (!columnExists('notes', 'reminder_tz')) db.exec(`ALTER TABLE notes ADD COLUMN reminder_tz TEXT`);
 
+// Public link: anyone with the token can read the note. Set and cleared by
+// the owner only; never synced, so a device can't publish a note.
+if (!columnExists('notes', 'share_token')) db.exec(`ALTER TABLE notes ADD COLUMN share_token TEXT`);
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_notes_share_token ON notes(share_token) WHERE share_token IS NOT NULL`);
+
 // /api/sync/pull SELECTs updated_at on every synced table, including
 // ai_chat_history. SQLite refuses non-constant DEFAULTs on ALTER ADD
 // COLUMN, so older databases get the column without a default and a pair
@@ -407,6 +412,13 @@ db.exec(`
     UPDATE ai_chat_history SET updated_at = datetime('now') WHERE id = NEW.id;
   END;
 `);
+
+// The Android app's key for a row it made (lib/create-keys.js), so the same
+// create sent twice (a retry, two syncs at once, an answer lost) makes one row.
+for (const t of ['notes', 'labels', 'checklist_items', 'note_labels', 'note_attachments', 'ai_chat_history']) {
+  if (!columnExists(t, 'client_key')) db.exec(`ALTER TABLE ${t} ADD COLUMN client_key TEXT DEFAULT NULL`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_${t}_client_key ON ${t}(user_id, client_key)`);
+}
 
 // ── Sync cursor ────────────────────────────────────────────────────────────
 // synced_at is the SERVER's clock time of the last write to a row, stamped

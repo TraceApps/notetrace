@@ -1,6 +1,6 @@
-import { writable } from 'svelte/store';
+import { writable, get as getStore } from 'svelte/store';
 import { loadServerSettings } from './settings.js';
-import { isNative, getServerUrl, getAuthToken, apiUrl as _apiUrl } from '../lib/platform.js';
+import { isNative, getServerUrl, getAuthToken, apiUrl as _apiUrl, forgetServerCookies } from '../lib/platform.js';
 
 function _authHeaders() {
   const h = {};
@@ -19,6 +19,11 @@ export const userMgmtActive = writable(false);
 
 /** True when the server has no users yet — PWA must show setup screen */
 export const setupRequired = writable(false);
+// Why the last sign-in didn't stick, if it didn't ('http' | 'dropped'), so
+// the login page can say so. A store, not page state, because the login page
+// is torn down and rebuilt when the user flips on and back off. See
+// lib/cookie-check.js.
+export const signInProblem = writable(null);
 
 // Synthetic local user for native standalone mode (no server configured).
 // full_name is overridden at load time from the localUserName setting (set
@@ -86,11 +91,26 @@ export async function loadAuthState() {
     if (cached) {
       try {
         const user = JSON.parse(cached);
+        // Only the account the session is for: one cached by an earlier
+        // sign-in (before a Disconnect and a connect as someone else)
+        // would be checked against the phone's copy as if signed in.
+        const { tokenUserId } = await import('../lib/local-account.js');
+        const sid = tokenUserId(getAuthToken());
+        if (sid != null && String(sid) !== String(user?.id)) throw new Error('another account');
         currentUser.set(user);
         userMgmtActive.set(localStorage.getItem('note:cachedUserMgmt') === '1');
         localStorage.setItem('wl:userId', String(user.id));
-      } catch {}
+      } catch {
+        // Not this session's account: the sign-in screen until the server
+        // says who is signed in, never the phone's copy with nobody.
+        localStorage.removeItem('note:cachedUser');
+        localStorage.removeItem('wl:userId');
+      }
     }
+    // No account to show yet on a server with accounts: sign-in first
+    // (offline included), never the copy with no account. A server
+    // without accounts (single-user) said so before, and shows the app.
+    if (getStore(currentUser) == null && localStorage.getItem('note:cachedUserMgmt') !== '0') userMgmtActive.set(true);
     // Refresh auth from server in the background (non-blocking)
     _refreshAuthFromServer();
     return;
@@ -188,6 +208,7 @@ async function _refreshAuthFromServer() {
         localStorage.removeItem('wl:userId');
         localStorage.removeItem('note:cachedUser');
         localStorage.removeItem('note:csrf');
+        await forgetServerCookies();
         return;
       }
       if (!meRes.ok) return; // actual server error — keep cached auth
@@ -263,6 +284,17 @@ export async function logout() {
   // post_logout_redirect_uri so the Capacitor browser can route back
   // into the app after the IdP destroys the session.
   let logoutUrl = null;
+  // Android: the phone keeps its copy of the account, so signing back in to
+  // the same account picks up where it left off. Send what's waiting first,
+  // while the session still works: a push only, cut off after a few
+  // seconds. What can't go now stays for this account (lib/local-account.js
+  // keeps it from going up under anyone else).
+  if (isNative && getServerUrl()) {
+    try {
+      const { pushBeforeSignOut } = await import('../lib/sync.js');
+      await pushBeforeSignOut();
+    } catch { /* never block sign-out */ }
+  }
   try {
     const logoutPath = isNative
       ? '/api/auth/oidc/logout?mobile=1'
@@ -280,6 +312,8 @@ export async function logout() {
     const oidcRes = await fetch(_apiUrl(logoutPath), {
       method: 'POST',
       credentials: 'include',
+      // Android: a server that doesn't answer never holds up signing out.
+      ...(isNative ? { signal: AbortSignal.timeout(5000) } : {}),
       headers: { ..._authHeaders(), 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -287,11 +321,13 @@ export async function logout() {
     logoutUrl = oidcData?.logoutUrl || null;
     try { localStorage.removeItem('note:oidc_logout_hint'); } catch {}
   } catch {}
-  try { await fetch(_apiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include', headers: _authHeaders() }); } catch {}
+  try { await fetch(_apiUrl('/api/auth/logout'), { method: 'POST', credentials: 'include', headers: _authHeaders(), ...(isNative ? { signal: AbortSignal.timeout(5000) } : {}) }); } catch {}
   // Clear auth state — but keep cached data (foods, images, server URL)
   if (isNative) {
     const { setAuthToken } = await import('../lib/platform.js');
     setAuthToken(null);
+    // The server's sign-in cookie goes too (lib/platform.js).
+    await forgetServerCookies();
     // Wipe biometric-cached JWT too, otherwise the next launch could bypass
     // the password gate after the user explicitly signed out.
     try {
@@ -303,10 +339,52 @@ export async function logout() {
   // The watch shouldn't keep a working token after a sign-out.
   if (isNative) import('../lib/wear-pairing.js').then(({ unpairWatch }) => unpairWatch()).catch(() => {});
   // This account's offline copy of its notes stays behind on a shared computer otherwise.
-  else { try { await (await import('../lib/offline-api.js')).clearOfflineData(); } catch { /* nothing stored */ } }
+  else {
+    // Anything written offline goes up before the session ends, and if it
+    // cannot (signing out in a dead zone) the caller is asked first:
+    // clearing it would destroy work the user never saw fail. The guard
+    // lives here rather than on one button, so every way of signing out
+    // gets it.
+    try {
+      const { flushOutbox, pendingCount, clearOfflineData } = await import('../lib/offline-api.js');
+      const sent = await flushOutbox().catch(() => false);
+      if (!sent && (await pendingCount()) > 0) {
+        const waiting = await pendingCount();
+        const { confirmDialog } = await import('./confirmDialog.js');
+        const { get: getStore } = await import('svelte/store');
+        const { _: t } = await import('svelte-i18n');
+        const say = getStore(t);
+        const ok = await confirmDialog({
+          title: say('offline.logout_title'),
+          message: say('offline.logout_message', { values: { n: waiting } }),
+          confirmText: say('offline.logout_confirm'),
+          cancelText: say('common.cancel'),
+          dangerous: true,
+        });
+        if (!ok) return false;
+      }
+      await clearOfflineData();
+    } catch { /* nothing stored */ }
+  }
   localStorage.removeItem('wl:userId');
   localStorage.removeItem('note:cachedUser');
   localStorage.removeItem('note:csrf');
+  // What the app holds in memory is this account's: gone before anyone
+  // else signs in (lib/user-state.js). A sync still running writes nothing
+  // more (lib/local-account.js).
+  try {
+    const { resetUserState } = await import('../lib/user-state.js');
+    await resetUserState();
+    if (isNative) {
+      const la = await import('../lib/local-account.js');
+      la.bumpAccountGeneration();
+      la.resetAccountGate();
+    }
+  } catch { /* never block sign-out */ }
+  // This account's reminders stop with its session.
+  if (isNative) {
+    try { await (await import('../lib/note-reminders.js')).clearReminders(); } catch { /* none set */ }
+  }
   // The offline copies of this account's notes and files (service worker
   // caches) don't outlive the session on a shared computer.
   try {
@@ -328,4 +406,5 @@ export async function logout() {
       window.location.href = logoutUrl;
     }
   }
+  return true;
 }

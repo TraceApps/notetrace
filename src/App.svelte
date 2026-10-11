@@ -7,7 +7,7 @@
   import { cubicOut } from 'svelte/easing';
   import { portal } from './lib/portal.js';
   import { handleBack } from './lib/back-stack.js';
-  import Router, { location, push } from 'svelte-spa-router';
+  import Router, { location, push, replace } from 'svelte-spa-router';
 
   import BottomNav from './components/layout/BottomNav.svelte';
   import Sidebar   from './components/layout/Sidebar.svelte';
@@ -18,12 +18,14 @@
   import ConfirmDialogMount from './components/ui/ConfirmDialogMount.svelte';
   import { DB }    from './lib/db.js';
   import { NoteApi } from './lib/api.js';
-  import { navStyle, applyAccentColor, accentColor, applyAppearance, appearance, disableAnimations, sidebarPersistent, sidebarRail, sidebarRailMedium, cardDensity, pageBanners, bannerStyle, bannerAnimation, forceMobileLayout, startPage, language } from './stores/settings.js';
+  import { navStyle, applyAccentColor, accentColor, applyAppearance, appearance, disableAnimations, sidebarPersistent, sidebarRail, sidebarRailMedium, cardDensity, pageBanners, bannerStyle, bannerAnimation, forceMobileLayout, startPage, language, reloadSettingStores } from './stores/settings.js';
   import { _, locale } from 'svelte-i18n';
   import { currentUser, userMgmtActive, setupRequired, loadAuthState, handleOidcCallback } from './stores/auth.js';
-  import { needsNativeSetup, isNative, getNativeMode, getServerUrl, apiUrl } from './lib/platform.js';
-  import { writable } from 'svelte/store';
+  import { needsNativeSetup, isNative, getNativeMode, getServerUrl, apiUrl, getAuthToken } from './lib/platform.js';
+  import { writable, get as getStore } from 'svelte/store';
+  import { createSetupCheck } from './lib/setup-gate.js';
   import { notesChanged, signalNotesChanged } from './stores/notes.js';
+  import { accountGate, ensureLocalAccount, accountReadyFor } from './lib/local-account.js';
   import { notifLocalEnabled, appLockEnabled } from './stores/settings.js';
   import { refreshHomeWidget } from './lib/home-widget.js';
   import { appLocked } from './lib/app-lock.js';
@@ -64,27 +66,12 @@
   let _pullRefreshing = false;
   let _retryingConnection = false;
 
-  async function _waitForSyncIdle(maxMs = 4000) {
-    const start = Date.now();
-    return new Promise(resolve => {
-      const check = () => {
-        let s; syncState.subscribe(v => s = v)();
-        if (!s?.syncing || Date.now() - start > maxMs) resolve();
-        else setTimeout(check, 100);
-      };
-      check();
-    });
-  }
-
+  // Pull to refresh and Retry: a sync from now (lib/sync.js runs it right
+  // after one already running, never alongside it).
   async function _runForcedSync() {
     try {
       const mod = await import('./lib/sync.js');
-      let result = await mod.fullSync(false, true, true);
-      if (result?.reason === 'busy') {
-        await _waitForSyncIdle();
-        result = await mod.fullSync(false, true, true);
-      }
-      return result;
+      return await mod.fullSync(false, true, true);
     } catch (e) {
       console.warn('[sync] forced sync failed:', e?.message);
       return { ok: false };
@@ -342,6 +329,10 @@
   }
 
   onMount(async () => {
+    // Update checks: a device that was already using the app keeps checking,
+    // a fresh one stays quiet until setup asks. Runs first so nothing above
+    // can skip it (see lib/updates.js).
+    import('./lib/updates.js').then(({ migrateAutoCheck }) => migrateAutoCheck()).catch(() => {});
     initFold();
     import('./lib/pending-voice.js').then(m => m.startPendingVoice()).catch(() => {});
     // Start Page: only when the app opens on the default route, never over a
@@ -477,14 +468,16 @@
         });
         // And on launch, once auth has settled.
         setTimeout(() => import('./lib/wear-pairing.js').then(({ pairWatch }) => pairWatch()).catch(() => {}), 2500);
-        // Deep link callbacks: notetrace://oidc-callback?token=…
+        // Deep link callbacks: notetrace://oidc-callback?code=… (or ?token=…
+        // from servers older than the single-use code hand-off)
         // A home screen shortcut that cold-starts the app arrives as the launch URL.
         App.getLaunchUrl?.().then((r) => {
           const m = String(r?.url || '').match(/^notetrace:\/\/new\/(\w+)/);
           if (m) import('svelte-spa-router').then(({ push }) => push(`/?new=${m[1]}`));
         }).catch(() => {});
         App.addListener('appUrlOpen', async ({ url }) => {
-          console.log('[app] deep link received:', url);
+          // Without its query: a sign-in link carries a code or a token.
+          console.log('[app] deep link received:', String(url).split('?')[0]);
           try {
             const u = new URL(url);
             const params = u.searchParams;
@@ -497,17 +490,31 @@
             if (host === 'oidc-callback') {
               const errMsg = params.get('error');
               const linked = params.get('linked');
-              const token = params.get('token');
-              const idTokenHint = params.get('id_token_hint');
-              const providerId  = params.get('provider_id');
+              let token = params.get('token');
+              let idTokenHint = params.get('id_token_hint');
+              let providerId  = params.get('provider_id');
+              const code = params.get('code');
+              if (code && !errMsg) {
+                try {
+                  const { redeemHandoff } = await import('./lib/oidc-app-handoff.js');
+                  const data = await redeemHandoff(code);
+                  token = data.token;
+                  idTokenHint = data.id_token_hint || null;
+                  providerId = data.provider_id != null ? String(data.provider_id) : null;
+                } catch (e) {
+                  import('./stores/toast.js').then(({ showError }) => showError(e?.message || 'Sign-in failed'));
+                  return;
+                }
+              }
               if (errMsg) {
                 import('./stores/toast.js').then(({ showError }) => showError(decodeURIComponent(errMsg)));
               } else if (linked) {
                 import('./stores/toast.js').then(({ showSuccess }) => showSuccess('Linked'));
                 await loadAuthState();
               } else if (token) {
-                const { setAuthToken } = await import('./lib/platform.js');
+                const { setAuthToken, forgetServerCookies } = await import('./lib/platform.js');
                 setAuthToken(token);
+                await forgetServerCookies();
                 // Stash the OIDC session hint so logout() can ask the IdP
                 // to end the session via RP-initiated logout. PWA stores
                 // this in an httpOnly cookie at the same point; native
@@ -542,13 +549,16 @@
       });
     }
 
-    await loadAuthState();
-    await handleOidcCallback();
+    try { await loadAuthState(); } finally { authLoaded = true; }
+    // Never left on the blank page below: the setup redirect still has to run.
+    try { await handleOidcCallback(); } catch (e) { console.warn('[app] OIDC sign-in callback failed:', e?.message || e); }
 
     // Env-lock state for AI / SMTP / OIDC. Fetched globally so the Trace
     // FAB knows about env-set AI_ENABLED without waiting for Settings to
-    // load. Mirrors NutriTrace #36.
-    loadEnvLocks();
+    // load. Mirrors NutriTrace #36. Signed out it would only be refused;
+    // signing in loads it (see _wasNeedsLogin below).
+    // A fresh install refuses it until setup is done (see _setupFirst).
+    if (!($userMgmtActive && !$currentUser) && (isNative || !$setupRequired)) loadEnvLocks();
 
     // Wizard gate. The web "no user + no user management" case is fully
     // covered by $setupRequired (the server distinguishes a fresh install
@@ -559,9 +569,19 @@
     const _isNativeServer = isNative && getNativeMode() === 'server';
     const _isNativeLocal = isNative && getNativeMode() === 'local';
     if (!isNative && $setupRequired) {
-      window.location.hash = '#/wizard';
+      // Replaced, not pushed: Back from the wizard leaves the app instead
+      // of landing on a page that can't load before setup.
+      replace('/wizard');
     } else if (_isNativeLocal && !DB.getSetting('setupComplete', false)) {
       window.location.hash = '#/wizard';
+    }
+    _setupRouted = true;
+    // Back in view during setup: the first account may have been made in
+    // another tab or on another device meanwhile (see lib/setup-gate.js).
+    if (!isNative) {
+      const _backInView = () => { if (!document.hidden && getStore(setupRequired)) _recheckSetup(); };
+      document.addEventListener('visibilitychange', _backInView);
+      window.addEventListener('focus', _backInView);
     }
 
     // Sync engine — native server-connected mode only.
@@ -570,9 +590,11 @@
         mod.syncState.subscribe(v => syncState.set(v));
         mod.startNetworkMonitor();
         mod.fullSync();
-        setInterval(() => mod.fullSync(true), 30000);
+        // The 30s sync while the app is on screen (lib/sync.js keeps the one
+        // loop and stops it when the app is hidden); coming back syncs too.
+        mod.startSyncLoop();
         import('@capacitor/app').then(({ App }) => {
-          App.addListener('resume', () => mod.fullSync());
+          App.addListener('resume', () => { mod.fullSync(); });
         });
       });
     }
@@ -590,28 +612,89 @@
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') _refreshSettings();
       });
-      setInterval(_refreshSettings, 30000);
+      // Every 30 seconds while the tab is in front; coming back refreshes too.
+      setInterval(() => { if (!document.hidden) _refreshSettings(); }, 30000);
     }
   });
 
   /**
    * Which sections the server holds by environment variable, Trace included.
-   * Goes through NoteApi so the Android app sends its token: a bare fetch()
-   * was answered with 401 there, which left Trace looking unconfigured even
-   * with AI_* set on the server.
+   * Sends the Android app's token: cookies alone were refused there, which
+   * left Trace looking unconfigured even with AI_* set on the server.
    */
   async function loadEnvLocks() {
     if (isNative && !getServerUrl()) return;
     try {
-      const d = await NoteApi.get('/api/app-config/env-locks');
-      if (!d) return;
+      const headers = {};
+      const token = isNative ? getAuthToken() : null;
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const res = await fetch(apiUrl('/api/app-config/env-locks'), { credentials: 'include', headers });
+      if (!res.ok) return;
       const { envLocks } = await import('./stores/settings.js');
-      envLocks.set(d);
+      envLocks.set(await res.json());
     } catch { /* defaults stay: Trace waits for a key in Settings */ }
   }
 
   const AUTH_BYPASS = ['/forgot-password', '/reset-password', '/accept-invite'];
+  // The web app learns who is signed in from the server. Until it knows,
+  // nothing renders: the app used to load first and fire its requests
+  // signed out, before the sign-in screen replaced it. Android starts from
+  // the account it cached, so it never waits.
+  // Connected to a server, it still waits for that (a moment: the cached
+  // account), so nothing of the phone's copy shows before the account
+  // check knows whose it is.
+  let authLoaded = isNative && getNativeMode() !== 'server';
   $: needsLogin = $userMgmtActive && !$currentUser && !AUTH_BYPASS.includes($location);
+  // A fresh install opens on setup, and nothing else renders until it gets
+  // there: every other page asks for data the server refuses until the
+  // first account exists ("Setup required"), and those refusals read as
+  // the server being down (the Offline pill on the welcome screen). Once
+  // the account is made, the settings that were refused load.
+  $: _setupFirst = !isNative && $setupRequired;
+  $: _setupPending = _setupFirst && $location !== '/wizard';
+  // Going anywhere else before setup is done comes back to it, once the
+  // server confirms setup is still needed; if it was done elsewhere, the
+  // tab goes to sign-in instead.
+  let _setupRouted = false;
+  const _recheckSetup = createSetupCheck({
+    reload: loadAuthState,
+    setupRequired,
+    goWizard: () => { if (getStore(location) !== '/wizard') replace('/wizard'); },
+    goHome: () => replace('/'),
+  });
+  $: if (_setupRouted && _setupPending) _recheckSetup();
+  let _wasSetupFirst = false;
+  $: if (_setupFirst) _wasSetupFirst = true;
+  else if (_wasSetupFirst) { _wasSetupFirst = false; if (!($userMgmtActive && !$currentUser)) loadEnvLocks(); }
+
+  // Android, server mode: the phone's copy of the data must be this
+  // account's before the app shows any of it (lib/local-account.js). A
+  // different account than last time clears the copy; if that account
+  // left changes that never went up, the person is asked first, and
+  // saying no signs them back out. Every sign-in path ends by setting
+  // $currentUser, so this is the one place that sees them all. Keyed on
+  // the id, so a refreshed user object doesn't ask again; the gate itself
+  // runs one check per account at a time.
+  // Every platform: the setting stores follow the account signed in
+  // (stores/settings.js), so another account never sees or saves the last
+  // one's values.
+  $: _settingsFor = $currentUser?.id ?? null;
+  $: _settingsFor, reloadSettingStores();
+  $: _accountId = isNative && getNativeMode() === 'server' && $currentUser?.id != null ? `${$currentUser.id}#${$currentUser.created_at || ''}` : null;
+  $: if (_accountId != null) _checkAccount();
+  $: accountReady = _accountId == null || accountReadyFor($accountGate, $currentUser);
+  async function _checkAccount() {
+    const user = getStore(currentUser);
+    if (!user || user.id == null) return;
+    const ok = await ensureLocalAccount(user, {
+      signOut: async () => { const { logout } = await import('./stores/auth.js'); await logout(); },
+    });
+    if (ok) {
+      import('./lib/sync.js').then(m => m.fullSync()).catch(() => {});
+      // The copy is this account's: its own reminders are set again.
+      import('./lib/note-reminders.js').then(m => m.rescheduleReminders()).catch(() => {});
+    }
+  }
 
   let _wasNeedsLogin = needsLogin;
   $: {
@@ -648,13 +731,34 @@
   <NativeSetup />
   <Toast />
 
+{:else if !authLoaded || _setupPending}
+  <!-- Asking the server who is signed in, or on the way to setup: a blank page, never the app. -->
 {:else if needsLogin}
   <Login />
+{:else if !accountReady}
+  <!-- Checking the phone's copy is this account's: never another account's data (the confirm dialog is mounted below). -->
+  {#if $accountGate.state === 'error'}
+    <div class="account-check-error" role="alert">
+      <span class="material-symbols-rounded" aria-hidden="true">error</span>
+      <h2>{$_('sync.account_check_failed_title')}</h2>
+      <p>{$_('sync.account_check_failed')}</p>
+      <div class="account-check-actions">
+        <button class="btn btn-primary" on:click={_checkAccount}>{$_('sync.retry')}</button>
+        <button class="btn btn-ghost" on:click={async () => { const { logout } = await import('./stores/auth.js'); await logout(); }}>{$_('common.sign_out')}</button>
+      </div>
+    </div>
+  {:else}
+    <div class="account-check-wait" role="status" aria-label={$_('sync.account_checking')}>
+      <span class="material-symbols-rounded account-check-spin" aria-hidden="true">progress_activity</span>
+    </div>
+  {/if}
+  <Toast />
 {:else}
 
 {#if $appLocked}<LockScreen />{/if}
 
-<Sidebar bind:open={sidebarOpen} persistent={sidebarPinned} {railStore} on:close={() => { if (!sidebarPinned) sidebarOpen = false; }} />
+<!-- Its labels and reminder counts are refused until setup is done. -->
+{#if !_setupFirst}<Sidebar bind:open={sidebarOpen} persistent={sidebarPinned} {railStore} on:close={() => { if (!sidebarPinned) sidebarOpen = false; }} />{/if}
 
 
 <!-- In-app update banner (native only). Renders only if the OS-level
@@ -748,7 +852,7 @@
 {/if}
 
 <Toast />
-<Trace />
+{#if !_setupFirst}<Trace />{/if}
 {#if !isNative}<OfflineStatus />{/if}
 
 {/if}
@@ -757,6 +861,23 @@
 <ConfirmDialogMount />
 
 <style>
+  .account-check-error {
+    min-height: 100vh; min-height: 100dvh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; padding: 24px 16px; text-align: center;
+    background: var(--bg); color: var(--text-1);
+  }
+  .account-check-error .material-symbols-rounded { font-size: 40px; color: var(--danger, #d33); }
+  .account-check-error h2 { margin: 0; font-size: 18px; }
+  .account-check-error p { margin: 0; max-width: 360px; color: var(--text-3); font-size: 14px; line-height: 1.5; }
+  .account-check-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; justify-content: center; }
+  .account-check-wait {
+    min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center;
+    background: var(--bg); color: var(--accent);
+  }
+  .account-check-spin { font-size: 36px; animation: account-check-spin 1s linear infinite; }
+  @keyframes account-check-spin { to { transform: rotate(360deg); } }
+
   :global(body) { overflow-x: hidden; }
 
   :global(.no-animations *) {

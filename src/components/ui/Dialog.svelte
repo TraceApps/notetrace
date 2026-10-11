@@ -23,19 +23,21 @@
   }
   const confirm  = () => { open = false; dispatch('confirm'); };
   const cancel   = () => { if (!_locked) { open = false; dispatch('cancel'); } };
+  // Back, Escape or a tap outside: closed without an answer (`dismissed`).
+  const dismiss  = () => { if (!_locked) { open = false; dispatch('cancel', { dismissed: true }); } };
 </script>
 
 {#if open}
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div use:portal class="dialog-backdrop" on:click={cancel} use:closeOnBack={() => { open = false; dispatch('cancel'); }}
+  <div use:portal class="dialog-backdrop" on:click={dismiss} use:closeOnBack={() => { open = false; dispatch('cancel', { dismissed: true }); }}
     in:fade={{ duration: 180 }} out:fade={{ duration: 140 }}>
     <div
       class="dialog-box"
       in:scale={{ start: 0.88, duration: 220, easing: cubicOut }}
       out:scale={{ start: 0.88, duration: 160 }}
       on:click|stopPropagation
-      use:dialogFocus={{ onEscape: () => { open = false; dispatch('cancel'); } }}
+      use:dialogFocus={{ onEscape: () => { open = false; dispatch('cancel', { dismissed: true }); } }}
       tabindex="-1"
       role="alertdialog"
       aria-modal="true"

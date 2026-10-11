@@ -6,6 +6,7 @@
 import { writable, get } from 'svelte/store';
 import { NoteApi } from './api.js';
 import { isNative, getServerUrl } from './platform.js';
+import { settingScope } from './setting-key.js';
 
 export const cooktraceAvailable = !isNative || !!getServerUrl();
 
@@ -70,10 +71,19 @@ export function sendToCooktrace(items) {
 /** { items, at, loading, error, offline, pending } */
 export const shopping = writable({ items: null, at: null, loading: false, error: null, offline: false, pending: 0 });
 
+/** Another account: none of the last one's link or list stays in memory
+ *  (lib/user-state.js). Its saved copies are kept under its own key. */
+export function resetCooktraceState() {
+  _loading = null;
+  cooktraceLink.set(null);
+  shopping.set({ items: null, at: null, loading: false, error: null, offline: false, pending: 0 });
+}
+
 function _key(name) {
   let user = null;
   try { user = localStorage.getItem('wl:userId'); } catch { /* private mode */ }
-  return `note:cooktrace:${name}:${user || 'single'}`;
+  // The same user id on another server is another account (lib/setting-key.js).
+  return `note:cooktrace:${name}:${user || 'single'}${user ? settingScope() : ''}`;
 }
 function _read(name, fallback) {
   try { return JSON.parse(localStorage.getItem(_key(name))) ?? fallback; } catch { return fallback; }

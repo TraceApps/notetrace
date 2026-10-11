@@ -18,7 +18,7 @@
   import { onMount, onDestroy } from 'svelte';
   import {
     isNative, getNativeMode, getServerUrl, setNativeMode, setServerUrl,
-    setAuthToken, getAuthToken, explainConnectError,
+    setAuthToken, getAuthToken, explainConnectError, forgetServerCookies, healthNeedsSetup,
   } from '../../lib/platform.js';
   import { _ } from 'svelte-i18n';
   import { showError, showSuccess } from '../../stores/toast.js';
@@ -48,6 +48,9 @@
   let mergeProgressPct = 0;
   let mergeStage = '';
   let _pendingServerUrl = '';
+  let _pendingUser = null;
+  let _pendingMode = null;
+  let _sameAccount = false;
   let localCounts = null;
   let migrationSummary = null;
 
@@ -73,6 +76,7 @@
     try {
       const { CapacitorHttp } = await import('@capacitor/core');
       const health = await CapacitorHttp.get({ url: `${url}/api/health` });
+      if (healthNeedsSetup(health)) { showError($_('native_setup_ct.toast.server_needs_setup')); return; }
       if (health.status < 200 || health.status >= 300) throw new Error('Server not reachable');
 
       const login = await CapacitorHttp.post({
@@ -84,7 +88,18 @@
       if (login.status < 200 || login.status >= 300) throw new Error(body?.error || 'Login failed');
 
       _pendingServerUrl = url;
+      _pendingUser = body.user || null;
+      // The phone's data came from this very account (Disconnect, then
+      // Connect again): what it already has isn't sent again.
+      try {
+        const { cameFromThisAccount } = await import('../../lib/local-account.js');
+        _sameAccount = await cameFromThisAccount(url, _pendingUser);
+      } catch { _sameAccount = false; }
+      // "Is This the Same Server?" closed without an answer: nothing goes
+      // up and nothing changes; connecting again asks again.
+      if (_sameAccount == null) { await cancelMerge(); return; }
       if (body.token) setAuthToken(body.token);
+      await forgetServerCookies(url);
 
       // Count local data so the merge dialog can show what's about to
       // move. On a fresh install this is all zeros and we skip the
@@ -111,6 +126,7 @@
   //   merge:    upload local, then pull on reload. May duplicate notes
   //             because they don't have a natural unique key.
   async function _mergeAndConnect(modeChoice) {
+    _pendingMode = modeChoice;
     mergeStep = 'syncing';
     mergeProgress = '';
     mergeProgressPct = 0;
@@ -141,6 +157,7 @@
         migrationSummary = await uploadLocalToServer({
           serverUrl: url,
           authToken: token,
+          keepIds: _sameAccount,
           onProgress: (stage, current, total) => {
             mergeStage = stageLabels[stage] || stage;
             mergeProgress = `Uploading ${mergeStage} (${Math.min(current + 1, total)} / ${total})`;
@@ -162,7 +179,23 @@
     }
   }
 
-  function _finalizeConnect() {
+  async function _finalizeConnect() {
+    // The phone's data is this account's now (the choice above decided
+    // what of it goes up), and fills from it from the start
+    // (lib/local-account.js).
+    if (_pendingUser?.id != null) {
+      try {
+        const { claimForServer } = await import('../../lib/local-account.js');
+        await claimForServer(_pendingServerUrl, _pendingUser.id, { created: _pendingUser.created_at || null, clear: _pendingMode === 'download', sameAccount: _sameAccount });
+      } catch (e) { console.warn('[connect] claim failed:', e?.message); }
+      // The account the app opens with after the reload: this one, never
+      // one cached from an earlier server (the same id there is someone
+      // else).
+      try {
+        localStorage.setItem('note:cachedUser', JSON.stringify(_pendingUser));
+        localStorage.setItem('wl:userId', String(_pendingUser.id));
+      } catch { /* storage unavailable */ }
+    }
     setServerUrl(_pendingServerUrl);
     setNativeMode('server');
     mode = 'server';
@@ -171,16 +204,18 @@
     setTimeout(() => window.location.reload(), 600);
   }
 
-  function cancelMerge() {
+  async function cancelMerge() {
     // Cancelling here keeps the auth token (already set) but doesn't
     // flip the mode, so the user can retry without re-entering creds.
     // If they really want to bail entirely they can hit Disconnect once
     // in server mode.
+    const pending = _pendingServerUrl;
     mergeStep = null;
     _pendingServerUrl = '';
     localCounts = null;
     migrationSummary = null;
     setAuthToken(null);
+    await forgetServerCookies(pending);
   }
 
   // ── Server-mode actions ─────────────────────────────────────────────
@@ -189,7 +224,7 @@
     try {
       const r = await fullSync(false);
       if (r?.ok === false && r.error) showError(r.error);
-      else showSuccess($_('settings_server_conn.toast.synced'));
+      else if (r?.ok) showSuccess($_('settings_server_conn.toast.synced'));
     } finally { busy = false; }
   }
 
@@ -221,7 +256,9 @@
     if (!ok) return;
     busy = true;
     try {
-      await logout();
+      // logout() answers false when it asked about unsent edits and the
+      // answer was no. Saying "logged out" and reloading then would be a lie.
+      if (await logout() === false) return;
       showSuccess($_('settings_server_conn.toast.logged_out_reloading'));
       setTimeout(() => window.location.reload(), 300);
     } finally { busy = false; }
@@ -237,6 +274,11 @@
       dangerous: true,
     });
     if (!ok) return;
+    // What's on the phone is its own from now on (lib/local-account.js).
+    try {
+      const { setLocalOwner } = await import('../../lib/local-account.js');
+      await setLocalOwner();
+    } catch { await forgetServerCookies(); }
     setServerUrl(null);
     setAuthToken(null);
     setNativeMode('local');

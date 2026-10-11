@@ -9,7 +9,7 @@
 import { get } from 'svelte/store';
 import { _ } from 'svelte-i18n';
 import { registerPlugin } from '@capacitor/core';
-import { isNative } from './platform.js';
+import { isNative, getServerUrl } from './platform.js';
 import { NoteApi } from './api.js';
 import { widgetSnapshot } from './widget-snapshot.js';
 
@@ -26,9 +26,18 @@ export function refreshHomeWidget({ locked = false, now = false } = {}) {
   _timer = setTimeout(() => _send(locked), now ? 0 : DEBOUNCE_MS);
 }
 
+// Connected to a server, the widget shows the phone's copy only once it
+// is known to be the signed-in account's (lib/local-account.js): never
+// while signed out, and never another account's while one signs in.
+async function _mayShow() {
+  if (!getServerUrl()) return true;
+  return (await import('./local-account.js')).copyMayShowOutside();
+}
+
 async function _send(locked) {
   if (!NoteWidget) return;
   try {
+    if (!(await _mayShow())) return;
     const t = get(_);
     const notes = locked ? [] : await NoteApi.getNotes();
     await NoteWidget.update(widgetSnapshot(Array.isArray(notes) ? notes : [], { locked, t }));

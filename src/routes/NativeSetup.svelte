@@ -1,6 +1,6 @@
 <script>
   import { _ } from 'svelte-i18n';
-  import { setNativeMode, setServerUrl, setAuthToken, resolveAssetUrl, iconUrl, explainConnectError } from '../lib/platform.js';
+  import { setNativeMode, setServerUrl, setAuthToken, forgetServerCookies, resolveAssetUrl, iconUrl, explainConnectError, healthNeedsSetup } from '../lib/platform.js';
   import { showError, showSuccess } from '../stores/toast.js';
   import { DB } from '../lib/db.js';
 
@@ -29,6 +29,11 @@
   async function chooseLocal() {
     setNativeMode('local');
     setServerUrl(null);
+    // Data made from here on is the phone's own (lib/local-account.js).
+    try {
+      const { setLocalOwner } = await import('../lib/local-account.js');
+      await setLocalOwner();
+    } catch {}
     // Reload — SQLite will initialize naturally when NoteApiNative is first called
     window.location.reload();
   }
@@ -46,6 +51,7 @@
     try {
       const { CapacitorHttp } = await import('@capacitor/core');
       const healthRes = await CapacitorHttp.get({ url: `${url}/api/health` });
+      if (healthNeedsSetup(healthRes)) { showError($_('native_setup_ct.toast.server_needs_setup')); return; }
       if (healthRes.status < 200 || healthRes.status >= 300) {
         throw new Error('Server not reachable');
       }
@@ -93,6 +99,7 @@
 
       setServerUrl(validatedUrl);
       setAuthToken(loginData.token);
+      await forgetServerCookies(validatedUrl);
       setNativeMode('server');
       DB.setSetting('setupComplete', true);
       showSuccess($_('native_setup_ct.toast.connected_to_server'));
@@ -113,14 +120,16 @@
   // token" state and next launch lands on Login.svelte which correctly
   // renders the OIDC button now that getServerUrl() is populated.
   async function loginWithOidc(providerId) {
+    await forgetServerCookies(validatedUrl);
     setServerUrl(validatedUrl);
     setNativeMode('server');
     DB.setSetting('setupComplete', true);
     try {
       const ret = encodeURIComponent('#/');
       const { Browser } = await import('@capacitor/browser');
+      const { appChallengeParam } = await import('../lib/oidc-app-handoff.js');
       await Browser.open({
-        url: `${validatedUrl}/api/auth/oidc/login/${providerId}?mobile=1&return=${ret}`,
+        url: `${validatedUrl}/api/auth/oidc/login/${providerId}?mobile=1&return=${ret}${await appChallengeParam()}`,
         presentationStyle: 'popover',
       });
       // Deep-link callback (notetrace://oidc-callback?token=…) handled by

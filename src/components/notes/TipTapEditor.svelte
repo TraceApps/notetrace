@@ -26,6 +26,8 @@
   import { Placeholder } from '@tiptap/extensions';
   import { NoteLink } from '../../lib/note-link-extension.js';
   import { portal } from '../../lib/portal.js';
+  import { foldText } from '../../lib/search-text.js';
+
 
   /** Markdown source. Read on mount; later external changes reload it. */
   export let value = '';
@@ -70,10 +72,10 @@
     { key: 'reminder',  icon: 'notification_add',     words: 'reminder remind alarm', parent: true },
   ];
   function _slashMatches(query, actions) {
-    const q = query.trim().toLowerCase();
+    const q = foldText(query).trim();
     return SLASH
       .filter(c => !c.parent || (actions || []).includes(c.key))
-      .filter(c => !q || c.key.startsWith(q) || c.words.split(' ').some(w => w.startsWith(q)) || $_(`slash.${c.key}`).toLowerCase().includes(q))
+      .filter(c => !q || c.key.startsWith(q) || c.words.split(' ').some(w => w.startsWith(q)) || foldText($_(`slash.${c.key}`)).includes(q))
       .slice(0, 10)
       .map(c => ({ ...c, slash: true }));
   }
@@ -102,14 +104,14 @@
   }
 
   function _matches(query) {
-    const q = query.trim().toLowerCase();
+    const q = foldText(query).trim();
     const titles = [...new Set((linkTitles || []).map(t => String(t || '').trim()).filter(Boolean))];
     const list = titles
-      .filter(t => !q || t.toLowerCase().includes(q))
-      .sort((a, b) => (a.toLowerCase().startsWith(q) ? 0 : 1) - (b.toLowerCase().startsWith(q) ? 0 : 1) || a.localeCompare(b))
+      .filter(t => !q || foldText(t).includes(q))
+      .sort((a, b) => (foldText(a).startsWith(q) ? 0 : 1) - (foldText(b).startsWith(q) ? 0 : 1) || a.localeCompare(b))
       .slice(0, 6)
       .map(title => ({ title, create: false }));
-    if (q && !titles.some(t => t.toLowerCase() === q)) list.push({ title: query.trim(), create: true });
+    if (q && !titles.some(t => foldText(t) === q)) list.push({ title: query.trim(), create: true });
     return list;
   }
 

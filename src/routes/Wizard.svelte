@@ -1,11 +1,14 @@
 <script>
   import { _ } from 'svelte-i18n';
-  import { push } from 'svelte-spa-router';
+  import { push, replace } from 'svelte-spa-router';
   import { fade, fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { DB } from '../lib/db.js';
   import { bulkSet } from '../stores/settings.js';
-  import { currentUser, userMgmtActive, setupRequired, loadAuthState } from '../stores/auth.js';
+  import { currentUser, userMgmtActive, setupRequired, loadAuthState, signInProblem } from '../stores/auth.js';
+  import { get } from 'svelte/store';
+  import { cookieBlockedByHttp, droppedCookieReason } from '../lib/cookie-check.js';
+  import CookieWarning from '../components/ui/CookieWarning.svelte';
   import { validatePassword, passwordStrength } from '../lib/validation.js';
   import { showError } from '../stores/toast.js';
   import { isNative, getServerUrl, apiUrl, iconUrl } from '../lib/platform.js';
@@ -18,6 +21,16 @@
   const _isNativeLocal        = isNative && !getServerUrl();
   const _isPwa                = !isNative;
   const _forceAccountCreation = _isPwa && $setupRequired;
+
+  // A new account signs straight in, so a plain-HTTP page with an HTTPS-only
+  // cookie would loop here too. Say so on the account step (cookie-check.js).
+  let _authStatus = null;
+  if (_isPwa) {
+    fetch(apiUrl('/api/auth/status'), { credentials: 'include' })
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { _authStatus = d; if (cookieBlockedByHttp(d)) signInProblem.set('http'); })
+      .catch(() => {});
+  }
 
   let step = 0;
   let dir  = 1;
@@ -37,8 +50,8 @@
   $: pwScore = passwordStrength(umPassword);
 
   $: STEPS = _isNativeLocal
-    ? ['welcome','name','done']
-    : ['welcome','account','done'];
+    ? ['welcome','name','updates','done']
+    : ['welcome','account','updates','done'];
   $: progress = ((step + 1) / STEPS.length) * 100;
 
   let displayName = '';
@@ -82,9 +95,21 @@
       });
       if (!res.ok) {
         const e = await res.json().catch(() => ({}));
+        // Refused because the first account was made elsewhere meanwhile
+        // (another tab or device): this tab belongs on sign-in, not here.
+        if (_forceAccountCreation) {
+          await loadAuthState();
+          if (!get(setupRequired)) { replace('/'); return; }
+        }
         throw new Error(e.error || `Registration failed (${res.status})`);
       }
       await loadAuthState();
+      // The account exists, but the browser didn't keep the sign-in cookie,
+      // so every later step would fail. Stop and say why.
+      if (_isPwa && !get(currentUser)) {
+        signInProblem.set(droppedCookieReason(_authStatus));
+        return;
+      }
       next();
     } catch (e) {
       umError = e.message;
@@ -101,7 +126,22 @@
   // parity port from NutriTrace + LiftTrace's GA polish pass.
   let wizardDone = false;
 
+  // ── Update checks ────────────────────────────────────────────────────────
+  // Off unless it's answered here, so a new install contacts nothing on its
+  // own. Skipping the wizard leaves it off too, and the app says so once.
+  // An instance that already existed keeps checking (server/lib/update-check.js).
+  let updateChecks = false;
+
+  async function _saveUpdateChoice() {
+    try {
+      const { setAutoCheck, setServerUpdateCheck } = await import('../lib/updates.js');
+      setAutoCheck(updateChecks);
+      await setServerUpdateCheck(updateChecks);
+    } catch { /* single-user or offline: the device answer still stands */ }
+  }
+
   async function finish() {
+    await _saveUpdateChoice();
     const settingsToSave = {
       // New users finishing onboarding get gradient banners as their
       // default first impression. Existing users (who never re-run the
@@ -189,6 +229,9 @@
 
         {#if enableUserMgmt}
           <div class="um-form" transition:fly={{ y: 10, duration: 200 }}>
+            {#if $signInProblem}
+              <CookieWarning reason={$signInProblem} />
+            {/if}
             <p class="um-section-label">{$_('wizard_ct.admin_account')}</p>
 
             <div class="form-row-2">
@@ -263,6 +306,21 @@
         </div>
 
       <!-- Done -->
+      {:else if STEPS[step] === 'updates'}
+        <h1 class="step-title">{$_('wizard_ct.updates.title')}</h1>
+        <p class="step-desc">{$_('wizard_ct.updates.desc')}</p>
+        <div class="upd-row">
+          <div class="upd-text">
+            <div class="upd-label">{$_('wizard_ct.updates.toggle')}</div>
+            <div class="upd-sub">{$_('wizard_ct.updates.toggle_sub')}</div>
+          </div>
+          <Toggle checked={updateChecks} on:change={e => updateChecks = e.detail} />
+        </div>
+        <p class="upd-note">{$_('wizard_ct.updates.note')}</p>
+        <div class="step-actions">
+          <button class="btn-primary" on:click={next}>{$_('wizard_ct.continue', { default: 'Continue' })}</button>
+        </div>
+
       {:else if STEPS[step] === 'done'}
         <h1 class="step-title">You're all set</h1>
         <p class="step-desc">NoteTrace is ready. Start by writing your first note.</p>
@@ -276,6 +334,12 @@
 </div>
 
 <style>
+  .upd-row { display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 14px 16px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+  .upd-text { display: flex; flex-direction: column; gap: 2px; text-align: left; }
+  .upd-label { font-size: 14px; font-weight: 600; color: var(--text-1); }
+  .upd-sub { font-size: 12px; color: var(--text-3); }
+  .upd-note { font-size: 12px; line-height: 1.5; color: var(--text-3); margin: 12px 2px 0; }
+
   /* Celebration screen shown briefly between finishing the wizard and
      landing on /notes. Ported byte-for-byte from NutriTrace +
      LiftTrace so the cross-app onboarding closure feels identical. */

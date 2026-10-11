@@ -4,6 +4,7 @@ import { wrap } from '../logger.js';
 import { getAiConfig } from '../ai.js';
 import { makeRateLimiter } from '../middleware/rate-limit.js';
 import { getOpenAIChatParams } from '../lib/openai-chat-params.js';
+import { createToolSupportMemory, sendWithToolFallback } from '../lib/tool-support.js';
 import db from '../db.js';
 import multer from 'multer';
 import { transcribeAudio, transcribeFile, readImageText } from '../lib/ai-extract.js';
@@ -19,9 +20,11 @@ const MAX_HISTORY = 200; // rows kept per user
 // ── GET /api/ai/history ───────────────────────────────────────────────────────
 router.get('/history', requireAuth, wrap((req, res) => {
   const u = uid(req);
+  // The newest 100, oldest first. id breaks ties: a question and its
+  // answer are often saved in the same second.
   const rows = u == null
-    ? db.prepare(`SELECT role, content, created_at FROM ai_chat_history WHERE user_id IS NULL ORDER BY created_at ASC LIMIT 100`).all()
-    : db.prepare(`SELECT role, content, created_at FROM ai_chat_history WHERE user_id = ? ORDER BY created_at ASC LIMIT 100`).all(u);
+    ? db.prepare(`SELECT role, content, created_at FROM (SELECT id, role, content, created_at FROM ai_chat_history WHERE user_id IS NULL ORDER BY created_at DESC, id DESC LIMIT 100) ORDER BY created_at ASC, id ASC`).all()
+    : db.prepare(`SELECT role, content, created_at FROM (SELECT id, role, content, created_at FROM ai_chat_history WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 100) ORDER BY created_at ASC, id ASC`).all(u);
   res.json(rows);
 }));
 
@@ -53,19 +56,43 @@ router.delete('/history', requireAuth, wrap((req, res) => {
   res.json({ ok: true });
 }));
 
+// Kept identical to src/lib/aiChat.js (scripts/ai-models.test.js checks).
+// Used when no model is chosen; an admin who set one keeps it.
 const AI_DEFAULT_MODELS = {
-  claude: 'claude-haiku-4-5-20251001',
+  claude: 'claude-haiku-5-5',
   openai: 'gpt-5.6-luna',
-  gemini: 'gemini-3.6-flash',
+  gemini: 'gemini-3.8-flash',
 };
 
-// Models Google has shut down (404) or scheduled for shutdown.
-// Saved env-locked configs pointing at any of these are remapped to the
-// current default so the proxy doesn't 404 against a dead endpoint.
+// Model IDs that changed name: a saved old name is sent as the new one.
+const AI_MODEL_RENAMES = {
+  'gemini-3.1-pro': 'gemini-3.1-pro-preview',
+  'gemini-3-pro-preview': 'gemini-3.1-pro-preview',
+  'gpt-5.6': 'gpt-5.6-sol',
+};
+const renamedModel = (model) => AI_MODEL_RENAMES[model] || model;
+
+// Models Google has shut down (404). Saved env-locked configs pointing at any
+// of these are remapped to the current default so the proxy doesn't 404
+// against a dead endpoint. Shut down per ai.google.dev/gemini-api/docs/deprecations (2026-10-09).
 const GEMINI_RETIRED = new Set([
   'gemini-1.5-flash', 'gemini-1.5-pro',
-  'gemini-2.0-flash', 'gemini-2.0-flash-lite',
+  'gemini-2.0-flash', 'gemini-2.0-flash-001', 'gemini-2.0-flash-lite', 'gemini-2.0-flash-lite-001',
+  'gemini-2.0-flash-lite-preview', 'gemini-2.0-flash-lite-preview-02-05',
+  'gemini-2.5-pro-preview-03-25', 'gemini-2.5-pro-preview-05-06', 'gemini-2.5-pro-preview-06-05',
+  'gemini-2.5-flash-preview-05-20', 'gemini-2.5-flash-preview-09-25', 'gemini-2.5-flash-lite-preview-09-2025',
+  'gemini-3.1-flash-lite-preview',
 ]);
+function geminiModelFor(model) {
+  const m = renamedModel(model || AI_DEFAULT_MODELS.gemini);
+  return GEMINI_RETIRED.has(m) ? AI_DEFAULT_MODELS.gemini : m;
+}
+/** The model to send on a vendor's own API; OpenAI-compatible ones keep theirs. */
+function modelFor(provider, model) {
+  if (provider === 'openai') return renamedModel(model);
+  if (provider === 'gemini') return geminiModelFor(model);
+  return model;
+}
 
 /**
  * POST /api/ai/chat
@@ -110,7 +137,7 @@ function _serverCfg() {
   return {
     provider,
     apiKey: cfg.ai_api_key,
-    model: cfg.ai_model || AI_DEFAULT_MODELS[provider] || '',
+    model: modelFor(provider, cfg.ai_model || AI_DEFAULT_MODELS[provider] || ''),
     baseUrl: cfg.ai_base_url,
     transcribeModel: process.env.AI_TRANSCRIBE_MODEL || '',
   };
@@ -172,11 +199,17 @@ export function relayRequest(cfg, body) {
     return { url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cfg.model)}:generateContent?key=${encodeURIComponent(cfg.apiKey || '')}`, headers: { 'Content-Type': 'application/json' }, body: out };
   }
   out.model = cfg.model;
+  // The relay passes back one JSON reply, never a stream (TraceApps/nutritrace#258).
+  out.stream = false;
   const base = cfg.provider === 'openai' ? 'https://api.openai.com' : String(cfg.baseUrl || '').replace(/\/+$/, '');
-  const headers = { 'Content-Type': 'application/json' };
+  const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
   if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
   return { url: `${base}/v1/chat/completions`, headers, body: out };
 }
+
+// Models the relay found can't use tools, by endpoint and model
+// (TraceApps/nutritrace#259).
+const relayToolSupport = createToolSupportMemory();
 
 router.post('/relay', requireAuth, aiChatLimit, wrap(async (req, res) => {
   const body = req.body?.body;
@@ -186,14 +219,30 @@ router.post('/relay', requireAuth, aiChatLimit, wrap(async (req, res) => {
   if (!cfg.apiKey && !local) return res.status(503).json({ error: { message: 'AI not configured on server. Set AI_API_KEY in environment.' } });
   if (local && (!cfg.baseUrl || !cfg.model)) return res.status(503).json({ error: { message: 'AI_PROVIDER=oai-compat requires AI_BASE_URL and AI_MODEL in environment.' } });
   const r = relayRequest(cfg, body);
-  let upstream;
+  const send = async (b) => {
+    const upstream = await fetch(r.url, { method: 'POST', headers: r.headers, body: JSON.stringify(b), signal: AbortSignal.timeout(120_000) });
+    const data = await upstream.json().catch(() => ({ error: { message: `AI provider error ${upstream.status}` } }));
+    return { ok: upstream.ok, status: upstream.status, data };
+  };
+  // An OpenAI-compatible model that can't use tools gets the request again
+  // without them, so older apps get an answer too; trace_tools_unsupported
+  // lets the app say so.
+  const openai = cfg.provider !== 'claude' && cfg.provider !== 'gemini';
+  let out;
   try {
-    upstream = await fetch(r.url, { method: 'POST', headers: r.headers, body: JSON.stringify(r.body), signal: AbortSignal.timeout(120_000) });
+    out = openai
+      ? await sendWithToolFallback(r.body, send, { memory: relayToolSupport, baseUrl: r.url, model: r.body.model })
+      : await send(r.body);
   } catch (e) {
     return res.status(502).json({ error: { message: e?.name === 'TimeoutError' ? 'The AI provider didn\'t answer in time.' : 'Couldn\'t reach the AI provider.' } });
   }
-  const data = await upstream.json().catch(() => ({ error: { message: `AI provider error ${upstream.status}` } }));
-  res.status(upstream.status).json(data);
+  if (out.toolsDropped && out.data && typeof out.data === 'object' && !Array.isArray(out.data)) {
+    out.data.trace_tools_unsupported = true;
+    // The refusal named another model than the one asked for (a gateway
+    // that routes one name to many models).
+    if (out.toolsRouted) out.data.trace_tools_routed = true;
+  }
+  res.status(out.status).json(out.data);
 }));
 
 router.post('/read-image', requireAuth, aiChatLimit, wrap(async (req, res) => {
@@ -220,7 +269,7 @@ router.post('/chat', requireAuth, aiChatLimit, wrap(async (req, res) => {
 
   const cfg = getAiConfig();
   const provider = cfg.ai_provider || 'claude';
-  const model    = cfg.ai_model    || AI_DEFAULT_MODELS[provider] || '';
+  const model    = modelFor(provider, cfg.ai_model || AI_DEFAULT_MODELS[provider] || '');
   const apiKey   = cfg.ai_api_key;
   const baseUrl  = cfg.ai_base_url;
 
@@ -246,6 +295,8 @@ router.post('/chat', requireAuth, aiChatLimit, wrap(async (req, res) => {
 }));
 
 export default router;
+// For the test that keeps these identical to the client's (scripts/ai-models.test.js).
+export const _models = { AI_DEFAULT_MODELS, AI_MODEL_RENAMES, GEMINI_RETIRED, geminiModelFor, modelFor };
 
 // ── Provider implementations (server-side) ────────────────────────────────────
 
@@ -274,6 +325,7 @@ async function _callOpenAI(apiKey, model, messages, systemPrompt, baseUrl = 'htt
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
@@ -288,7 +340,7 @@ async function _callOpenAI(apiKey, model, messages, systemPrompt, baseUrl = 'htt
 }
 
 async function _callGemini(apiKey, model, messages, systemPrompt) {
-  const m = GEMINI_RETIRED.has(model) ? AI_DEFAULT_MODELS.gemini : (model || AI_DEFAULT_MODELS.gemini);
+  const m = geminiModelFor(model);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
   const contents = messages.map(msg => ({
     role: msg.role === 'assistant' ? 'model' : 'user',

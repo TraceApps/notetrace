@@ -5,7 +5,7 @@
  * Uses @capacitor/core for reliable detection (not window.Capacitor directly).
  */
 
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, CapacitorCookies } from '@capacitor/core';
 
 /**
  * True when running inside the Capacitor native shell (Android / iOS).
@@ -81,6 +81,46 @@ export function setAuthToken(token) {
 
 export function getAuthToken() {
   return localStorage.getItem('note:authToken') || null;
+}
+
+// Signing in through CapacitorHttp leaves the server's session cookie in
+// the phone's native cookie jar, and every later native request sends it
+// next to the Authorization header of whoever is signed in now. Every
+// change of account (sign-in, Connect, Disconnect, sign-out, a lost
+// session) forgets it. Only NoteTrace's own cookies go, at every address
+// the phone knows (`urls`, the server in use, the last one used, and the
+// app's own address, where Capacitor keeps a copy of what a native request
+// receives): a sign-in gate in front of the server (Cloudflare Access,
+// Authelia) keeps its cookies. Does nothing on the web and never throws.
+const SERVER_COOKIES = ['note_token', 'note_oidc_logout'];
+export async function forgetServerCookies(...urls) {
+  if (!isNative) return;
+  try {
+    let last = null;
+    try { last = localStorage.getItem('note:lastServerUrl'); } catch { /* none */ }
+    const at = new Set();
+    for (const u of [...urls, getServerUrl(), last, globalThis.location?.origin]) {
+      try { if (u) at.add(new URL(u).origin + '/'); } catch { /* not an address */ }
+    }
+    for (const url of at) {
+      for (const key of SERVER_COOKIES) {
+        try { await CapacitorCookies.deleteCookie({ url, key }); } catch { /* none there */ }
+      }
+    }
+  } catch { /* none kept */ }
+}
+
+/**
+ * A server that answered but has no account yet (a fresh install): it needs
+ * setting up in a browser before an app can sign in. `res` is what
+ * CapacitorHttp returns for /api/health ({ status, data }). Newer servers say
+ * so with a 200, older ones with a 503 "Setup required".
+ */
+export function healthNeedsSetup(res) {
+  try {
+    const d = typeof res?.data === 'string' ? JSON.parse(res.data) : res?.data;
+    return !!d?.setup_required;
+  } catch { return false; }
 }
 
 /**
@@ -238,4 +278,19 @@ export function apiUrl(path) {
     return path; // native local — caller redirects to NoteApiNative
   }
   return _basePath + path;
+}
+
+/** The address of a note's public link, on the server this app talks to. */
+export function publicNoteUrl(token) {
+  const root = isNative ? String(getServerUrl() || '').replace(/\/+$/, '') : `${window.location.origin}${_basePath}`;
+  return `${root}/n/${token}`;
+}
+
+/** The token when this page is a public note link (/n/<token>), else null. */
+export function publicNoteToken() {
+  if (isNative || typeof window === 'undefined') return null;
+  let path = window.location.pathname;
+  if (_basePath && path.startsWith(_basePath)) path = path.slice(_basePath.length);
+  const m = /^\/n\/([A-Za-z0-9_-]{16,64})\/?$/.exec(path);
+  return m ? m[1] : null;
 }

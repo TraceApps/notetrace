@@ -1,12 +1,14 @@
 <script>
   import { onMount } from 'svelte';
-  import { currentUser, userMgmtActive, loadAuthState } from '../stores/auth.js';
+  import { currentUser, userMgmtActive, loadAuthState, signInProblem } from '../stores/auth.js';
+  import { cookieBlockedByHttp, droppedCookieReason } from '../lib/cookie-check.js';
+  import CookieWarning from '../components/ui/CookieWarning.svelte';
   import { loadServerSettings } from '../stores/settings.js';
   import { showError, showSuccess } from '../stores/toast.js';
   import { push } from 'svelte-spa-router';
   import { slide } from 'svelte/transition';
   import { _ } from 'svelte-i18n';
-  import { apiUrl, isNative, getServerUrl, setAuthToken, resolveAssetUrl, iconUrl } from '../lib/platform.js';
+  import { apiUrl, isNative, getServerUrl, setAuthToken, forgetServerCookies, resolveAssetUrl, iconUrl } from '../lib/platform.js';
 
   import { get } from 'svelte/store';
 
@@ -26,6 +28,7 @@
       const saved = await bio.readSavedToken();
       if (!saved) { showError($_('login_ct.toast.no_saved')); return; }
       setAuthToken(saved);
+      await forgetServerCookies();
       await loadAuthState();
       // If /me rejected the saved token (expired, JWT_SECRET rotated, backup
       // restored, server URL changed), loadAuthState cleared currentUser.
@@ -57,6 +60,7 @@
   // since there's no server to talk to.
   let oidcProviders = [];
   let passwordLoginEnabled = true;
+  let authStatus = null;
   onMount(async () => {
     if (isNative && !getServerUrl()) return; // standalone — skip
     // Probe biometric concurrently with the auth-status fetch.
@@ -71,6 +75,10 @@
       const r = await fetch(apiUrl('/api/auth/status'), { credentials: 'include' });
       if (r.ok) {
         const data = await r.json();
+        authStatus = data;
+        // Plain HTTP with an HTTPS-only cookie: say so before anyone signs
+        // in (lib/cookie-check.js).
+        if (cookieBlockedByHttp(data, { native: isNative })) signInProblem.set('http');
         if (data?.oidc) {
           oidcProviders = Array.isArray(data.oidc.providers) ? data.oidc.providers : [];
           passwordLoginEnabled = data.oidc.enable_email_password_login !== false;
@@ -86,8 +94,9 @@
       // the server to redirect via the notetrace://oidc-callback deep
       // link instead of setting an HttpOnly cookie + SPA hash redirect.
       const { Browser } = await import('@capacitor/browser');
+      const { appChallengeParam } = await import('../lib/oidc-app-handoff.js');
       await Browser.open({
-        url: apiUrl(`/api/auth/oidc/login/${providerId}?mobile=1&return=${ret}`),
+        url: apiUrl(`/api/auth/oidc/login/${providerId}?mobile=1&return=${ret}${await appChallengeParam()}`),
         presentationStyle: 'popover',
       });
       return;
@@ -108,7 +117,10 @@
       const data = await res.json();
       if (!res.ok) { showError(data.error || $_('login.errors.failed')); return; }
       // Store auth token for native server mode
-      if (isNative && data.token) setAuthToken(data.token);
+      if (isNative && data.token) {
+        setAuthToken(data.token);
+        await forgetServerCookies();
+      }
       // If biometric is enabled, stash the JWT so the next launch can unlock
       // with biometric instead of password. Mirrors the NT + LT save-on-login
       // pattern.
@@ -123,12 +135,24 @@
       localStorage.setItem('wl:userId', String(data.user.id));
       localStorage.setItem('note:cachedUser', JSON.stringify(data.user));
       localStorage.setItem('note:cachedUserMgmt', '1');
-      currentUser.set(data.user);
+      // Web: don't set the user here. loadAuthState() below reads it back
+      // from the server, so the app only appears once the session cookie has
+      // actually stuck; setting it early flashed the app for a moment before
+      // a dropped cookie sent the user back. Native signs in with a token.
+      if (isNative) currentUser.set(data.user);
       // Refresh CSRF token from /api/auth/me before any state-changing request
       // can fire (otherwise reactive settings saves would use a stale csrf from
       // a previous session and 403). loadAuthState() handles the fetch and
-      // populates localStorage.nt:csrf as a side effect.
+      // populates localStorage note:csrf as a side effect.
       await loadAuthState();
+      // The password was right but the session didn't stick: the browser
+      // dropped the cookie. Say why here instead of looping back to sign-in.
+      // get(), not $currentUser: this page can be torn down meanwhile.
+      if (!isNative && !get(currentUser)) {
+        signInProblem.set(droppedCookieReason(authStatus, { native: isNative }));
+        return;
+      }
+      signInProblem.set(null);
       await loadServerSettings();
       push('/');
     } catch(e) {
@@ -170,6 +194,10 @@
       <h1 class="login-title">{$_('login_ct.app_name')}</h1>
       <p class="text-3 text-sm">{$_('login.subtitle')}</p>
     </div>
+
+    {#if $signInProblem}
+      <CookieWarning reason={$signInProblem} />
+    {/if}
 
     {#if !recoveryDone}
       {#if oidcProviders.length}

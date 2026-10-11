@@ -323,18 +323,60 @@ async function _migrateAiChatUpdatedAt() {
 // `isNative`. Now they actually persist to the local user_settings
 // table when running native.
 
+// A setting's value as the server keeps it (JSON), so a list or an object
+// (note templates, note order) goes up as itself: String() made it
+// "[object Object]" or "3,1,2".
+export function settingText(value) {
+  if (value == null) return null;
+  return JSON.stringify(value);
+}
+
+// Returns when the change was made (to the millisecond): a direct push
+// marks it sent only if it is still that change (dbMarkSettingsSynced).
 export async function dbUpsertSetting(key, value) {
-  if (!isNative) return;
+  if (!isNative) return null;
   const db = await getDb();
-  const v = value == null ? null : String(value);
+  const v = settingText(value);
+  const updatedAt = new Date().toISOString();
   await db.run(
-    `INSERT INTO user_settings (user_id, key, value, sync_status)
-     VALUES (?, ?, ?, 'pending')
+    `INSERT INTO user_settings (user_id, key, value, updated_at, sync_status)
+     VALUES (?, ?, ?, ?, 'pending')
      ON CONFLICT(user_id, key) DO UPDATE SET
        value = excluded.value,
-       updated_at = datetime('now'),
+       updated_at = excluded.updated_at,
        sync_status = 'pending'`,
-    [LOCAL_USER_ID, key, v]
+    [LOCAL_USER_ID, key, v, updatedAt]
+  );
+  return updatedAt;
+}
+
+/** When the phone's copy of a setting last changed, if it holds `value`
+ *  (the change a direct push sends), or null. */
+export async function dbGetSettingUpdatedAt(key, value) {
+  if (!isNative) return null;
+  const db = await getDb();
+  const r = await db.query(`SELECT value, updated_at FROM user_settings WHERE user_id = ? AND key = ?`, [LOCAL_USER_ID, key]);
+  const row = r?.values?.[0];
+  if (!row) return null;
+  if (value !== undefined && row.value !== settingText(value)) return null;
+  return row.updated_at ?? null;
+}
+
+// The server's value of a setting, written into the phone's copy as sent
+// (stores/settings.js, settings coming down). A setting changed here and
+// not sent yet is the newer one: it stays, and goes up with the next push.
+// One statement, so a change made meanwhile is never written over.
+export async function dbMirrorSetting(key, value) {
+  if (!isNative) return;
+  const db = await getDb();
+  const v = settingText(value);
+  await db.run(
+    `INSERT INTO user_settings (user_id, key, value, updated_at, sync_status)
+     VALUES (?, ?, ?, ?, 'synced')
+     ON CONFLICT(user_id, key) DO UPDATE SET
+       value = excluded.value, updated_at = excluded.updated_at, sync_status = 'synced'
+     WHERE user_settings.sync_status != 'pending'`,
+    [LOCAL_USER_ID, key, v, new Date().toISOString()]
   );
 }
 
@@ -495,9 +537,12 @@ export async function dbSetServerId(table, clientId, serverId, snapshotUpdatedAt
  *  server_id. Parent-table FK columns are translated from server ids to local ids via the per-table
  *  server_id index.
  */
-export async function dbApplyPull(payload) {
-  if (!isNative || !payload?.tables) return;
+export async function dbApplyPull(payload, { live = () => true } = {}) {
+  // live(): false once the copy is changing hands (another account signing
+  // in, lib/local-account.js): nothing more of this pull is written.
+  if (!isNative || !payload?.tables) return true;
   const db = await getDb();
+  const install = await dbInstallId();
   // FK column -> candidate parent tables, used to translate server ids
   // to local ids.
   const parents = { note_id: ['notes'], label_id: ['labels'] };
@@ -526,13 +571,31 @@ export async function dbApplyPull(payload) {
     if (table === 'settings') continue;
 
     for (const row of rows) {
+      if (!live()) return false;
       let existing = (await db.query(
-        `SELECT id, sync_status FROM ${table} WHERE server_id = ? LIMIT 1`,
+        `SELECT id, sync_status, created_at FROM ${table} WHERE server_id = ? LIMIT 1`,
         [row.id]
       ))?.values?.[0];
 
+      // One this phone made, whose push went in but whose answer was lost
+      // on the way back (it carries this install's key for that row): the
+      // same row, not a second one.
+      const made = typeof row.client_key === 'string' ? row.client_key : null;
+      if (!existing && made && install && made.startsWith(`${install}:${table}:`)) {
+        const localId = Number(made.slice(`${install}:${table}:`.length).split('@')[0]);
+        const mine = Number.isFinite(localId) ? (await db.query(
+          `SELECT * FROM ${table} WHERE id = ? AND server_id IS NULL LIMIT 1`, [localId]
+        ))?.values?.[0] : undefined;
+        // The same row only if the key is the one it would be sent with now.
+        if (mine && createKeyOf(install, table, mine) === made) {
+          existing = mine;
+          await db.run(`UPDATE ${table} SET server_id = ? WHERE id = ?`, [row.id, existing.id]);
+        }
+      }
+
       // Translate FK columns from server ids to local ids.
       const translated = { ...row };
+      delete translated.client_key;
       let unresolved = false;
       for (const [fk, candidates] of Object.entries(parents)) {
         if (fk in translated && translated[fk] != null) {
@@ -549,7 +612,7 @@ export async function dbApplyPull(payload) {
       if (!existing && SYNC_UNIQUE_KEYS[table]) {
         const keys = SYNC_UNIQUE_KEYS[table];
         existing = (await db.query(
-          `SELECT id, sync_status FROM ${table} WHERE ${keys.map(k => `${k} = ?`).join(' AND ')} LIMIT 1`,
+          `SELECT id, sync_status, created_at FROM ${table} WHERE ${keys.map(k => `${k} = ?`).join(' AND ')} LIMIT 1`,
           keys.map(k => translated[k])
         ))?.values?.[0];
         if (existing) await db.run(`UPDATE ${table} SET server_id = ? WHERE id = ?`, [row.id, existing.id]);
@@ -582,11 +645,17 @@ export async function dbApplyPull(payload) {
         return v;
       });
 
+      if (!live()) return false;
       if (existing) {
-        const set = cols.map(c => `${c} = ?`).join(', ');
+        // When a row here was made stays as it is: for a row this phone
+        // made, the server's is when it got there. It's part of the key the
+        // row is sent with (createKeyOf), which must never change, or the
+        // same row sent again makes a second one.
+        const keep = c => c === 'created_at' && existing.created_at != null;
+        const set = cols.map(c => (keep(c) ? null : `${c} = ?`)).filter(Boolean).join(', ');
         await db.run(
           `UPDATE ${table} SET ${set}, sync_status = 'synced' WHERE id = ?`,
-          [...values, existing.id]
+          [...values.filter((v, i) => !keep(cols[i])), existing.id]
         );
       } else {
         await db.run(
@@ -598,8 +667,28 @@ export async function dbApplyPull(payload) {
     }
   }
 
+  // Trace chat deleted on the server (Clear Chat, the trim to the newest
+  // messages): the pull lists every message the account has now, and this
+  // copy keeps only those, so cleared chat doesn't stay here or go back up
+  // later (Connect with Upload sends every row). Also when it's waiting to
+  // go up (Push All marks every row): Trace writes chat on the server,
+  // never here, so a message with a server id is the server's. One not
+  // sent yet has no server id and stays. Not right after a backup of this
+  // account was restored: what it put back that the server no longer has
+  // goes up again (reconcile_missing, lib/sync.js), chat included.
+  if (!live()) return false;
+  if (Array.isArray(payload.chat_ids) && (await dbGetMeta('reconcile_missing')) !== '1') {
+    const there = new Set(payload.chat_ids);
+    const here = (await db.query(`SELECT id, server_id FROM ai_chat_history WHERE server_id IS NOT NULL`, []))?.values || [];
+    for (const r of here) {
+      if (!live()) return false;
+      if (!there.has(r.server_id)) await db.run(`DELETE FROM ai_chat_history WHERE id = ?`, [r.id]);
+    }
+  }
+
   // Shared notes this account can no longer see (removed, left, or the
   // owner trashed or deleted them): drop the local copy and its rows.
+  if (!live()) return false;
   if (Array.isArray(payload.revoked_notes)) {
     for (const serverId of payload.revoked_notes) {
       const local = (await db.query(`SELECT id FROM notes WHERE server_id = ?`, [serverId]))?.values?.[0];
@@ -617,8 +706,10 @@ export async function dbApplyPull(payload) {
   // back into the next push. Skip keys the user has a local pending
   // edit for — the pull would otherwise clobber the fresh value with
   // the server's pre-edit copy, same shape as the per-table guard above.
+  if (!live()) return false;
   if (Array.isArray(payload.tables.settings)) {
     for (const s of payload.tables.settings) {
+      if (!live()) return false;
       const localRow = (await db.query(
         `SELECT sync_status FROM user_settings WHERE user_id = ? AND key = ? LIMIT 1`,
         [LOCAL_USER_ID, s.key]
@@ -637,6 +728,7 @@ export async function dbApplyPull(payload) {
       );
     }
   }
+  return true;
 }
 
 /**
@@ -654,4 +746,225 @@ export async function dbMarkTableSynced(table, rows) {
       [r.id, r.updated_at]
     );
   }
+}
+
+// ── Whose copy (lib/local-account.js) ────────────────────────────────────
+
+/** Changes made here that haven't reached the server: rows waiting to go
+ *  up, and (unless `settings` is false) settings. */
+export async function dbCountUnsynced({ settings = true } = {}) {
+  if (!isNative) return 0;
+  const db = await getDb();
+  let total = 0;
+  for (const t of [...SYNC_TABLES, ...(settings ? ['user_settings'] : [])]) {
+    total += Number((await db.query(`SELECT COUNT(*) AS n FROM ${t} WHERE sync_status = 'pending'`, []))?.values?.[0]?.n || 0);
+  }
+  return total;
+}
+
+// Every account row the phone mirrors, its local restore points, and the
+// pull cursor: gone, so the next sync fills the copy from the account now
+// signed in. The install id and one-time markers in sync_meta stay.
+const _ACCOUNT_TABLES = [...SYNC_TABLES, 'note_versions', 'user_settings', 'sync_log'];
+export async function dbClearUserData() {
+  if (!isNative) return;
+  const db = await getDb();
+  // One statement per call: the Android plugin runs only the first
+  // statement of each line it splits a script into, so a script of
+  // deletes would leave most tables as they were.
+  for (const t of _ACCOUNT_TABLES) await db.run(`DELETE FROM ${t}`, []);
+  await db.run(`DELETE FROM sync_meta WHERE key = 'last_pull_at'`, []);
+  // Read back: a copy that still holds anything is never shown as cleared
+  // (lib/local-account.js shows the error screen instead).
+  for (const t of _ACCOUNT_TABLES) {
+    const left = Number((await db.query(`SELECT COUNT(*) AS n FROM ${t}`, []))?.values?.[0]?.n || 0);
+    if (left) throw new Error(`could not clear ${t}`);
+  }
+  if ((await db.query(`SELECT 1 FROM sync_meta WHERE key = 'last_pull_at'`, []))?.values?.length) throw new Error('could not clear the pull cursor');
+}
+
+/** The pull starts over (back to the account the data came from: what
+ *  changed there meanwhile comes down; lib/local-account.js). */
+export async function dbResetPullCursor() {
+  if (!isNative) return;
+  const db = await getDb();
+  await db.run(`DELETE FROM sync_meta WHERE key = 'last_pull_at'`, []);
+}
+
+/** Connecting to a server from Settings with the phone's rows going up
+ *  (lib/local-account.js claimForServer): every row goes up as new, since
+ *  ids from a server it synced with before mean nothing there (a pulled
+ *  row with the same number would land on it), rows deleted here go, and
+ *  the pull starts over. */
+export async function dbKeepForNewServer() {
+  if (!isNative) return;
+  const db = await getDb();
+  // One statement per call (see dbClearUserData).
+  for (const t of SYNC_TABLES) {
+    if (t !== 'ai_chat_history') await db.run(`DELETE FROM ${t} WHERE deleted_at IS NOT NULL`, []);
+    await db.run(`UPDATE ${t} SET server_id = NULL, sync_status = 'pending'`, []);
+  }
+  // Items and pictures keep their uuid: on a server that already has it
+  // for this account it's the same item, and one that is another account's
+  // is answered `uuid_taken` and gets a uuid of its own then (dbNewUuid).
+  await db.run(`UPDATE user_settings SET sync_status = 'pending'`, []);
+  await db.run(`DELETE FROM sync_meta WHERE key = 'last_pull_at'`, []);
+}
+
+// A uuid derived from another and an account: always the same pair, the same result.
+function _uuidFor(uuid, account) {
+  const base = String(uuid || '').replace(/~[0-9a-f]{8}$/, '');
+  if (!account) return base;
+  let h = 0x811c9dc5;
+  for (const ch of `${account}|${base}`) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+  return `${base}~${h.toString(16).padStart(8, '0')}`;
+}
+
+/** Rows the server answered `deleted` ([table, local id, reason, the
+ *  updated_at it went up with] tuples): removed here, a note with
+ *  everything hanging off it. A row changed again since it went up stays
+ *  (its next push decides). Returns the notes ({ id, title }) whose edits
+ *  went because what they changed was deleted elsewhere, to say so; a
+ *  tombstone, or a share taken away, isn't an edit lost. */
+export async function dbDropRows(drops) {
+  if (!isNative || !drops?.length) return [];
+  const db = await getDb();
+  const lost = new Map();
+  const one = async (sql, args) => (await db.query(sql, args))?.values?.[0];
+  for (const [table, id, reason = 'deleted', sentAt = null] of drops) {
+    if (!SYNC_TABLES.includes(table)) continue;
+    const row = await one(`SELECT * FROM ${table} WHERE id = ?`, [id]);
+    if (!row) continue;
+    if (sentAt != null && row.updated_at !== sentAt) continue;
+    const noteId = table === 'notes' ? id : row.note_id;
+    if (reason === 'deleted' && row.deleted_at == null && noteId != null && !lost.has(noteId)) {
+      const note = await one(`SELECT title FROM notes WHERE id = ?`, [noteId]);
+      if (note) lost.set(noteId, { id: noteId, title: note.title });
+    }
+    if (table === 'notes') {
+      for (const c of ['checklist_items', 'note_attachments', 'note_labels', 'note_versions']) await db.run(`DELETE FROM ${c} WHERE note_id = ?`, [id]);
+      await db.run(`DELETE FROM notes WHERE id = ?`, [id]);
+    } else {
+      await db.run(`DELETE FROM ${table} WHERE id = ?`, [id]);
+    }
+  }
+  return [...lost.values()];
+}
+
+/** Waiting items, pictures and labels of notes this phone has as deleted
+ *  ([table, local id] pairs). */
+export async function dbOrphansOfDeletedNotes() {
+  if (!isNative) return [];
+  const db = await getDb();
+  const out = [];
+  for (const t of ['checklist_items', 'note_attachments', 'note_labels']) {
+    const r = await db.query(`SELECT c.id FROM ${t} c JOIN notes n ON n.id = c.note_id WHERE c.sync_status = 'pending' AND n.deleted_at IS NOT NULL AND n.sync_status = 'synced'`, []);
+    for (const row of r?.values || []) out.push([t, row.id]);
+  }
+  return out;
+}
+
+/** A row's parent is gone from the server: the parent goes up again (as
+ *  new, once), so the row has something to belong to. */
+export async function dbParentGoneOnServer(table, id, fk, answered = null) {
+  if (!isNative) return;
+  const parentTable = SYNC_PARENTS[table]?.[fk];
+  if (!parentTable) return;
+  const db = await getDb();
+  const parent = (await db.query(`SELECT ${fk} AS p FROM ${table} WHERE id = ?`, [id]))?.values?.[0]?.p;
+  // A parent this same push answered has its id now: the row goes with it next time.
+  if (parent == null || answered?.has(`${parentTable}:${parent}`)) return;
+  await db.run(`UPDATE ${parentTable} SET server_id = NULL, sync_status = 'pending' WHERE id = ?`, [parent]);
+}
+
+/** The row's uuid is another account's on the server: one of its own,
+ *  derived from it and this account, so the same copy gets the same one
+ *  every time (a second restore finds the first instead of a twin). */
+export async function dbNewUuid(table, id, account = '') {
+  if (!isNative || !['checklist_items', 'note_attachments'].includes(table)) return;
+  const db = await getDb();
+  const row = (await db.query(`SELECT uuid FROM ${table} WHERE id = ?`, [id]))?.values?.[0];
+  if (!row) return;
+  const next = _uuidFor(row.uuid, account || 'copy');
+  if (next === row.uuid) return;
+  await db.run(`UPDATE ${table} SET uuid = ?, sync_status = 'pending' WHERE id = ?`, [next, id]);
+}
+
+/** After a pull from the start: rows this account owns here with a server
+ *  id the server didn't send go up again as new (its create key keeps that
+ *  to once). A note shared with this account is someone else's: left out. */
+export async function dbServerIdsMissingFromPull(payload) {
+  if (!isNative || !payload?.tables) return;
+  const db = await getDb();
+  for (const t of SYNC_TABLES) {
+    const sent = new Set((payload.tables[t] || []).map(r => r.id));
+    const ownOnly = t === 'notes' ? ` AND (share_role IS NULL OR share_role = 'owner')`
+      : (t === 'checklist_items' || t === 'note_attachments') ? ` AND note_id IN (SELECT id FROM notes WHERE share_role IS NULL OR share_role = 'owner')` : '';
+    const rows = (await db.query(`SELECT id, server_id FROM ${t} WHERE server_id IS NOT NULL${ownOnly}`, []))?.values || [];
+    for (const r of rows) {
+      if (!sent.has(r.server_id)) await db.run(`UPDATE ${t} SET server_id = NULL, sync_status = 'pending' WHERE id = ?`, [r.id]);
+    }
+  }
+}
+
+/** Notes shared with the account a backup came from: someone else's notes,
+ *  left out when that backup is restored into another account. */
+export async function dbDropSharedIn() {
+  if (!isNative) return;
+  const db = await getDb();
+  const ids = ((await db.query(`SELECT id FROM notes WHERE share_role IN ('view', 'edit')`, []))?.values || []).map(r => r.id);
+  for (const id of ids) {
+    for (const c of ['checklist_items', 'note_attachments', 'note_labels', 'note_versions']) await db.run(`DELETE FROM ${c} WHERE note_id = ?`, [id]);
+    await db.run(`DELETE FROM notes WHERE id = ?`, [id]);
+  }
+}
+
+/** This install's id: with a row's own id and when it was made, the key
+ *  the server knows a create by, so one sent twice is made once
+ *  (server/lib/create-keys.js).
+ *
+ *  The id is kept in this database, which Android backs up and puts back
+ *  on a new phone (or a second one), and also outside it, in a marker that
+ *  backups leave out (InstallMarkerPlugin). When the two differ, or the
+ *  marker is missing, this database came from elsewhere (or from before
+ *  the marker existed): this install takes a new id, so two phones never
+ *  send the same key for different rows. A new id is always safe; the cost
+ *  is that a create sent just before, whose answer never came, can be made
+ *  a second time, once. */
+let _installId = null;
+let _installIdPromise = null;
+let _markerPlugin = null;
+async function _installMarker() {
+  try {
+    if (!_markerPlugin) { const { registerPlugin } = await import('@capacitor/core'); _markerPlugin = registerPlugin('InstallMarker'); }
+    const got = await _markerPlugin.get();
+    return { kept: got?.value ?? null, set: value => _markerPlugin.set({ value }) };
+  } catch { return null; } // a shell without the plugin: the database's id stands
+}
+export function dbInstallId() {
+  if (_installId) return Promise.resolve(_installId);
+  if (!isNative) return Promise.resolve(null);
+  _installIdPromise ||= (async () => {
+    const db = await getDb();
+    let id = (await db.query(`SELECT value FROM sync_meta WHERE key = 'install_id'`, []))?.values?.[0]?.value || null;
+    const marker = await _installMarker();
+    if (!id || (marker && marker.kept !== id)) {
+      id = globalThis.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Array.from(globalThis.crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('')}`;
+      await db.run(`INSERT INTO sync_meta (key, value) VALUES ('install_id', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [id]);
+      // A marker that can't be written leaves the database's id standing:
+      // sync goes on, and the next start tries the marker again.
+      if (marker) { try { await marker.set(id); } catch { /* kept next time */ } }
+    }
+    _installId = id;
+    return id;
+  })().finally(() => { _installIdPromise = null; });
+  return _installIdPromise;
+}
+
+/** The key a row this install made is sent with: the install, the table,
+ *  the row's own id, and when it was made (a second guard, should two
+ *  copies of one database ever share an install id). */
+export function createKeyOf(install, table, row) {
+  if (!install || row?.id == null) return undefined;
+  return `${install}:${table}:${row.id}${row.created_at ? `@${row.created_at}` : ''}`;
 }

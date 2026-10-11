@@ -120,12 +120,13 @@ export async function readImageText(cfg, { base64, mime }) {
     return cleanExtracted(data.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '');
   }
   const base = provider === 'openai' ? 'https://api.openai.com' : String(cfg.baseUrl || '').replace(/\/+$/, '');
-  const headers = { 'Content-Type': 'application/json', ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}) };
+  const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json', ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}) };
   const res = await fetch(`${base}/v1/chat/completions`, {
     method: 'POST',
     headers,
     body: JSON.stringify({
       model: cfg.model,
+      stream: false,
       messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: `data:${mime};base64,${base64}` } }, { type: 'text', text: IMAGE_TEXT_PROMPT }] }],
     }),
   });

@@ -4,6 +4,12 @@ const config: CapacitorConfig = {
   appId: 'com.notetrace.app',
   appName: 'NoteTrace',
   webDir: 'dist',
+  // No Capacitor logging in any build. With it on (debug builds by
+  // default), every plugin call and its answer went to the system log, and
+  // the SQLite plugin's carry whole notes: titles, bodies, checklist items.
+  // The app's own messages still reach its diagnostic log (Settings >
+  // Diagnostics), just not the system log.
+  loggingBehavior: 'none',
   // In dev, point to your local Vite dev server for live-reload on device
   // Uncomment and set your machine's LAN IP when doing native dev builds:
   // server: { url: 'http://192.168.1.x:5173', cleartext: true },

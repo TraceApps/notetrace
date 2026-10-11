@@ -52,6 +52,8 @@ const _NoteApiHttp = {
       const e = await res.json().catch(() => ({}));
       const err = new Error(e.error || `API error ${res.status}`);
       err.status = res.status;
+      // The server's own "no account yet" answer: it is there, not down.
+      if (e.setup_required) err.setupRequired = true;
       throw err;
     }
     if (res.status === 204) return null;
@@ -220,6 +222,9 @@ const _NoteApiHttp = {
   addMember(noteId, data)        { return this.post(`/api/notes/${noteId}/members`, data); },
   updateMember(noteId, uid, data){ return this.patch(`/api/notes/${noteId}/members/${uid}`, data); },
   removeMember(noteId, uid)      { return this.del(`/api/notes/${noteId}/members/${uid}`); },
+  getPublicLink(noteId)          { return this.get(`/api/notes/${noteId}/public-link`); },
+  createPublicLink(noteId)       { return this.post(`/api/notes/${noteId}/public-link`); },
+  removePublicLink(noteId)       { return this.del(`/api/notes/${noteId}/public-link`); },
 
   // Users (sharing picker)
   getUsersList()                 { return this.get('/api/auth/users/list'); },
@@ -228,6 +233,11 @@ const _NoteApiHttp = {
   getAppConfig()                 { return this.get('/api/app-config'); },
 
   // Upload
+  // Your own profile. Through here rather than a raw fetch, so the offline
+  // layer sees it and a picture chosen with no connection is kept until
+  // there is one. Same shape in NutriTrace, LiftTrace and CookTrace.
+  updateProfile(data)            { return this.put('/api/auth/profile', data); },
+
   async uploadImage(file) {
     const form = new FormData();
     form.append('file', file);
@@ -265,6 +275,7 @@ const _NoteApiWeb = isNative ? null : createOfflineApi(_NoteApiHttp);
 const SERVER_ONLY_METHODS = new Set([
   'getUsersList', 'getAppConfig',
   'getMembers', 'addMember', 'updateMember', 'removeMember',
+  'getPublicLink', 'createPublicLink', 'removePublicLink',
   // Imports run on the server (keeping original dates) and reach this
   // device through sync.
   'importNotes', 'importUploadImage', 'importUploadFile', 'importUpdateAttachment', 'importAddAttachments', 'uploadAudio',

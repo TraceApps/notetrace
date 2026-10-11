@@ -6,6 +6,8 @@
   import LabelGlyph from './LabelGlyph.svelte';
   import { buildLabelTree, flattenTree } from '../../lib/label-tree.js';
   import { showError } from '../../stores/toast.js';
+  import { foldText } from '../../lib/search-text.js';
+
 
   /** Label ids currently on the note. */
   export let selected = [];
@@ -17,15 +19,15 @@
   // screen the keyboard would cover the labels, so it waits for a tap on Search.
   const typeFirst = typeof window !== 'undefined' && !!window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
 
-  $: q = query.trim().toLowerCase();
+  $: q = foldText(query).trim();
   // Nested labels ("Home/Garage") list under their parent, indented.
   // A group that isn't a label itself ("DockerCompose" in "DockerCompose/YAML")
   // shows as a heading, so its labels aren't left without a name above them.
   $: ordered = flattenTree(buildLabelTree($labels)).map(n => n.label
     ? { ...n.label, _key: n.label.id, _depth: n.depth, _short: n.name }
     : { _key: `group:${n.path}`, _group: true, _depth: n.depth, _short: n.name });
-  $: filtered = q ? $labels.filter(l => l.name.toLowerCase().includes(q)).map(l => ({ ...l, _key: l.id, _depth: 0, _short: l.name })) : ordered;
-  $: exact = $labels.some(l => l.name.toLowerCase() === q);
+  $: filtered = q ? $labels.filter(l => foldText(l.name).includes(q)).map(l => ({ ...l, _key: l.id, _depth: 0, _short: l.name })) : ordered;
+  $: exact = $labels.some(l => foldText(l.name) === q);
 
   function toggle(id) {
     const next = selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id];

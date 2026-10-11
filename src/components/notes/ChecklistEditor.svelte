@@ -119,6 +119,50 @@
     dispatch('update', { uuid: item.uuid, patch: { checked: !item.checked, today } });
   }
 
+  /**
+   * Everything ticked, put back at once.
+   *
+   * A shopping list is the same list next week, and tapping twenty items to
+   * start it again is the work this saves. One operation per item, the same
+   * one a tap sends, so it queues with no connection and merges the way every
+   * other tick does rather than needing a rule of its own.
+   */
+  function uncheckAll() {
+    if (!editable) return;
+    const back = list.filter(i => i.checked);
+    if (!back.length) return;
+    list = list.map(i => (i.checked ? { ...i, checked: false } : i));
+    // One event for the lot, so what comes back is one line of "put that
+    // back" rather than twenty. Unchecking never moves a repeating task on:
+    // that rule is for ticking one off, and itemAfterPatch applies it in the
+    // same one direction.
+    dispatch('uncheck-all', { uuids: back.map(i => i.uuid) });
+  }
+
+  /**
+   * Clear out what is done.
+   *
+   * The other half of putting a list back: some lists are reused and some are
+   * emptied. This one destroys, so it comes back as an undo rather than a
+   * confirmation, which is the same bargain a single item's delete makes.
+   */
+  function deleteChecked() {
+    if (!editable) return;
+    const gone = list.filter(i => i.checked);
+    if (!gone.length) return;
+    list = list.filter(i => !i.checked);
+    dispatch('delete-checked', { items: gone.map(i => ({ ...i })) });
+  }
+
+  /** Put back exactly what an undo asked for, without telling anyone again. */
+  export function restoreChecked(items) {
+    const known = new Set(list.map(i => i.uuid));
+    const back = items.filter(i => !known.has(i.uuid)).map(i => ({ ...i, id: i.uuid }));
+    if (back.length) list = [...list, ...back].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+    const again = new Set(items.map(i => i.uuid));
+    list = list.map(i => (again.has(i.uuid) ? { ...i, checked: true } : i));
+  }
+
   async function addAfter(item) {
     const position = positionAfter(item.uuid);
     const fresh = { uuid: uuid(), id: null, text: '', checked: false, position };
@@ -232,10 +276,22 @@
   {/if}
 
   {#if done.length}
-    <button type="button" class="checked-toggle" on:click={() => showChecked = !showChecked} aria-expanded={showChecked}>
-      <span class="material-symbols-rounded chevron" class:collapsed={!showChecked}>expand_more</span>
-      {$_('notes.checked_items', { values: { count: done.length } })}
-    </button>
+    <div class="checked-bar">
+      <button type="button" class="checked-toggle" on:click={() => showChecked = !showChecked} aria-expanded={showChecked}>
+        <span class="material-symbols-rounded chevron" class:collapsed={!showChecked}>expand_more</span>
+        {$_('notes.checked_items', { values: { count: done.length } })}
+      </button>
+      {#if editable}
+        <div class="checked-actions">
+          <button type="button" class="uncheck-all" on:click={uncheckAll}>
+            {$_('notes.uncheck_all')}
+          </button>
+          <button type="button" class="delete-checked" on:click={deleteChecked}>
+            {$_('notes.delete_checked')}
+          </button>
+        </div>
+      {/if}
+    </div>
     {#if showChecked}
       <ul class="items" transition:slide={{ duration: 160 }}>
         {#each done as item (item.uuid)}
@@ -342,14 +398,33 @@
   .done .item-text { color: var(--text-3); text-decoration: line-through; }
   .done { padding-left: 14px; }
 
+  /* The count and the way to undo it sit on one rule, so the heading keeps
+     its line and the action is at the end where a thumb already is. */
+  .checked-bar {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    margin-top: 8px; padding-top: 4px;
+    border-top: 1px solid var(--border);
+  }
   .checked-toggle {
     display: flex; align-items: center; gap: 6px;
-    margin-top: 8px; padding: 10px 0 6px;
-    border-top: 1px solid var(--border);
+    padding: 6px 0;
     color: var(--text-2);
     font-size: 14px; font-weight: 500;
     text-align: left;
   }
+  .uncheck-all,
+  .delete-checked {
+    flex: 0 0 auto;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    color: var(--accent);
+    font-size: 13px; font-weight: 600;
+    white-space: nowrap;
+  }
+  .uncheck-all:hover { background: var(--accent-dim); }
+  .delete-checked { color: var(--danger); }
+  .delete-checked:hover { background: color-mix(in srgb, var(--danger) 14%, transparent); }
+  .checked-actions { display: flex; align-items: center; gap: 2px; flex: 0 0 auto; }
   .chevron { font-size: 20px; transition: transform var(--dur-fast); }
   .chevron.collapsed { transform: rotate(-90deg); }
 </style>

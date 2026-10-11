@@ -326,6 +326,18 @@
     "retrying":         "Retrying…",
     "dismiss_message":  "Dismiss sync message",
     "error_title":      "Sync failed",
+    "switch_account_waiting_title": "Another Account's Changes Are Waiting",
+    "switch_account_waiting": "{count, plural, one {# change made on this device by the account signed in before has not reached the server. Signing in now discards it. To keep it, sign in as that account first.} other {# changes made on this device by the account signed in before have not reached the server. Signing in now discards them. To keep them, sign in as that account first.}}",
+    "switch_account_anyway": "Sign In Anyway",
+    "same_server_title": "Is This the Same Server?",
+    "same_server": "This server is at a different address than the one this device used before, and it can't tell whether it's the same server. If it is, your data here stays and syncs with it. If not, it's treated as another account's.",
+    "same_server_yes": "Same Server",
+    "same_server_no": "Different Server",
+    "account_check_failed_title": "Couldn't Open Your Data",
+    "account_check_failed": "This device couldn't check whose data it holds, so nothing is shown yet. Try again, or sign out.",
+    "account_checking": "Checking your data",
+    "dropped_deleted": "{count, plural, one {An edit made here to \"{title}\" wasn't kept: what it changed was deleted on another device first.} other {Edits made here to # notes weren't kept: what they changed was deleted on another device first.}}",
+    "untitled": "Untitled note",
     "connection": {
       "server_fallback":  "server",
       "no_network_title": "No network connection",
@@ -462,6 +474,10 @@
     "checked_items":           "{count, plural, one {# checked item} other {# checked items}}",
     "check_item":              "Check item",
     "uncheck_item":            "Uncheck item",
+    "uncheck_all":            "Uncheck All",
+    "delete_checked":            "Delete Checked",
+    "undo_uncheck_all":            "Checked items put back.",
+    "undo_delete_checked":            "{count, plural, one {# checked item deleted.} other {# checked items deleted.}}",
     "remove_item":             "Remove item",
     "drag_to_reorder":         "Drag to reorder",
     "pin":                     "Pin",
@@ -688,7 +704,7 @@
     "hide":              "Hide",
     "token_help":        "Create one in CookTrace: Settings, API Tokens, New Token, with just the shopping scope. Copy it right away: it is shown once.",
     "token_saved":       "Saved on this server and never shown again. Paste a new token to replace it.",
-    "setup_private":     "If CookTrace is on your local network, set ALLOW_PRIVATE_COOKTRACE_URLS=1 on this NoteTrace server.",
+    "address_help":      "The address you open CookTrace at. One on your local network works too.",
     "open_label":        "Shopping List",
     "open_desc":         "Your CookTrace list, grouped by aisle, to check off as you shop.",
     "open":              "Open Shopping",
@@ -821,7 +837,34 @@
     "left":              "You left the note",
     "shared_with":       "Shared with {count, plural, one {# person} other {# people}}",
     "shared_by":         "Shared by {name}",
-    "empty_note":        "Add something to the note before sharing it"
+    "empty_note":        "Add something to the note before sharing it",
+    "not_synced":        "This note hasn't reached the server yet. Try again once it syncs.",
+    "link_title":        "Public Link",
+    "link_off_hint":     "Anyone with the link can read this note without an account. They can't edit it, and they don't see your name, labels, or who else it's shared with.",
+    "link_on_hint":      "Anyone with this link can read the note, including changes you make later. Removing the link stops it working.",
+    "link_create":       "Create Link",
+    "link_copy":         "Copy",
+    "link_copied":       "Copied",
+    "link_open":         "Open Link",
+    "link_send":         "Send Link",
+    "link_remove":       "Remove Link",
+    "link_remove_title": "Remove the Public Link?",
+    "link_remove_message":"The link stops working for everyone who has it. A new link will have a different address.",
+    "link_removed":      "Public link removed",
+    "link_failed":       "Couldn't change the public link",
+    "copy_failed":       "Couldn't copy the link"
+  },
+  "public_note": {
+    "untitled":   "Untitled note",
+    "gone_title": "Link Not Available",
+    "gone_body":  "This note's public link was removed, or the address isn't quite right. Ask the person who sent it for a new one.",
+    "error_title":"Couldn't Load the Note",
+    "error_body": "Check your connection and try again.",
+    "retry":      "Try Again",
+    "checked":    "{count, plural, one {# checked item} other {# checked items}}",
+    "file":       "File",
+    "updated":    "Updated {date}",
+    "read_only":  "Read-only copy, shared from NoteTrace"
   },
   "app_lock": {
     "section":         "App Lock",
@@ -934,8 +977,8 @@
     "kitchens":           { "section": "Kitchens" },
     "diagnostics":        { "section": "Diagnostics" },
     "updates":            { "section": "Updates" },
+    "support":            { "section": "Support" },
     "about":              { "section": "About" },
-    "support_dev":        { "section": "Support Development" },
     "diary":              { "section": "Diary" },
     "water":              { "section": "Water" },
     "foods":              { "section": "Foods" },
@@ -1036,6 +1079,11 @@
     },
     "server":             { "section": "Server Connection" }
   },
+  "attach_image": {
+    "button": "Attach Image",
+    "camera": "Camera",
+    "gallery": "Gallery"
+  },
   "login": {
     "subtitle":             "Sign in to your account",
     "username":             "Username",
@@ -1051,6 +1099,13 @@
     "no_signin_methods":    "No sign-in methods available. Ask your administrator.",
     "errors": {
       "failed": "Login failed"
+    },
+    "cookie_warning": {
+      "http_title": "Signing in won't work on this address",
+      "http_body": "This page uses plain HTTP, but the server only sends its sign-in cookie over HTTPS, so your browser throws it away and signing in sends you back to the sign-in page. Open NoteTrace over HTTPS, or, on a trusted home network, set INSECURE_COOKIES=1 on the server and restart it.",
+      "dropped_title": "Your browser didn't keep you signed in",
+      "dropped_body": "Your password was right, but the browser didn't keep the sign-in cookie. Check that cookies are allowed for this site, and if NoteTrace is behind a reverse proxy, that the proxy passes cookies through.",
+      "fix_link": "How to fix it"
     },
     "recovery": {
       "confirm":           "This will delete all user accounts. Your food & diary data will be kept. Continue?",
@@ -1292,13 +1347,21 @@
       "crash_available":        "Crash report available"
     },
     "about": {
-      "support_note": "NoteTrace is free to self-host, always. The current goal is a Mac and an iPhone so the Trace apps can run properly on iOS.",
       "app_name":               "NoteTrace",
       "federation_prefix":      "Optional federation with ",
       "federation_suffix":      " for nutrition tracking",
-      "family_prefix":          "Part of the ",
-      "family_suffix":          " family (with NutriTrace, LiftTrace, and CookTrace)",
-      "support_dev":            "Support Development"
+      "family_line_prefix":     "Part of the ",
+      "family_line_suffix":     " family"
+    },
+    "support": {
+      "lead":                   "NoteTrace is free and always will be. Support is optional and never unlocks anything.",
+      "other_ways":             "Other Ways to Help",
+      "star":                   "Star on GitHub",
+      "star_desc":              "Stars are how self-hosted projects get found.",
+      "report_bug":             "Report a Bug",
+      "report_bug_desc":        "A clear report fixes it for everyone who hits the same thing.",
+      "translate":              "Help Translate",
+      "translate_desc":         "Make NoteTrace usable in your language."
     },
     "custom_color": {
       "saturation":             "Saturation",
@@ -1677,7 +1740,10 @@
       "voice_needs_https_smart": "Voice needs HTTPS. Smart Log won't work over plain HTTP, set up TLS or use the public domain.",
       "mic_denied":              "Microphone permission denied",
       "pick_image":              "Pick an image file."
-    }
+    },
+    "tools_unsupported":         "This model can't use tools: it can answer, but it can't search or change your notes. Pick a model with tool support in Settings.",
+    "tools_unsupported_server":  "This model can't use tools: it can answer, but it can't search or change your notes. Your admin can set a model with tool support.",
+    "tools_unsupported_routed":  "The model that answered can't use tools, so no notes were searched or changed."
   },
   "profile_ct": {
     "toast": {
@@ -1686,6 +1752,13 @@
     "biometric_signin":          "Sign In with Biometric"
   },
   "wizard_ct": {
+    "updates": {
+      "title": "Check For Updates",
+      "desc": "Your server can tell you when a new NoteTrace is out.",
+      "toggle": "Check for updates automatically",
+      "toggle_sub": "It's how you hear about new features, fixes and security updates",
+      "note": "Your server asks GitHub every few hours whether a newer NoteTrace is out. Nothing about you or your data is sent. You can change this any time in Settings, Updates."
+    },
     "welcome":                   "Welcome to NoteTrace",
     "get_started":               "Get Started",
     "name_ph":                   "Your name",
@@ -1710,7 +1783,8 @@
       "enter_url":               "Enter your server URL",
       "enter_credentials":       "Enter your credentials",
       "connected_to_server":     "Connected to server",
-      "cant_open_signin":        "Could not open sign-in browser"
+      "cant_open_signin":        "Could not open sign-in browser",
+      "server_needs_setup":      "This server isn't set up yet. Open it in a browser to create the first account, then connect here."
     },
     "app_name":                  "NoteTrace",
     "tagline":                   "Trace Every Thought",
@@ -1741,6 +1815,11 @@
     },
     "auto_check":            "Automatically Check for Updates",
     "auto_check_desc":       "Check for new releases in the background.",
+    "off_resting": "Off. Your server will not contact GitHub. Turn it on to hear about new features, fixes and security updates.",
+    "off_notice_title": "Update Checks Are Off",
+    "off_notice": "Nothing will tell you about new features, fixes or security updates. Turning checks on asks GitHub for the latest release every few hours, and sends nothing about you.",
+    "turn_on": "Turn On",
+    "not_now": "Not Now",
     "interval": {
       "label":       "Check Frequency",
       "desc":        "How often the app checks for a new release when open. Manual only turns off all auto-checks.",
@@ -1751,6 +1830,8 @@
       "manual":      "Manual Only"
     },
     "available_generic": "A New Version Is Available",
+    "ready_headline": "Update Ready",
+    "ready_cta": "Reload to get the latest version.",
     "banner_reload":     "Reload",
     "last_checked":          "Last Checked",
     "last_checked_never":    "Never",
@@ -1764,6 +1845,7 @@
     "no_release_notes":      "No release notes were published for this build.",
     "view_on_github":        "View on GitHub",
     "download_install":      "Download & Install",
+    "install_downloaded":    "Install",
     "downloading":           "Downloading… {percent}%",
     "install_starting":      "Opening installer…",
     "install_failed":        "Install failed. Try again.",
@@ -1790,7 +1872,7 @@
       "copied":           "Copied to clipboard.",
       "copy_failed":      "Copy failed. Copy the command manually.",
       "view_notes":       "View Release Notes",
-      "channel_note":     "To switch server channels, change your docker-compose.yml image tag (:latest, :1.0, :1, :dev) and re-run docker-compose pull && docker-compose up -d."
+      "channel_note":     "To switch server channels, change your docker-compose.yml image tag (:latest, :dev) and re-run docker-compose pull && docker-compose up -d."
     }
   }
 }
