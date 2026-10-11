@@ -599,7 +599,8 @@
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') _refreshSettings();
       });
-      setInterval(_refreshSettings, 30000);
+      // Every 30 seconds while the tab is in front; coming back refreshes too.
+      setInterval(() => { if (!document.hidden) _refreshSettings(); }, 30000);
     }
   });
 
