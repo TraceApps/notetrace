@@ -982,3 +982,57 @@ test("every pull lists the account's chat as it is now, and only that account's"
   await web(B, 'bob', 'DELETE', '/api/ai/history');
   assert.deepEqual((await web(B, 'bob', 'GET', '/api/sync/pull' + since)).chat_ids, []);
 });
+
+test('one 30s sync loop, stopped while the app is hidden or paused', async (t) => {
+  if (skip(t)) return;
+  const r = phone('loop', A, `
+    await p.setupSignIn('alice'); await p.sync();
+    const docL = {}, appL = {};
+    globalThis.document = { hidden: false, visibilityState: 'visible', addEventListener(t, f) { (docL[t] ||= []).push(f); }, removeEventListener() {} };
+    const setHidden = h => { document.hidden = h; document.visibilityState = h ? 'hidden' : 'visible'; (docL.visibilitychange || []).forEach(f => f()); };
+    const cap = await import('@capacitor/app');
+    cap.App.addListener = async (t, f) => { (appL[t] ||= []).push(f); return { remove() {} }; };
+    const { startSyncLoop, stopSyncLoop } = p.mod.sync;
+    stopSyncLoop(); // the one the app started when it opened, every 30s
+    const pulls = () => p.mod.net.sent.filter(x => x.url.startsWith('/api/sync/pull')).length;
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const during = async ms => { await sleep(150); const a = pulls(); await sleep(ms); return pulls() - a; };
+    startSyncLoop(400); startSyncLoop(400);
+    await sleep(50);
+    const out = { visible: await during(2000) };
+    setHidden(true); out.hidden = await during(2000);
+    setHidden(false); out.back = await during(2000);
+    (appL.pause || []).forEach(f => f()); out.paused = await during(2000);
+    (appL.resume || []).forEach(f => f()); out.resumed = await during(2000);
+    stopSyncLoop(); out.stopped = await during(1500);
+    p.done(out);`);
+  // Every 400ms for 2s: about five pulls from one loop, ten from two.
+  for (const k of ['visible', 'back', 'resumed']) assert.ok(r[k] >= 3 && r[k] <= 6, `${k}: ${r[k]} pulls in 2s`);
+  assert.deepEqual([r.hidden, r.paused, r.stopped], [0, 0, 0], 'nothing while hidden, paused or stopped');
+  // The app has no loop of its own beside it (two synced twice every 30s).
+  const app = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8');
+  assert.doesNotMatch(app, /setInterval\([^)]*fullSync/);
+  assert.match(app, /mod\.startSyncLoop\(\)/);
+});
+
+test('a sync with nothing new reads little and writes nothing but the pull cursor', async (t) => {
+  if (skip(t)) return;
+  const r = phone('idle', A, `
+    await p.setupSignIn('alice'); await p.sync(); await p.sync();
+    globalThis.__sqlCalls = [];
+    const before = p.mod.net.sent.length;
+    await p.sync();
+    const calls = globalThis.__sqlCalls; globalThis.__sqlCalls = null;
+    p.done({
+      calls: calls.length,
+      writes: calls.filter(c => c.kind !== 'query' || !/^(SELECT|PRAGMA)/i.test(c.sql)).map(c => c.sql),
+      // Reading every attachment's address: the photo check and the pictures pass.
+      scans: calls.filter(c => /^SELECT (id, )?(url|preview_url)\b.* FROM note_attachments/.test(c.sql)).map(c => c.sql.slice(0, 90)),
+      requests: p.mod.net.sent.slice(before).map(x => x.method + ' ' + x.url.split('?')[0]),
+    });`);
+  t.diagnostic(`an idle sync: ${r.calls} database calls, requests ${r.requests.join(', ')}`);
+  assert.deepEqual(r.requests.filter(x => !/^GET \/api\/(health|sync\/pull)$/.test(x)), []);
+  assert.equal(r.writes.length, 1, 'only the pull cursor moves: ' + JSON.stringify(r.writes));
+  assert.deepEqual(r.scans, [], 'every attachment read again');
+  assert.ok(r.calls <= 20, `an idle sync costs ${r.calls} database calls`);
+});

@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **The Android app syncs half as often, and does less when nothing changed.** It ran two 30-second syncs, and one of them kept going with the app hidden. Now one runs while the app is on screen, and a sync with nothing new no longer reads every attachment twice or rewrites the picture list it already has.
 - **Trace answers with models that can't use tools** ([nutritrace#259](https://github.com/TraceApps/nutritrace/issues/259)). With an OpenAI-compatible model that has no tool support, every chat failed with `tool use is not supported`. Trace now asks again without tools and says once that the model can't search or change your notes. Thanks @jsapede for the report.
 - **Long messages wrap** instead of running off the screen.
 

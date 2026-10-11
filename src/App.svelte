@@ -577,25 +577,11 @@
         mod.syncState.subscribe(v => syncState.set(v));
         mod.startNetworkMonitor();
         mod.fullSync();
-        // Pull every 30s while the app is actually in front of you. A WebView
-        // keeps its timers running when the app is backgrounded and the screen
-        // is off, and an app still on top with the screen off is not frozen,
-        // so an ungated interval keeps waking the radio with nobody looking.
-        // Stopping loses nothing: coming back fires a sync of its own.
-        let poll = null;
-        const startPolling = () => {
-          if (poll == null) poll = setInterval(() => mod.fullSync(true), 30000);
-        };
-        const stopPolling = () => {
-          if (poll != null) { clearInterval(poll); poll = null; }
-        };
-        startPolling();
-        document.addEventListener('visibilitychange', () => {
-          if (document.hidden) stopPolling(); else startPolling();
-        });
+        // The 30s sync while the app is on screen (lib/sync.js keeps the one
+        // loop and stops it when the app is hidden); coming back syncs too.
+        mod.startSyncLoop();
         import('@capacitor/app').then(({ App }) => {
-          App.addListener('resume', () => { startPolling(); mod.fullSync(); });
-          App.addListener('pause', () => stopPolling());
+          App.addListener('resume', () => { mod.fullSync(); });
         });
       });
     }

@@ -113,6 +113,8 @@ export async function open() {
     async items(noteId) { return (await db.query(`SELECT text FROM checklist_items WHERE note_id = ? AND deleted_at IS NULL ORDER BY text`, [noteId])).values.map(r => r.text); },
     async offline(fn) { net.offline = true; try { return await fn(); } finally { net.offline = false; } },
     done(x) { console.log('RESULT ' + JSON.stringify(x ?? null)); process.exit(0); },
+    // The modules and the network, for tests that look underneath.
+    mod: { sync, dbn, net },
   };
   return p;
 }

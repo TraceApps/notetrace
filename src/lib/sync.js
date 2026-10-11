@@ -27,6 +27,8 @@ import { localDataIsThisAccount, accountGeneration } from './local-account.js';
 
 let _syncInFlight = null;
 let _syncAgain = false;
+// A sync that isn't the quiet 30s one was asked for: do the pictures pass.
+let _imagesWanted = false;
 let _forcedNext = null; // a sync asked for from now (pull to refresh, Retry) while one runs
 let _interval = null;
 const LAST_PULL_KEY = 'last_pull_at';
@@ -346,6 +348,12 @@ async function _uploadFromFileUri(fileUri) {
 async function _reconcileLocalPhotoUrls(onProgress) {
   const { getDb } = await import('./db-native.js');
   const db = await getDb();
+  // Almost always there are none: one read to know, before reading every
+  // attachment address there is.
+  const any = await db.query(
+    `SELECT ${PHOTO_COLUMNS.map(({ table, field }) => `EXISTS (SELECT 1 FROM ${table} WHERE instr(${field}, '_capacitor_file_') > 0)`).join(' OR ')} AS n`, []
+  ).catch(() => null);
+  if (any && !Number(any.values?.[0]?.n)) return { total: 0, uploaded: 0, cleared: 0 };
   // Collect candidates from the columns that carry user photos.
   const jobs = [];
   for (const { table, field } of PHOTO_COLUMNS) {
@@ -628,6 +636,9 @@ export function fullSync(silentOrOpts = false, forceCheck = false, showFailureBa
   // pull-to-refresh + Retry banner paths pass all three positional args.
   const silent = typeof silentOrOpts === 'object' ? !!silentOrOpts.silent : !!silentOrOpts;
   if (!_shouldRun()) return Promise.resolve({ ok: false, reason: 'not-server-mode' });
+  // Launch, coming back and Sync Now want the pictures pass; when one of
+  // them joins a quiet 30s run, that run (or the one after it) does it.
+  if (!silent) _imagesWanted = true;
   // Asked for from now (pull to refresh, Retry): the run going on may have
   // pulled before the change the person is waiting for, so one more runs
   // right after it, shared by every such call meanwhile.
@@ -651,8 +662,9 @@ export function fullSync(silentOrOpts = false, forceCheck = false, showFailureBa
       if (_syncAgain) {
         _syncAgain = false;
         // Asked for while this one ran (an edit saved meanwhile): once more,
-        // after it, when anything is still waiting to go up.
-        promise.then(async r => { if (r?.ok && (await dbCountUnsynced()) > 0) setTimeout(() => fullSync(true), 0); }).catch(() => {});
+        // after it, when anything is still waiting to go up, or the pictures
+        // pass was asked for after this run had passed it.
+        promise.then(async r => { if (r?.ok && (_imagesWanted || (await dbCountUnsynced()) > 0)) setTimeout(() => fullSync(!_imagesWanted), 0); }).catch(() => {});
       }
     });
   _syncInFlight = promise;
@@ -711,8 +723,12 @@ async function _fullSync({ silent, forceCheck, showFailureBanner, token, signal,
     // doesn't fail the sync: the user just sees broken-image
     // placeholders for fresh entries until the next pass. Same
     // ordering as NutriTrace's sync.js.
+    // Only when this sync brought or sent something, or isn't the 30s
+    // timer (launch, coming back, Sync Now): an idle 30s sync has no new
+    // attachments to fetch.
     try {
-      if (live()) {
+      if (live() && (!silent || _imagesWanted || pull.pulled || push.pushed)) {
+        _imagesWanted = false;
         const { cacheAllImages } = await import('./image-cache.js');
         await cacheAllImages((done, total) => {
           if (total > 0) {
@@ -788,23 +804,46 @@ export function pushBeforeSignOut(timeoutMs = 4000) {
   return Promise.race([run, cut]).finally(() => clearTimeout(timer));
 }
 
-/** Start the background sync loop. Idempotent. */
+/**
+ * The app's one sync loop: every 30s while the app is on screen, stopped
+ * when it's hidden (screen off, another app, Capacitor's pause) and started
+ * again, with a sync, when it's back. App.svelte and the cached API both
+ * start it; a second start does nothing. Two loops (App.svelte had its own)
+ * synced twice every 30s, and this one never stopped.
+ */
+let _loopWanted = false;
+let _loopMs = 30000;
+function _loopOn() {
+  if (!_loopWanted || _interval) return;
+  if (typeof document !== 'undefined' && document.hidden) return;
+  _interval = setInterval(() => { fullSync(true); }, _loopMs);
+}
+function _loopOff() {
+  if (_interval) { clearInterval(_interval); _interval = null; }
+}
 export function startSyncLoop(intervalMs = 30000) {
-  if (!isNative) return;
-  if (_interval) return;
-  _interval = setInterval(() => { fullSync(true); }, intervalMs);
+  if (!isNative || _loopWanted) return;
+  _loopWanted = true;
+  _loopMs = intervalMs;
+  _loopOn();
   if (typeof document !== 'undefined') {
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') fullSync(true);
+      if (document.hidden) { _loopOff(); return; }
+      _loopOn();
+      fullSync(true);
     });
   }
+  import('@capacitor/app')
+    .then(({ App }) => { App.addListener('pause', _loopOff); App.addListener('resume', _loopOn); })
+    .catch(() => {});
   // Best-effort kick on startup so the first paint includes the
   // freshest server data.
   if (_shouldRun()) fullSync(true);
 }
 
 export function stopSyncLoop() {
-  if (_interval) { clearInterval(_interval); _interval = null; }
+  _loopWanted = false;
+  _loopOff();
 }
 
 /** Bulk push every local row to the server. Used by the merge dialog

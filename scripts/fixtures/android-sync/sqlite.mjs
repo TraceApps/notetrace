@@ -24,6 +24,10 @@ function firstStatement(db, sql) {
   return sql;
 }
 
+// Every trip across the bridge, as the plugin would make it: a test counts
+// what one sync costs (globalThis.__sqlCalls, when it's an array).
+const note = (kind, sql) => { if (Array.isArray(globalThis.__sqlCalls)) globalThis.__sqlCalls.push({ kind, sql: String(sql).replace(/\s+/g, ' ').trim() }); };
+
 function conn(name) {
   if (!dbs.has(name)) dbs.set(name, new Database(process.env.PHONE_DB ? `${process.env.PHONE_DB}-${name}.db` : ':memory:'));
   const db = dbs.get(name);
@@ -36,6 +40,7 @@ function conn(name) {
     // only its first statement. Two statements on one line: the second
     // silently never runs.
     async execute(sql) {
+      note('execute', sql);
       await trip();
       const before = db.prepare('SELECT total_changes() AS n').get().n;
       let pieces = String(sql).replace(/end;/g, 'END;').split(';\n').map(x => x.trim());
@@ -49,6 +54,7 @@ function conn(name) {
       return { changes: { changes: db.prepare('SELECT total_changes() AS n').get().n - before } };
     },
     async query(sql, params) {
+      note('query', sql);
       await trip();
       const st = db.prepare(sql);
       if (!st.reader) { st.run(...norm(params)); return { values: [] }; }
@@ -58,6 +64,7 @@ function conn(name) {
     // other work (a sign-in, another sync) can run while one is writing.
     // run() also takes only the first statement, as the plugin does.
     async run(sql, params) {
+      note('run', sql);
       await trip();
       const r = db.prepare(firstStatement(db, String(sql).trim().endsWith(';') ? String(sql) : String(sql) + ';')).run(...norm(params));
       return { changes: { changes: Number(r.changes), lastId: Number(r.lastInsertRowid) } };
