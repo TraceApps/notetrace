@@ -117,6 +117,8 @@ What comes next, including the Wear OS companion, is in [ROADMAP.md](ROADMAP.md)
 
 Published to two registries with identical tag sets: `ghcr.io/traceapps/notetrace` (primary) and `traceapps/notetrace` on [Docker Hub](https://hub.docker.com/r/traceapps/notetrace) (mirror).
 
+**Unraid:** NoteTrace is in Community Applications. Search for NoteTrace in the Apps tab; the template sets the port, the appdata folders and the settings. Fill in JWT Secret before the first start.
+
 Minimal `docker-compose.yml`:
 
 ```yaml
