@@ -40,6 +40,7 @@ Items marked ~~strikethrough~~ have been implemented.
 ## Sharing and Import
 
 - ~~Shared notes and lists with view or edit access~~
+- ~~Public read-only links to a note, with link previews in chat apps~~
 - ~~Reminders with repeats (daily, weekly, monthly, yearly) delivered through push~~
 - ~~Google Takeout import (Google Keep notes, checklists, images, drawings, labels, colors, links)~~
 - ~~Markdown import (Obsidian, Joplin, and other Markdown exports), with images~~
