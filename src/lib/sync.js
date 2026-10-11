@@ -29,6 +29,8 @@ let _syncInFlight = null;
 let _syncAgain = false;
 // A sync that isn't the quiet 30s one was asked for: do the pictures pass.
 let _imagesWanted = false;
+// When the pictures pass last ran.
+let _imagesAt = 0;
 let _forcedNext = null; // a sync asked for from now (pull to refresh, Retry) while one runs
 let _interval = null;
 const LAST_PULL_KEY = 'last_pull_at';
@@ -727,8 +729,11 @@ async function _fullSync({ silent, forceCheck, showFailureBanner, token, signal,
     // timer (launch, coming back, Sync Now): an idle 30s sync has no new
     // attachments to fetch.
     try {
-      if (live() && (!silent || _imagesWanted || pull.pulled || push.pushed)) {
+      // And every 10 minutes on the quiet timer, for a picture whose
+      // download failed (it isn't in the pull to say so again).
+      if (live() && (!silent || _imagesWanted || pull.pulled || push.pushed || Date.now() - _imagesAt > 10 * 60 * 1000)) {
         _imagesWanted = false;
+        _imagesAt = Date.now();
         const { cacheAllImages } = await import('./image-cache.js');
         await cacheAllImages((done, total) => {
           if (total > 0) {
