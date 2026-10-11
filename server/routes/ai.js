@@ -56,19 +56,43 @@ router.delete('/history', requireAuth, wrap((req, res) => {
   res.json({ ok: true });
 }));
 
+// Kept identical to src/lib/aiChat.js (scripts/ai-models.test.js checks).
+// Used when no model is chosen; an admin who set one keeps it.
 const AI_DEFAULT_MODELS = {
-  claude: 'claude-haiku-4-5-20251001',
+  claude: 'claude-haiku-5-5',
   openai: 'gpt-5.6-luna',
-  gemini: 'gemini-3.6-flash',
+  gemini: 'gemini-3.8-flash',
 };
 
-// Models Google has shut down (404) or scheduled for shutdown.
-// Saved env-locked configs pointing at any of these are remapped to the
-// current default so the proxy doesn't 404 against a dead endpoint.
+// Model IDs that changed name: a saved old name is sent as the new one.
+const AI_MODEL_RENAMES = {
+  'gemini-3.1-pro': 'gemini-3.1-pro-preview',
+  'gemini-3-pro-preview': 'gemini-3.1-pro-preview',
+  'gpt-5.6': 'gpt-5.6-sol',
+};
+const renamedModel = (model) => AI_MODEL_RENAMES[model] || model;
+
+// Models Google has shut down (404). Saved env-locked configs pointing at any
+// of these are remapped to the current default so the proxy doesn't 404
+// against a dead endpoint. Shut down per ai.google.dev/gemini-api/docs/deprecations (2026-10-09).
 const GEMINI_RETIRED = new Set([
   'gemini-1.5-flash', 'gemini-1.5-pro',
-  'gemini-2.0-flash', 'gemini-2.0-flash-lite',
+  'gemini-2.0-flash', 'gemini-2.0-flash-001', 'gemini-2.0-flash-lite', 'gemini-2.0-flash-lite-001',
+  'gemini-2.0-flash-lite-preview', 'gemini-2.0-flash-lite-preview-02-05',
+  'gemini-2.5-pro-preview-03-25', 'gemini-2.5-pro-preview-05-06', 'gemini-2.5-pro-preview-06-05',
+  'gemini-2.5-flash-preview-05-20', 'gemini-2.5-flash-preview-09-25', 'gemini-2.5-flash-lite-preview-09-2025',
+  'gemini-3.1-flash-lite-preview',
 ]);
+function geminiModelFor(model) {
+  const m = renamedModel(model || AI_DEFAULT_MODELS.gemini);
+  return GEMINI_RETIRED.has(m) ? AI_DEFAULT_MODELS.gemini : m;
+}
+/** The model to send on a vendor's own API; OpenAI-compatible ones keep theirs. */
+function modelFor(provider, model) {
+  if (provider === 'openai') return renamedModel(model);
+  if (provider === 'gemini') return geminiModelFor(model);
+  return model;
+}
 
 /**
  * POST /api/ai/chat
@@ -113,7 +137,7 @@ function _serverCfg() {
   return {
     provider,
     apiKey: cfg.ai_api_key,
-    model: cfg.ai_model || AI_DEFAULT_MODELS[provider] || '',
+    model: modelFor(provider, cfg.ai_model || AI_DEFAULT_MODELS[provider] || ''),
     baseUrl: cfg.ai_base_url,
     transcribeModel: process.env.AI_TRANSCRIBE_MODEL || '',
   };
@@ -245,7 +269,7 @@ router.post('/chat', requireAuth, aiChatLimit, wrap(async (req, res) => {
 
   const cfg = getAiConfig();
   const provider = cfg.ai_provider || 'claude';
-  const model    = cfg.ai_model    || AI_DEFAULT_MODELS[provider] || '';
+  const model    = modelFor(provider, cfg.ai_model || AI_DEFAULT_MODELS[provider] || '');
   const apiKey   = cfg.ai_api_key;
   const baseUrl  = cfg.ai_base_url;
 
@@ -271,6 +295,8 @@ router.post('/chat', requireAuth, aiChatLimit, wrap(async (req, res) => {
 }));
 
 export default router;
+// For the test that keeps these identical to the client's (scripts/ai-models.test.js).
+export const _models = { AI_DEFAULT_MODELS, AI_MODEL_RENAMES, GEMINI_RETIRED, geminiModelFor, modelFor };
 
 // ── Provider implementations (server-side) ────────────────────────────────────
 
@@ -314,7 +340,7 @@ async function _callOpenAI(apiKey, model, messages, systemPrompt, baseUrl = 'htt
 }
 
 async function _callGemini(apiKey, model, messages, systemPrompt) {
-  const m = GEMINI_RETIRED.has(model) ? AI_DEFAULT_MODELS.gemini : (model || AI_DEFAULT_MODELS.gemini);
+  const m = geminiModelFor(model);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
   const contents = messages.map(msg => ({
     role: msg.role === 'assistant' ? 'model' : 'user',

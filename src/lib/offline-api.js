@@ -178,6 +178,9 @@ function _publish(extra = {}) {
 }
 
 const _channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('notetrace-offline') : null;
+// In Node (the unit tests import this through aiChat.js) an open channel keeps
+// the process running; unref() exists only there, so browsers are unaffected.
+_channel?.unref?.();
 _channel?.addEventListener('message', async (e) => {
   if (e.data?.type !== 'outbox') return;
   _ops = null;

@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Trace's model lists are current.** Claude Haiku 5.5 is the new default, Claude Sonnet 5.5 and Opus 5.5, GPT-6 Luna, GPT-5.6 Sol, and Gemini 3.8 Flash and 3.1 Flash Lite are added, Gemini 3.1 Pro is listed as the preview it is, and Gemini 2.5 leaves the list (open to existing Google users only). A model you already chose keeps working; shut-down Gemini models switch to the default. The same lists as NutriTrace.
+
 ### Fixed
 
 - **A fresh install's welcome screen no longer says it's offline.** Opened before the first account existed, the notes and the sidebar loaded behind it and the server refused them with "Setup required", which was taken for the server being down. Setup now opens first, nothing else asks the server for data until it's done, and that answer never counts as offline.

@@ -13,7 +13,7 @@ import { get, derived } from 'svelte/store';
 import { aiProvider, aiApiKey, aiModel, aiBaseUrl, envLocks, aiTranscribeModel } from '../stores/settings.js';
 import { traceReady } from './trace-run.js';
 import { apiUrl, isNative, getServerUrl, getAuthToken, resolveAssetUrl } from './platform.js';
-import { AI_DEFAULT_MODELS } from './aiChat.js';
+import { AI_DEFAULT_MODELS, modelFor } from './aiChat.js';
 import { TIMED_TRANSCRIBE_PROMPT, parseTimedText, fromVerboseJson, mergePieces, whisperStyle, transcribeLimitBytes, chunkSeconds } from '../../server/lib/transcript.js';
 
 export const TRANSCRIBE_PROMPT = 'Transcribe this audio exactly, in its own language. Reply with only the transcript. If there is no speech, reply NONE.';
@@ -51,7 +51,7 @@ async function _json(res, what) {
 
 const _cfg = () => {
   const provider = get(aiProvider);
-  return { provider, apiKey: get(aiApiKey), model: get(aiModel) || AI_DEFAULT_MODELS[provider] || '', baseUrl: String(get(aiBaseUrl) || '').replace(/\/+$/, '') };
+  return { provider, apiKey: get(aiApiKey), model: modelFor(provider, get(aiModel) || AI_DEFAULT_MODELS[provider] || ''), baseUrl: String(get(aiBaseUrl) || '').replace(/\/+$/, '') };
 };
 
 async function _blobToBase64(blob) {
