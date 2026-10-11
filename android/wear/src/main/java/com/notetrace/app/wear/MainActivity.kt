@@ -293,7 +293,7 @@ private fun ChecklistScreen(store: WearStore, noteId: Long) {
                 item {
                     Button(
                         onClick = { scope.launch { store.uncheckAll(noteId) } },
-                        label = { Text("Uncheck all") },
+                        label = { Text("Uncheck All") },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
