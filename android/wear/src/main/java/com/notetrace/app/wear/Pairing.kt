@@ -28,6 +28,7 @@ object Pairing {
     private const val PREFS = "notetrace.wear"
     private const val KEY_URL = "server_url"
     private const val KEY_TOKEN = "token"
+    private const val KEY_PHONE_RELEASE = "phone_release"
     private const val KEY_CACHE = "cache"
     private const val KEY_CACHE_AT = "cache_at"
     private const val KEY_OUTBOX = "outbox"
@@ -78,14 +79,20 @@ object Pairing {
         }
     }
 
-    fun save(ctx: Context, serverUrl: String, token: String) {
-        prefs(ctx).edit()
+    fun save(ctx: Context, serverUrl: String, token: String, phoneRelease: String = "") {
+        val edit = prefs(ctx).edit()
             .putString(KEY_URL, serverUrl.trim().trimEnd('/'))
             .putString(KEY_TOKEN, token.trim())
             // A fresh token: whatever was refused before is history.
             .remove(KEY_REFUSED)
-            .apply()
+        // A phone that doesn't say (an older app) has no release to follow.
+        if (phoneRelease.isNotBlank()) edit.putString(KEY_PHONE_RELEASE, phoneRelease.trim())
+        else edit.remove(KEY_PHONE_RELEASE)
+        edit.apply()
     }
+
+    /** The release the phone runs (v1.4.0-dev05), as it last said. */
+    fun phoneRelease(ctx: Context): String? = prefs(ctx).getString(KEY_PHONE_RELEASE, null)?.takeIf { it.isNotBlank() }
 
     /**
      * The token stopped working. The address, the cached lists and anything
