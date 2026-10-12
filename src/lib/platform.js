@@ -291,6 +291,9 @@ export function publicNoteToken() {
   if (isNative || typeof window === 'undefined') return null;
   let path = window.location.pathname;
   if (_basePath && path.startsWith(_basePath)) path = path.slice(_basePath.length);
-  const m = /^\/n\/([A-Za-z0-9_-]{16,64})\/?$/.exec(path);
+  // Any one segment, as the server's /n/:token and the service worker see it:
+  // a mistyped or cut-off link then says the link is gone (the server answers
+  // 404) instead of opening the app's sign-in (TraceApps/notetrace#22).
+  const m = /^\/n\/([^/]+)\/?$/.exec(path);
   return m ? m[1] : null;
 }

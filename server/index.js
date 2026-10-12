@@ -46,7 +46,7 @@ import { seedOidcFromEnv } from './lib/oidc-env.js';
 import db from './db.js';
 import { isPrivateUploadPath, UPLOAD_RESPONSE_HEADERS, uploadDisposition } from './lib/upload-paths.js';
 import { getPublicNote } from './lib/notes.js';
-import { publicNoteHead, injectPublicNoteHead, publicPageHtml } from './lib/public-note-meta.js';
+import { publicNoteHead, injectPublicNoteHead, publicPageHtml, STALE_PAGE_RECOVERY_JS } from './lib/public-note-meta.js';
 
 // Seed config from env vars if provided (env vars take priority over UI)
 seedSmtpFromEnv();
@@ -290,6 +290,15 @@ try {
 } catch (e) {
   logger.warn(`[server] could not pre-template dist/index.html: ${e.message}`);
 }
+
+// Only a service worker's cached app page, answering a public link in place
+// of this server, asks for /n/assets/ (TraceApps/notetrace#22). Its scripts get
+// one that loads the link from the server instead; anything else, nothing.
+router.get('/n/assets/{*rest}', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!/\.m?js$/.test(req.path)) return res.status(404).end();
+  res.set('Content-Type', 'text/javascript; charset=utf-8').send(STALE_PAGE_RECOVERY_JS);
+});
 
 // A public note link. Same app page, with the note's title, a line of its
 // text, and its first picture in <head> so chat apps can preview the link.

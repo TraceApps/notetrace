@@ -79,8 +79,11 @@ export default defineConfig({
         importScripts: ['sw-extras.js'],
         navigateFallback: 'index.html',
         // Public note links (/n/<token>) come from the server every time: it
-        // writes the preview tags and the <base> the page needs.
-        navigateFallbackDenylist: [/^\/api\//, /^\/uploads\//, /^\/share-target/, /\/n\/[A-Za-z0-9_-]{16,64}\/?$/],
+        // writes the preview tags and the <base> the page needs. Same shape
+        // as the server's /n/:token, so a mistyped or cut-off link reaches the
+        // server too, and Workbox tests the path with its query, which chat
+        // apps add (?fbclid=...) (TraceApps/notetrace#22).
+        navigateFallbackDenylist: [/^\/api\//, /^\/uploads\//, /^\/share-target/, /\/n\/[^/?]+\/?(?:\?.*)?$/],
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,
