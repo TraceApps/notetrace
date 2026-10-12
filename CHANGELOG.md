@@ -9,6 +9,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.1.1] - 2026-10-12
+
+Patch release: public note links open again in browsers where NoteTrace has been used.
+
+### Fixed
+
+- **A public link no longer opens a blank page** ([#22](https://github.com/TraceApps/notetrace/issues/22)). In a browser where NoteTrace had been used, the app's cached copy answered the link instead of your server: always for a link with a query after it (like the `?fbclid=` chat apps add), and for any link while the browser still ran an older version's copy. A mistyped or cut-off link now says the link isn't available, instead of opening the sign-in page. Thanks @harikiran-lab for the report.
+
+### Security
+
+- No security fixes this cycle. `npm audit` reports 0 vulnerabilities for the app and the server.
+
+---
+
 ## [1.1.0] - 2026-10-11
 
 Minor release. Big themes: public links for notes, clearing a checklist in one tap, pictures and settings that work with no connection, foldable layouts that use the crease, a round of Android sync and account fixes, SSO fixes, and security hardening.

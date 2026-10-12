@@ -4,7 +4,9 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { escapeHtml, publicNoteDescription, publicNoteHead, injectPublicNoteHead, publicPageHtml } from '../server/lib/public-note-meta.js';
+import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
+import { escapeHtml, publicNoteDescription, publicNoteHead, injectPublicNoteHead, publicPageHtml, STALE_PAGE_RECOVERY_JS } from '../server/lib/public-note-meta.js';
 
 const ctx = { origin: 'https://notes.example.com', basePath: '/nt', pageUrl: 'https://notes.example.com/nt/n/abc' };
 
@@ -65,4 +67,63 @@ test('the page loads the app from its root, not from under /n/', () => {
   const html = '<html><head><meta charset="UTF-8" /><script src="./assets/index.js"></script></head></html>';
   assert.ok(publicPageHtml(html, '').indexOf('<base href="/" />') < publicPageHtml(html, '').indexOf('./assets/'));
   assert.match(publicPageHtml(html, '/nt'), /<base href="\/nt\/" \/>/);
+});
+
+// TraceApps/notetrace#22. Workbox tests a navigation's path and query together
+// (workbox-routing NavigationRoute: url.pathname + url.search), so a link with
+// anything after the token has to be left to the server too.
+test("the service worker leaves every public link to the server, query and all", () => {
+  const cfg = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8');
+  const list = cfg.match(/navigateFallbackDenylist:\s*\[(.*)\]/)[1];
+  const denied = eval(`[${list}]`);
+  const toServer = (p) => denied.some(r => r.test(p));
+  const tok = 'hYLnYCRymoXCxCGASWYYsA';
+  // Any single segment, as the server's /n/:token: a mistyped or cut-off link
+  // has to reach the server too, or the recovery would run for it every time.
+  for (const p of [`/n/${tok}`, `/n/${tok}/`, `/n/${tok}?fbclid=IwAR0abc`, `/n/${tok}?utm_source=chat&utm_medium=x`, `/notes/n/${tok}?x=1`, '/n/short', '/n/abc.d%20e']) {
+    assert.ok(toServer(p), p);
+  }
+  for (const p of ['/', '/?note=4', `/n/${tok}/edit`, '/notes']) assert.ok(!toServer(p), p);
+});
+
+function runRecovery({ sw = true, controlled = true, href = 'https://notes.example.com/n/abc?fbclid=1', store = new Map(), state = null, storageOff = false } = {}) {
+  const calls = { unregister: 0, reload: 0 };
+  const app = { textContent: '' };
+  const scriptURL = 'https://notes.example.com/sw.js';
+  const reg = { active: { scriptURL }, unregister: async () => { calls.unregister++; return true; } };
+  const hist = { state, replaceState(s) { this.state = s; } };
+  const storage = storageOff
+    ? { getItem() { throw new Error('off'); }, setItem() { throw new Error('off'); }, removeItem() { throw new Error('off'); } }
+    : { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, v), removeItem: k => store.delete(k) };
+  const ctx = {
+    location: { href, reload: () => { calls.reload++; } },
+    history: hist,
+    sessionStorage: storage,
+    navigator: sw ? { serviceWorker: { controller: controlled ? { scriptURL } : null, getRegistration: async () => reg } } : {},
+    document: { getElementById: id => (id === 'app' ? app : null) },
+  };
+  vm.runInNewContext(STALE_PAGE_RECOVERY_JS, ctx);
+  return new Promise(r => setTimeout(() => r({ calls, app, store, state: hist.state }), 20));
+}
+
+test('a stale cached page stops its worker and loads the link from the server, once', async () => {
+  const first = await runRecovery();
+  assert.deepEqual(first.calls, { unregister: 1, reload: 1 });
+  assert.equal(first.app.textContent, 'Opening...');
+  // Still the cached page after that reload: say so instead of reloading forever.
+  const second = await runRecovery({ store: first.store, state: first.state });
+  assert.deepEqual(second.calls, { unregister: 0, reload: 0 });
+  assert.match(second.app.textContent, /could not be opened/);
+  assert.equal(second.store.size, 0);
+  // The guard holds with storage turned off too.
+  const off1 = await runRecovery({ storageOff: true });
+  assert.deepEqual(off1.calls, { unregister: 1, reload: 1 });
+  const off2 = await runRecovery({ storageOff: true, state: off1.state });
+  assert.deepEqual(off2.calls, { unregister: 0, reload: 0 });
+  // No worker in charge: the page didn't come from one, so reloading can't help.
+  for (const opts of [{ sw: false }, { controlled: false }]) {
+    const r = await runRecovery(opts);
+    assert.deepEqual(r.calls, { unregister: 0, reload: 0 });
+    assert.match(r.app.textContent, /could not be opened/);
+  }
 });
