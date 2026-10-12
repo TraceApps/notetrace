@@ -91,3 +91,39 @@ export function injectPublicNoteHead(html, head) {
   const swapped = html.replace(/<title>[^<]*<\/title>/, '');
   return swapped.replace('</head>', `  ${head}\n</head>`);
 }
+
+/**
+ * Served for /n/assets/*.js (TraceApps/notetrace#22). Nothing the server
+ * sends ever asks for that path: only a service worker's cached copy of the
+ * app page does, when it answers a public link in place of the server. Its
+ * scripts are relative, so from /n/<token> they point at /n/assets/ and the
+ * page stays blank. That happens in a browser still running an older
+ * version's worker, and with 1.1.0's worker for a link with anything after
+ * the token (?fbclid=...). This script stops that worker, NoteTrace's own
+ * only, and loads the link again from the server, once. Opening the app
+ * registers the worker again.
+ */
+export const STALE_PAGE_RECOVERY_JS = `(async () => {
+  const app = document.getElementById('app');
+  const say = (text) => { if (app) app.textContent = text; };
+  const KEY = 'notetrace:public-link-retry';
+  // Once per link: history.state survives the reload even where storage is off.
+  let again = !!(history.state && history.state.notetraceRetry);
+  try { again = again || sessionStorage.getItem(KEY) === location.href; } catch {}
+  const controller = navigator.serviceWorker && navigator.serviceWorker.controller;
+  if (again || !controller) {
+    try { sessionStorage.removeItem(KEY); } catch {}
+    say('This link could not be opened. Reload the page to try again.');
+    return;
+  }
+  say('Opening...');
+  try { history.replaceState(Object.assign({}, history.state, { notetraceRetry: 1 }), ''); } catch {}
+  try { sessionStorage.setItem(KEY, location.href); } catch {}
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    // Only the worker that answered this page, never another app's.
+    if (reg && reg.active && reg.active.scriptURL === controller.scriptURL) await reg.unregister();
+  } catch {}
+  location.reload();
+})();
+`;
