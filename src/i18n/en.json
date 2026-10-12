@@ -1437,7 +1437,7 @@
   },
   "settings_trace_ct": {
     "env_lock_banner":           "Configured via environment variables, changes are disabled.",
-    "enable_desc":               "Floating chat button on every page. Uses your own AI provider key, never shared.",
+    "enable_desc":               "After a successful connection test, a floating chat button appears on every page. Uses your own AI provider key, never shared.",
     "enable_desc_locked":        "Floating chat button on every page. The server provides the AI.",
     "server_default":            "Server default",
     "toast": {
@@ -1447,7 +1447,11 @@
     "enable_assistant":          "Enable Trace Assistant",
     "provider":                  "Provider",
     "base_url":                  "Base URL",
-    "base_url_desc":             "/v1/chat/completions endpoint",
+    "base_url_desc":             "Enter the server URL without /v1 or /chat/completions; NoteTrace appends /v1/chat/completions automatically. Browser connections require the endpoint to allow your NoteTrace origin (CORS). Use HTTPS when NoteTrace is served over HTTPS.",
+    "test_connection":           "Test connection",
+    "test_connection_desc":      "Enable the assistant and configure your provider, then test the connection. You can test again after changing your endpoint or proxy settings.",
+    "test":                      "Test",
+    "testing":                   "Testing…",
     "model":                     "Model",
     "custom_model_id":           "Custom Model ID",
     "assistant_name":            "Assistant Name",

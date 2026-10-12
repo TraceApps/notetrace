@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **AI connection testing is always visible in Settings** (#18). The Test button stays in place before configuration and after edits, and is disabled while the assistant is off or a test is running. The custom Base URL example no longer includes `/v1`, and the help explains the appended path, browser CORS requirements, and when the floating assistant button appears.
+
 ### Added
 
 - **The watch app updates itself to the phone's release.** Installed from GitHub, it used to stay on whatever version it was put on with adb. Now, when the phone updates, the watch fetches the same release's watch app and installs it. The first time, the watch asks you to allow NoteTrace to install apps; after that it updates without a tap, while the watch is on its charger.

@@ -60,8 +60,8 @@
   // Save now also runs the connection test. If it succeeds the user
   // gets a toast + green check + the Trace FAB unlocks. If it fails
   // the toast tells them why and aiKeyVerified stays off. This
-  // collapses the previous "Save then click Test separately" flow
-  // into one action, and removes the dedicated Test row entirely.
+  // keeps automatic checks when a field is saved; the dedicated Test
+  // button also lets users retry after fixing their endpoint or proxy.
   // Saved when the field is left, as in NutriTrace; unchanged values don't re-test.
   async function saveAiKey() {
     if (aiApiKeyDraft === ($aiApiKey || '')) return;
@@ -150,6 +150,7 @@
   }
 
   async function testConnection({ silentOk = false } = {}) {
+    if (testing) return;
     if (!canTest && !envLocks.ai) {
       showError($_('settings_trace_ct.toast.fill_fields'));
       return;
@@ -209,8 +210,6 @@
     <ConnectionStatus
       status={testing ? 'testing' : ($aiKeyVerified || testStatus === 'ok' || (envLocks.ai && envLocks.ai_enabled) ? 'ok' : (testStatus === 'fail' ? 'fail' : ''))}
       connectedAs={_label}
-      onRetest={() => testConnection()}
-      retestDisabled={testing}
     />
   {/if}
   <div class="setting-row">
@@ -221,6 +220,18 @@
         : $_('settings_trace_ct.enable_desc')}</span>
     </div>
     <Toggle label={$_('settings_trace_ct.enable_assistant')} checked={_displayedAiEnabled} disabled={envLocks.ai} on:change={e => { if (!envLocks.ai) aiEnabled.set(e.detail); }} />
+  </div>
+
+  <div class="setting-divider"></div>
+  <div class="setting-row">
+    <div>
+      <span class="setting-label">{$_('settings_trace_ct.test_connection')}</span>
+      <span class="setting-desc">{$_('settings_trace_ct.test_connection_desc')}</span>
+    </div>
+    <button type="button" class="btn btn-secondary" on:click={() => testConnection()}
+      disabled={!_displayedAiEnabled || testing}>
+      {testing ? $_('settings_trace_ct.testing') : $_('settings_trace_ct.test')}
+    </button>
   </div>
 
   {#if _displayedAiEnabled}
@@ -247,10 +258,13 @@
     {#if $aiProvider === 'custom'}
       <div class="setting-divider"></div>
       <div class="setting-row stack">
-        <span class="setting-label">{$_('settings_trace_ct.base_url')} <span class="setting-desc">{$_('settings_trace_ct.base_url_desc')}</span></span>
+        <div>
+          <span class="setting-label">{$_('settings_trace_ct.base_url')}</span>
+          <span class="setting-desc">{$_('settings_trace_ct.base_url_desc')}</span>
+        </div>
         <div class="key-row">
           <input class="input" type="url" bind:value={aiBaseUrlDraft}
-            placeholder="https://api.example.com/v1"
+            placeholder="https://api.example.com"
             aria-label={$_('settings_trace_ct.base_url')}
             on:input={_invalidate} on:blur={saveAiBaseUrl}
             on:keydown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }} />
