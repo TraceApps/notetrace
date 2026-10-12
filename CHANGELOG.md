@@ -11,9 +11,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **The watch app updates itself to the phone's release.** Installed from GitHub, it used to stay on whatever version it was put on with adb. Now, when the phone updates, the watch fetches the same release's watch app and installs it. The first time, the watch asks you to allow NoteTrace to install apps; after that it updates without a tap, while the watch is on its charger.
 
+---
+
+## [1.1.1] - 2026-10-12
+
+Patch release: public note links open again in browsers where NoteTrace has been used.
+
 ### Fixed
 
-- **A public link no longer opens a blank page** ([#22](https://github.com/TraceApps/notetrace/issues/22)). In a browser where NoteTrace had been used, the app's cached copy answered the link instead of your server: always for a link with a query after it (like the `?fbclid=` chat apps add), and for any link until the browser picked up 1.1.0. A mistyped or cut-off link now says the link isn't available, instead of opening the sign-in page. Thanks @harikiran-lab for the report.
+- **A public link no longer opens a blank page** ([#22](https://github.com/TraceApps/notetrace/issues/22)). In a browser where NoteTrace had been used, the app's cached copy answered the link instead of your server: always for a link with a query after it (like the `?fbclid=` chat apps add), and for any link while the browser still ran an older version's copy. A mistyped or cut-off link now says the link isn't available, instead of opening the sign-in page. Thanks @harikiran-lab for the report.
+
+### Security
+
+- No security fixes this cycle. `npm audit` reports 0 vulnerabilities for the app and the server.
 
 ---
 
