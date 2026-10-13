@@ -294,25 +294,24 @@ test('the same user id made at another time (a rebuilt server) is another accoun
 test('the first sync stores every note once, whatever starts it', async (t) => {
   if (skip(t)) return;
   for (let i = 1; i <= 6; i++) await note(A, 'carol', `carol note ${i}`);
-  const r = phone('first', A, `
-    await p.setupSignIn('carol');
-    // What the app starts at once on opening: App.svelte's sync, the API
-    // layer's first sync and its loop, coming back to the app, a manual
-    // Sync Now.
-    // Five first syncs in a row (the copy emptied in between), so a race
-    // that only sometimes lines up can't hide.
-    const rounds = [];
-    for (let round = 0; round < 5; round++) {
-      await p.sync(); await p.sleep(300); // nothing still running from the round before
-      await p.db.run('DELETE FROM notes', []);
-      await p.db.run("DELETE FROM sync_meta WHERE key = 'last_pull_at'", []);
-      await Promise.all([p.syncMod.fullSync(), p.syncMod.fullSync(true), p.syncMod.fullSync(true), p.sync(), p.sync(), p.sync()]);
-      await p.sleep(200);
+  const rounds = [];
+  // A fresh phone for each first sync: reminders can bootstrap a background
+  // sync after sign-in, so deleting a live copy and its cursor between rounds
+  // races that sync even if the explicit sync calls have finished.
+  for (let round = 0; round < 5; round++) {
+    const r = phone(`first-${round}`, A, `
+      await p.setupSignIn('carol');
+      // What the app starts at once on opening: App.svelte's sync, the API
+      // layer's first sync and its loop, coming back to the app, a manual
+      // Sync Now. Await every caller before inspecting the copy.
+      const syncs = await Promise.all([p.syncMod.fullSync(), p.syncMod.fullSync(true), p.syncMod.fullSync(true), p.sync(), p.sync(), p.sync()]);
       const rows = await p.rows();
-      rounds.push({ count: rows.length, servers: new Set(rows.map(x => x.server_id)).size });
-    }
-    p.done(rounds);`, { PHONE_DELAY_MS: '30', PHONE_BRIDGE_MS: '2' });
-  assert.deepEqual(r, Array(5).fill({ count: 6, servers: 6 }));
+      p.done({ syncs, count: rows.length, servers: new Set(rows.map(x => x.server_id)).size });`,
+    { PHONE_DELAY_MS: '30', PHONE_BRIDGE_MS: '2' });
+    assert.ok(r.syncs.every(s => s?.ok), `round ${round}: ${JSON.stringify(r.syncs)}`);
+    rounds.push({ count: r.count, servers: r.servers });
+  }
+  assert.deepEqual(rounds, Array(5).fill({ count: 6, servers: 6 }));
 });
 
 test('a note made offline goes up once, with several syncs at once', async (t) => {
