@@ -9,6 +9,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.1.2] - 2026-10-14
+
+Patch release: public note links open behind a reverse proxy that has its own login.
+
+### Fixed
+
+- **A public link opens when NoteTrace sits behind a reverse proxy with its own login** ([#22](https://github.com/TraceApps/notetrace/issues/22)). The page fetched the note without the browser's proxy login, so the proxy refused it and the page said it couldn't load the note. For people without that login to open your links, leave `/n/`, `/api/n/` and the app's files open in the proxy ([Public links behind a login](https://traceapps.github.io/docs/getting-started/reverse-proxy/#public-links-behind-a-login)). Thanks @harikiran-lab for the report.
+
+### Security
+
+- No security fixes this cycle. `npm audit` reports 0 vulnerabilities for the app and the server.
+
+---
+
 ## [1.1.1] - 2026-10-12
 
 Patch release: public note links open again in browsers where NoteTrace has been used.

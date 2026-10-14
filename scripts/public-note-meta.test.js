@@ -127,3 +127,12 @@ test('a stale cached page stops its worker and loads the link from the server, o
     assert.match(r.app.textContent, /could not be opened/);
   }
 });
+
+// TraceApps/notetrace#22. Behind a reverse proxy that asks for a login, a
+// fetch with credentials 'omit' goes out without the browser's proxy login
+// and the proxy refuses it; the page then said it couldn't load the note.
+test('the public page asks for the note with the browser\'s own login, not without it', () => {
+  const page = readFileSync(new URL('../src/routes/PublicNote.svelte', import.meta.url), 'utf8');
+  assert.match(page, /fetch\(apiUrl\(`\/api\/n\/[\s\S]{0,80}?credentials: 'same-origin'/);
+  assert.doesNotMatch(page, /credentials: 'omit'/);
+});
