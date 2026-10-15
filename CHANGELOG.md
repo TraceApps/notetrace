@@ -11,6 +11,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - **The watch app updates itself to the phone's release.** Installed from GitHub, it used to stay on whatever version it was put on with adb. Now, when the phone updates, the watch fetches the same release's watch app and installs it. The first time, the watch asks you to allow NoteTrace to install apps; after that it updates without a tap, while the watch is on its charger.
 
+### Fixed
+
+- **Signing in with SSO finishes on phones with an older Android System WebView.** On older WebView versions (seen on 124), the app didn't recognize the sign-in return from the browser, so the sign-in page closed and the app stayed signed out. A home screen shortcut tapped while NoteTrace was already open did nothing there either.
+
 ---
 
 ## [1.1.2] - 2026-10-14

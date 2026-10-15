@@ -479,11 +479,15 @@
           // Without its query: a sign-in link carries a code or a token.
           console.log('[app] deep link received:', String(url).split('?')[0]);
           try {
-            const u = new URL(url);
-            const params = u.searchParams;
-            const host = (u.hostname || u.host || '').toLowerCase();
+            // Read by hand (lib/app-link.js): older WebViews leave new URL()'s
+            // host empty for this scheme, so SSO never finished there.
+            const { parseAppLink } = await import('./lib/app-link.js');
+            const link = parseAppLink(url);
+            if (!link) throw new Error('not an app link');
+            const params = link.params;
+            const host = link.host;
             if (host === 'new') {
-              const what = (u.pathname || '').replace(/^\/+/, '') || 'text';
+              const what = (link.path || '').replace(/^\/+/, '') || 'text';
               import('svelte-spa-router').then(({ push }) => push(`/?new=${encodeURIComponent(what)}`));
               return;
             }
