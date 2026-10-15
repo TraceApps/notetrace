@@ -89,11 +89,16 @@ test('a provider the browser can\'t read says what to check, not "Failed to fetc
       assert.match(e.message, /always/);
       assert.doesNotMatch(e.message, /Failed to fetch|NetworkError|Load failed/);
       assert.equal(e.cause?.message, m);
+      assert.equal(e.offline, false);
     }
     globalThis.fetch = fail('Failed to fetch');
     // An https page can't call plain http (localhost aside).
     assert.match((await message('http://ollama.lan:11434/v1/chat/completions')).message, /HTTPS[\s\S]*https:\/\//);
     assert.doesNotMatch((await message('http://localhost:11434/v1/chat/completions')).message, /plain HTTP/);
+    // The Android app may call plain http (allowMixedContent): not that advice there.
+    globalThis.Capacitor = { isNativePlatform: () => true };
+    try { assert.doesNotMatch((await message('http://ollama.lan:11434/v1/chat/completions')).message, /plain HTTP/); }
+    finally { delete globalThis.Capacitor; }
     // The big providers allow every site: there it's the connection.
     assert.match((await message('https://api.openai.com/v1/chat/completions')).message, /connection/);
     // A Base URL with no scheme still names something.
@@ -144,8 +149,9 @@ test('Settings tests against what was just saved, needs no key for OpenAI Compat
   assert.equal((s.match(/if \(stale\(\)\) return;/g) || []).length, 2);
   assert.match(s, /if \(testing\) \{\s*\/\/[^\n]*\n\s*_testAgain = /);
   assert.match(s, /error=\{testStatus === 'fail' \? testError : ''\}/);
-  // Changing the provider tests too.
-  assert.match(s, /function onProviderChange[\s\S]*?_invalidate\(\);\s*_autoTest\(\);\s*\}/);
+  // Changing the provider doesn't test: the saved key is the old provider's.
+  const providerChange = s.slice(s.indexOf('function onProviderChange'), s.indexOf('async function testConnection'));
+  assert.doesNotMatch(providerChange, /_autoTest|testConnection\(/);
   assert.match(s, /const keyMayFollow = \$aiProvider === 'custom' && !\$aiApiKey\?\.trim\(\);/);
   assert.match(s, /if \(!quietFail\) showError/);
   for (const m of s.matchAll(/on:input=\{[^}]*\}/g)) assert.doesNotMatch(m[0], /_autoTest|testConnection/);

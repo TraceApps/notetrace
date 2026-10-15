@@ -165,8 +165,10 @@ export async function fetchProvider(url, init) {
     host = host || String(url);
     const page = typeof location !== 'undefined' ? location : null;
     const official = /(^|\.)(openai\.com|anthropic\.com|googleapis\.com)$/i.test(host);
-    // An https page can't call a plain-http address (localhost aside).
-    const insecure = page?.protocol === 'https:' && /^http:/i.test(String(url)) && !/^(localhost|127\.|\[::1\])/i.test(host);
+    // An https page can't call a plain-http address (localhost aside). The
+    // Android app can (allowMixedContent), so there it's the usual advice.
+    const native = !!globalThis.Capacitor?.isNativePlatform?.();
+    const insecure = !native && page?.protocol === 'https:' && /^http:/i.test(String(url)) && !/^(localhost|127\.|\[::1\])/i.test(host);
     const key = official ? 'unreachable_official' : insecure ? 'unreachable_insecure' : 'unreachable';
     let message = `Couldn't get an answer from ${host}.`;
     try {
@@ -175,6 +177,9 @@ export async function fetchProvider(url, init) {
     } catch { /* i18n not ready: the plain line above */ }
     const e = new Error(message);
     e.cause = err;
+    // Not "you're offline": this says what it is (CookTrace's messages.js
+    // would otherwise read words in the host name as a lost connection).
+    e.offline = false;
     throw e;
   }
 }

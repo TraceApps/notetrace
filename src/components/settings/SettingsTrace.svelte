@@ -160,8 +160,10 @@
         aiCustomModelVal = '';
       }
     }
+    // Not tested here: the key saved is the old provider's, and would go to
+    // the new one (or to a saved OpenAI-compatible address) before its own
+    // is in. Saving a field, or Test, tests.
     _invalidate();
-    _autoTest();
   }
 
   // What a test was run with. A result only counts for the settings it
