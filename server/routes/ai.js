@@ -3,7 +3,7 @@ import { requireAuth, userMgmtActive } from '../middleware/auth.js';
 import { wrap } from '../logger.js';
 import { getAiConfig } from '../ai.js';
 import { makeRateLimiter } from '../middleware/rate-limit.js';
-import { getOpenAIChatParams } from '../lib/openai-chat-params.js';
+import { getOpenAIChatParams, openAIBase } from '../lib/openai-chat-params.js';
 import { createToolSupportMemory, sendWithToolFallback } from '../lib/tool-support.js';
 import db from '../db.js';
 import multer from 'multer';
@@ -138,7 +138,7 @@ function _serverCfg() {
     provider,
     apiKey: cfg.ai_api_key,
     model: modelFor(provider, cfg.ai_model || AI_DEFAULT_MODELS[provider] || ''),
-    baseUrl: cfg.ai_base_url,
+    baseUrl: openAIBase(cfg.ai_base_url),
     transcribeModel: process.env.AI_TRANSCRIBE_MODEL || '',
   };
 }
@@ -271,7 +271,7 @@ router.post('/chat', requireAuth, aiChatLimit, wrap(async (req, res) => {
   const provider = cfg.ai_provider || 'claude';
   const model    = modelFor(provider, cfg.ai_model || AI_DEFAULT_MODELS[provider] || '');
   const apiKey   = cfg.ai_api_key;
-  const baseUrl  = cfg.ai_base_url;
+  const baseUrl  = openAIBase(cfg.ai_base_url);
 
   // API key required for cloud providers; oai-compat local endpoints
   // (Ollama, LM Studio, etc.) often don't need one — mirror callAI().

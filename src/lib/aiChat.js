@@ -17,7 +17,9 @@
  * via setToolHandler(), keeping the catalog and execution code
  * loosely coupled so we can iterate on either independently.
  */
-import { getOpenAIChatParams } from './openai-chat-params.js';
+import { get } from 'svelte/store';
+import { _ } from 'svelte-i18n';
+import { getOpenAIChatParams, openAIBase } from './openai-chat-params.js';
 import { createToolSupportMemory, sendWithToolFallback } from './tool-support.js';
 import { NOTE_TOOLS } from './trace-note-tools.js';
 
@@ -133,18 +135,54 @@ export async function callAI({ provider, apiKey, model, messages, systemPrompt, 
     case 'gemini':     return _callGeminiWithTools(apiKey, model, messages, systemPrompt, tools, cb);
     case 'oai-compat':
     case 'custom': {
-      if (!baseUrl) throw new Error('OpenAI-compatible provider needs a Base URL. Set one in Settings → Trace.');
-      if (!model)   throw new Error('OpenAI-compatible provider needs a model name. Set one in Settings → Trace.');
-      return _callOpenAIWithTools(apiKey || 'no-key', model, messages, systemPrompt, tools, cb, baseUrl.replace(/\/+$/, ''));
+      const base = relay ? baseUrl : openAIBase(baseUrl);
+      if (!base)  throw new Error('OpenAI-compatible provider needs a Base URL. Set one in Settings → Trace.');
+      if (!model) throw new Error('OpenAI-compatible provider needs a model name. Set one in Settings → Trace.');
+      return _callOpenAIWithTools(apiKey || 'no-key', model, messages, systemPrompt, tools, cb, base);
     }
     default: throw new Error(`Unknown AI provider: ${provider}`);
+  }
+}
+
+/**
+ * fetch() to a provider from this browser. Its "Failed to fetch" says
+ * nothing: the browser gives it when the address can't be reached, and when
+ * the answer doesn't allow this site to read it (CORS), which is what a proxy
+ * that adds CORS headers only to successful answers does to every error,
+ * such as a model refusing tools (TraceApps/notetrace#18). Say what to check.
+ */
+export async function fetchProvider(url, init) {
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    // Only a network failure is reworded (Chrome: "Failed to fetch", Firefox:
+    // "NetworkError when attempting to fetch resource.", Safari: "Load
+    // failed"). A cancelled request, or one fetch refused to send (a header
+    // it can't carry, say), stays as it was.
+    if (!(err instanceof TypeError) || !/failed to fetch|networkerror|load failed/i.test(err.message || '')) throw err;
+    let host = '';
+    try { host = new URL(url).host; } catch { /* not a URL */ }
+    host = host || String(url);
+    const page = typeof location !== 'undefined' ? location : null;
+    const official = /(^|\.)(openai\.com|anthropic\.com|googleapis\.com)$/i.test(host);
+    // An https page can't call a plain-http address (localhost aside).
+    const insecure = page?.protocol === 'https:' && /^http:/i.test(String(url)) && !/^(localhost|127\.|\[::1\])/i.test(host);
+    const key = official ? 'unreachable_official' : insecure ? 'unreachable_insecure' : 'unreachable';
+    let message = `Couldn't get an answer from ${host}.`;
+    try {
+      const t = get(_);
+      if (typeof t === 'function') message = t(`trace_ai_ct.${key}`, { values: { host, origin: page?.origin || 'this site' } });
+    } catch { /* i18n not ready: the plain line above */ }
+    const e = new Error(message);
+    e.cause = err;
+    throw e;
   }
 }
 
 /** POST a provider request, directly or through the server relay. */
 async function _post(relay, url, headers, body) {
   if (!relay) {
-    const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) });
+    const res = await fetchProvider(url, { method: 'POST', headers, body: JSON.stringify(body) });
     return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
   }
   const { apiUrl, isNative, getServerUrl, getAuthToken } = await import('./platform.js');

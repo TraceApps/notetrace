@@ -14,6 +14,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Fixed
 
 - **Signing in with SSO finishes on phones with an older Android System WebView.** On older WebView versions (seen on 124), the app didn't recognize the sign-in return from the browser, so the sign-in page closed and the app stayed signed out. A home screen shortcut tapped while NoteTrace was already open did nothing there either.
+- **Trace connects the first time its settings are filled in** ([#18](https://github.com/TraceApps/notetrace/issues/18)). Whichever setting was filled in last (usually the API key) said "Fill in provider, API key, and model first", or on a new install did nothing at all, and the chat button stayed hidden until a setting was changed again. **Test Connection** now has its own row, so a test can be run at any time (as suggested in [#27](https://github.com/TraceApps/notetrace/pull/27)). Thanks @harikiran-lab for the report and the suggestion.
+- **OpenAI Compatible accepts a Base URL with or without `/v1`**, or the whole `/v1/chat/completions` address, in Settings and in `AI_BASE_URL` ([#18](https://github.com/TraceApps/notetrace/issues/18)). Given with `/v1`, every request went to `/v1/v1/chat/completions`.
+- **OpenAI Compatible works without an API key**, for servers that need none (Ollama, LM Studio). The connection test asked for one, so the chat button never appeared.
+- **When Trace gets no answer from your provider, it says what to check** instead of "Failed to fetch": the Base URL, or a server that has to allow this site on every answer, errors included, or an https:// address for a page on HTTPS. A reverse proxy that adds CORS headers only to successful answers hid the provider's real error, such as a model that can't use tools ([#18](https://github.com/TraceApps/notetrace/issues/18)).
 
 ---
 

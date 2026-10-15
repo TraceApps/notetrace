@@ -13,7 +13,8 @@ import { get, derived } from 'svelte/store';
 import { aiProvider, aiApiKey, aiModel, aiBaseUrl, envLocks, aiTranscribeModel } from '../stores/settings.js';
 import { traceReady } from './trace-run.js';
 import { apiUrl, isNative, getServerUrl, getAuthToken, resolveAssetUrl } from './platform.js';
-import { AI_DEFAULT_MODELS, modelFor } from './aiChat.js';
+import { AI_DEFAULT_MODELS, modelFor, fetchProvider } from './aiChat.js';
+import { openAIBase } from './openai-chat-params.js';
 import { TIMED_TRANSCRIBE_PROMPT, parseTimedText, fromVerboseJson, mergePieces, whisperStyle, transcribeLimitBytes, chunkSeconds } from '../../server/lib/transcript.js';
 
 export const TRANSCRIBE_PROMPT = 'Transcribe this audio exactly, in its own language. Reply with only the transcript. If there is no speech, reply NONE.';
@@ -51,7 +52,7 @@ async function _json(res, what) {
 
 const _cfg = () => {
   const provider = get(aiProvider);
-  return { provider, apiKey: get(aiApiKey), model: modelFor(provider, get(aiModel) || AI_DEFAULT_MODELS[provider] || ''), baseUrl: String(get(aiBaseUrl) || '').replace(/\/+$/, '') };
+  return { provider, apiKey: get(aiApiKey), model: modelFor(provider, get(aiModel) || AI_DEFAULT_MODELS[provider] || ''), baseUrl: openAIBase(get(aiBaseUrl)) };
 };
 
 async function _blobToBase64(blob) {
@@ -75,7 +76,7 @@ async function _transcribePiece(blob, mime) {
   const cfg = _cfg();
   if (!AUDIO_PROVIDERS.includes(cfg.provider)) throw new Error('This AI provider can\'t transcribe audio. Use OpenAI, Gemini, or an OpenAI-compatible Whisper server.');
   if (cfg.provider === 'gemini') {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${cfg.model}:generateContent?key=${cfg.apiKey}`, {
+    const res = await fetchProvider(`https://generativelanguage.googleapis.com/v1beta/models/${cfg.model}:generateContent?key=${cfg.apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: mime.split(';')[0], data: await _blobToBase64(blob) } }, { text: TIMED_TRANSCRIBE_PROMPT }] }] }),
@@ -94,7 +95,7 @@ async function _transcribePiece(blob, mime) {
     // Whisper-style models give times per sentence; the gpt-4o ones only text.
     if (timed) { form.append('response_format', 'verbose_json'); form.append('timestamp_granularities[]', 'segment'); }
     else if (cfg.provider === 'openai') form.append('chunking_strategy', 'auto');
-    return fetch(`${base}/v1/audio/transcriptions`, { method: 'POST', headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}, body: form });
+    return fetchProvider(`${base}/v1/audio/transcriptions`, { method: 'POST', headers: cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}, body: form });
   };
   const timed = whisperStyle(model);
   let res = await send(timed);
@@ -193,7 +194,7 @@ export async function readImageText(blob) {
   const cfg = _cfg();
   if (!IMAGE_PROVIDERS.includes(cfg.provider)) throw new Error('This AI provider can\'t read images.');
   if (cfg.provider === 'claude') {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetchProvider('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-api-key': cfg.apiKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
       body: JSON.stringify({ model: cfg.model, max_tokens: 2000, messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: mime, data: base64 } }, { type: 'text', text: IMAGE_TEXT_PROMPT }] }] }),
@@ -202,7 +203,7 @@ export async function readImageText(blob) {
     return cleanExtracted(data.content?.map(c => c.text || '').join('') || '');
   }
   if (cfg.provider === 'gemini') {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${cfg.model}:generateContent?key=${cfg.apiKey}`, {
+    const res = await fetchProvider(`https://generativelanguage.googleapis.com/v1beta/models/${cfg.model}:generateContent?key=${cfg.apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: mime, data: base64 } }, { text: IMAGE_TEXT_PROMPT }] }] }),
@@ -211,7 +212,7 @@ export async function readImageText(blob) {
     return cleanExtracted(data.candidates?.[0]?.content?.parts?.map(p => p.text).join('') || '');
   }
   const base = cfg.provider === 'openai' ? 'https://api.openai.com' : cfg.baseUrl;
-  const res = await fetch(`${base}/v1/chat/completions`, {
+  const res = await fetchProvider(`${base}/v1/chat/completions`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}) },
     body: JSON.stringify({ model: cfg.model, stream: false, messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: `data:${mime};base64,${base64}` } }, { type: 'text', text: IMAGE_TEXT_PROMPT }] }] }),
