@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **NoteTrace can be translated on [Weblate](https://hosted.weblate.org/projects/notetrace/).** Pick a language and translate in the browser, no code needed. Settings > Support > Help Translate goes straight there. Each language joins the picker in Settings > Regional & Units once it has translations; anything not yet translated shows in English.
 - **Right-to-left writing: Arabic, Hebrew and mixed lines** ([#21](https://github.com/TraceApps/notetrace/issues/21), requested by @mmBesar). Each paragraph, heading, list item, checkbox and quote reads the way its first letter does, so an Arabic line sits on the right with its bullet or box, and Arabic and English in one line come out in the right order. Titles, checklist items, cards, Tasks, the public link page, printing and Trace's chat do the same. How notes are saved doesn't change.
 - **The watch app updates itself to the phone's release.** Installed from GitHub, it used to stay on whatever version it was put on with adb. Now, when the phone updates, the watch fetches the same release's watch app and installs it. The first time, the watch asks you to allow NoteTrace to install apps; after that it updates without a tap, while the watch is on its charger.
 

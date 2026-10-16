@@ -207,6 +207,14 @@ Part of the **TraceApps** family. Sister apps: [NutriTrace](https://github.com/t
 
 ---
 
+## Translations
+
+NoteTrace is translated with [Weblate](https://weblate.org/), a free web platform for libre translation projects. No coding required: pick your language, translate the strings, submit. Missing strings fall back to English, so a partial translation is safe to use.
+
+Start translating at [hosted.weblate.org/projects/notetrace/](https://hosted.weblate.org/projects/notetrace/). See [CONTRIBUTING.md](CONTRIBUTING.md#translations) for guidance (note-taking terms, proper nouns, tone).
+
+---
+
 ## More
 
 [ROADMAP.md](ROADMAP.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [PRIVACY.md](PRIVACY.md)
