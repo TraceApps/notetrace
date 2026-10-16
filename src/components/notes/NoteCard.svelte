@@ -17,6 +17,7 @@
   import { dueLabel, dueStatus } from '../../lib/due-dates.js';
   import { isNative } from '../../lib/platform.js';
   import { firstNoteUrl, getLinkPreview, previewImageUrl, previewIconUrl } from '../../lib/link-preview.js';
+  import { textDir } from '../../lib/text-dir.js';
 
   export let note;
   /** 'notes' | 'archive' | 'trash' controls which quick actions show. */
@@ -150,21 +151,21 @@
   {/if}
 
   {#if note.title}
-    <h3 class="card-title" class:below-media={images.length > 0 || !!linkPreview}><Highlight text={note.title} {terms} /></h3>
+    <h3 class="card-title" dir="auto" class:below-media={images.length > 0 || !!linkPreview}><Highlight text={note.title} {terms} /></h3>
   {/if}
 
   {#if hiddenMatch}
     <p class="card-match">
       <span class="material-symbols-rounded">{isAudio(hiddenMatch.a) ? 'mic' : isFile(hiddenMatch.a) ? fileIcon(hiddenMatch.a) : 'image'}</span>
-      <span class="card-match-text"><Highlight text={hiddenMatch.snip} {terms} /></span>
+      <span class="card-match-text" dir="auto"><Highlight text={hiddenMatch.snip} {terms} /></span>
     </p>
   {/if}
   {#if note.kind === 'text'}
-    {#if preview}<p class="card-body"><Highlight text={preview} {terms} /></p>{/if}
+    {#if preview}<p class="card-body" dir="auto"><Highlight text={preview} {terms} /></p>{/if}
   {:else}
     <ul class="card-items">
       {#each shownItems as item (item.uuid)}
-        <li>
+        <li dir={textDir(item.text)}>
           <button class="card-check" aria-label={$_('notes.check_item')} disabled={!editable} on:click={(e) => toggleItem(e, item)}></button>
           <span class="card-item-text"><Highlight text={item.text} {terms} />{#if item.due_date}<span class="card-due due-{dueStatus(item.due_date)}">{dueLabel(item.due_date, $_)}</span>{/if}</span>
         </li>
@@ -193,7 +194,7 @@
         <img class="link-image" src={previewImageUrl(linkPreview.url)} alt="" loading="lazy" draggable="false" on:error={() => imageFailed = true} />
       {/if}
       <span class="link-text">
-        {#if linkPreview.title}<span class="link-title">{linkPreview.title}</span>{/if}
+        {#if linkPreview.title}<span class="link-title" dir="auto">{linkPreview.title}</span>{/if}
         <span class="link-site">
           {#if linkPreview.icon && !iconFailed}
             <img class="link-icon" src={previewIconUrl(linkPreview.url)} alt="" loading="lazy" draggable="false" on:error={() => iconFailed = true} />
@@ -233,7 +234,7 @@
       {/if}
       {#if note.reminder_at}<ReminderChip {note} />{/if}
       {#each noteLabels as l (l.id)}
-        <span class="chip"><span class="chip-dot" style="background:{colorDot(l.color)}"></span>{l.name}</span>
+        <span class="chip"><span class="chip-dot" style="background:{colorDot(l.color)}"></span><span dir="auto">{l.name}</span></span>
       {/each}
     </div>
   {/if}
@@ -287,7 +288,8 @@
     box-shadow: var(--card-rest-shadow);
     color: var(--text-1);
     cursor: pointer;
-    text-align: left;
+    /* start, not left: an Arabic title or line (dir="auto") lines up on the right. */
+    text-align: start;
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
@@ -462,6 +464,8 @@
     line-height: 1.55;
     color: color-mix(in srgb, var(--text-1) 82%, transparent);
     white-space: pre-line;
+    /* Each line its own way: an Arabic line and an English one in one note. */
+    unicode-bidi: plaintext;
     overflow-wrap: anywhere;
     display: -webkit-box;
     -webkit-line-clamp: 14;
@@ -481,7 +485,7 @@
   .card-items { list-style: none; display: flex; flex-direction: column; gap: 7px; }
   .card-items li { display: flex; align-items: flex-start; gap: 10px; font-size: 14px; line-height: 1.4; color: color-mix(in srgb, var(--text-1) 82%, transparent); }
   .card-item-text { overflow-wrap: anywhere; }
-  .card-due { margin-left: 6px; font-size: 11px; font-weight: 600; color: var(--text-3); white-space: nowrap; }
+  .card-due { margin-inline-start: 6px; font-size: 11px; font-weight: 600; color: var(--text-3); white-space: nowrap; }
   .card-due.due-overdue { color: var(--danger); }
   .card-due.due-today { color: var(--accent); }
   .card-check {

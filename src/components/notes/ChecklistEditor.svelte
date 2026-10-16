@@ -17,6 +17,7 @@
   import { dueLabel, dueStatus, todayStr } from '../../lib/due-dates.js';
   import { nextDueDate, cleanTaskRepeat } from '../../../server/lib/task-rules.js';
   import { showInfo } from '../../stores/toast.js';
+  import { lineDirs, textDir } from '../../lib/text-dir.js';
 
   export let items = [];
   export let editable = true;
@@ -220,6 +221,11 @@
     list = [...reordered, ...done];
     dispatch('reorder', { uuids: reordered.map(i => i.uuid) });
   }
+  // Each item reads its own way (an Arabic one has its box on the right); an
+  // empty one, like the item above it; the row to add one, like the last.
+  $: openDirs = lineDirs(open.map(i => i.text));
+  $: doneDirs = lineDirs(done.map(i => i.text));
+  $: lastDir = openDirs[openDirs.length - 1];
 </script>
 
 <div class="checklist">
@@ -227,8 +233,8 @@
     use:dragHandleZone={{ items: open, flipDurationMs: FLIP_MS, dropTargetStyle: {}, type: 'checklist', dragDisabled: !editable }}
     on:consider={onConsider}
     on:finalize={onFinalize}>
-    {#each open as item (item.id)}
-      <li class="item">
+    {#each open as item, i (item.id)}
+      <li class="item" dir={openDirs[i]}>
         {#if editable}
           <span class="handle" use:dragHandle data-no-pull-sync aria-label={$_('notes.drag_to_reorder')}>
             <span class="material-symbols-rounded">drag_indicator</span>
@@ -237,6 +243,7 @@
         <button type="button" class="check" aria-label={$_('notes.check_item')} on:click={() => toggle(item)}></button>
         <textarea
           class="item-text"
+          dir={openDirs[i] || 'auto'}
           aria-label={$_('notes.list_item')}
           rows="1"
           bind:this={inputs[item.uuid]}
@@ -268,9 +275,9 @@
   </ul>
 
   {#if editable}
-    <div class="item add-row">
+    <div class="item add-row" dir={lastDir}>
       <span class="material-symbols-rounded add-icon">add</span>
-      <input class="item-text" aria-label={$_('notes.list_item')} placeholder={$_('notes.list_item')} bind:value={newText}
+      <input class="item-text" dir={textDir(newText) || lastDir || 'auto'} aria-label={$_('notes.list_item')} placeholder={$_('notes.list_item')} bind:value={newText}
         on:keydown={onNewKeydown} on:blur={addFromNewRow} />
     </div>
   {/if}
@@ -294,12 +301,12 @@
     </div>
     {#if showChecked}
       <ul class="items" transition:slide={{ duration: 160 }}>
-        {#each done as item (item.uuid)}
-          <li class="item done">
+        {#each done as item, i (item.uuid)}
+          <li class="item done" dir={doneDirs[i]}>
             <button type="button" class="check on" aria-label={$_('notes.uncheck_item')} on:click={() => toggle(item)}>
               <span class="material-symbols-rounded">check</span>
             </button>
-            <span class="item-text static">{item.text}</span>
+            <span class="item-text static" dir="auto">{item.text}</span>
             {#if editable}
               <button type="button" class="remove" aria-label={$_('notes.remove_item')} on:click={() => remove(item)}>
                 <span class="material-symbols-rounded">close</span>
@@ -347,7 +354,7 @@
     border-radius: 10px;
   }
   .handle {
-    width: 22px; margin-left: -8px; padding-top: 7px;
+    width: 22px; margin-inline-start: -8px; padding-top: 7px;
     color: var(--text-3);
     cursor: grab;
     opacity: 0;
@@ -392,11 +399,11 @@
   .remove:hover { color: var(--text-1); background: color-mix(in srgb, var(--text-1) 8%, transparent); }
   @media (hover: none) { .remove { opacity: 0.7; } }
 
-  .add-row { color: var(--text-3); padding-left: 14px; }
-  .add-icon { font-size: 20px; margin-top: 7px; margin-right: 1px; }
+  .add-row { color: var(--text-3); padding-inline-start: 14px; }
+  .add-icon { font-size: 20px; margin-top: 7px; margin-inline-end: 1px; }
 
   .done .item-text { color: var(--text-3); text-decoration: line-through; }
-  .done { padding-left: 14px; }
+  .done { padding-inline-start: 14px; }
 
   /* The count and the way to undo it sit on one rule, so the heading keeps
      its line and the action is at the end where a thumb already is. */

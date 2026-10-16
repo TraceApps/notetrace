@@ -848,7 +848,7 @@
       <h1 class="sr-only">{heading}</h1>
       <div class="header-search" role="search" in:fade={{ duration: 140 }}>
         <span class="material-symbols-rounded">search</span>
-        <input type="search" bind:this={searchEl} placeholder={$_('notes.search_in', { values: { view: heading } })} bind:value={query} on:input={onSearch}
+        <input type="search" dir="auto" bind:this={searchEl} placeholder={$_('notes.search_in', { values: { view: heading } })} bind:value={query} on:input={onSearch}
           on:keydown={(e) => {
             if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSearch(); }
             else if (e.key === 'Enter') { rememberSearch(query); searchEl?.blur(); }

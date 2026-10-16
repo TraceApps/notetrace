@@ -1205,6 +1205,7 @@
         <!-- svelte-ignore a11y-autofocus -->
         <input
           class="title-input"
+          dir="auto"
           bind:this={titleEl}
           bind:value={title}
           placeholder={$_('notes.title_placeholder')}
@@ -1298,7 +1299,7 @@
               {#each backlinks as b (b.id)}
                 <button class="chip backlink" on:click={() => navigateTo(b.id)}>
                   <span class="material-symbols-rounded">{b.kind === 'checklist' ? 'checklist' : 'description'}</span>
-                  {b.title || $_('notes.untitled')}
+                  <span dir="auto">{b.title || $_('notes.untitled')}</span>
                 </button>
               {/each}
             </div>

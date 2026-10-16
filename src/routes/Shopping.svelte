@@ -18,6 +18,7 @@
   import { applyPending, groupShopping, amountLabel } from '../lib/shopping-groups.js';
   import { relativeTime } from '../lib/relative-time.js';
   import { confirmDialog } from '../stores/confirmDialog.js';
+  import { textDir } from '../lib/text-dir.js';
 
   let newName = '';
   let showChecked = false;
@@ -92,7 +93,7 @@
     {:else}
       <form class="quick-add" on:submit|preventDefault={add}>
         <span class="material-symbols-rounded">add_shopping_cart</span>
-        <input bind:this={addInput} bind:value={newName} placeholder={$_('shopping.add_placeholder')} aria-label={$_('shopping.add_placeholder')} maxlength="200" enterkeyhint="done" />
+        <input dir="auto" bind:this={addInput} bind:value={newName} placeholder={$_('shopping.add_placeholder')} aria-label={$_('shopping.add_placeholder')} maxlength="200" enterkeyhint="done" />
         <button class="btn btn-primary qa-go" type="submit" disabled={!newName.trim()}>{$_('shopping.add')}</button>
       </form>
 
@@ -122,12 +123,12 @@
             <h2 class="aisle-title">{g.aisle || $_('shopping.no_aisle')}<span class="count">{g.items.length}</span></h2>
             <ul class="items">
               {#each g.items as it (it.key)}
-                <li class="item" class:pending={it.pending} animate:flip={{ duration: ms }} out:slide={{ duration: ms }}>
+                <li class="item" dir={textDir(it.name)} class:pending={it.pending} animate:flip={{ duration: ms }} out:slide={{ duration: ms }}>
                   <button class="check" on:click={() => setShoppingCheckedMany(it.ids, true)} disabled={!it.ids.some(id => typeof id === 'number')}
                     aria-label={$_('shopping.check', { values: { name: it.name } })}>
                     <span class="material-symbols-rounded">radio_button_unchecked</span>
                   </button>
-                  <span class="name">{it.name}</span>
+                  <span class="name" dir="auto">{it.name}</span>
                   {#if amountLabel(it)}<span class="amount">{amountLabel(it)}</span>{/if}
                   {#if it.recipe_names.length}<span class="recipe" title={$_('shopping.from_recipe', { values: { name: it.recipe_names.join(', ') } })}><span class="material-symbols-rounded">menu_book</span>{it.recipe_names.join(', ')}</span>{/if}
                 </li>
@@ -150,12 +151,12 @@
             {#if showChecked}
               <ul class="items" transition:slide={{ duration: ms }}>
                 {#each checked as it (it.key)}
-                  <li class="item done" class:pending={it.pending}>
+                  <li class="item done" dir={textDir(it.name)} class:pending={it.pending}>
                     <button class="check on" on:click={() => setShoppingCheckedMany(it.ids, false)} disabled={!it.ids.some(id => typeof id === 'number')}
                       aria-label={$_('shopping.uncheck', { values: { name: it.name } })}>
                       <span class="material-symbols-rounded fill">check_circle</span>
                     </button>
-                    <span class="name">{it.name}</span>
+                    <span class="name" dir="auto">{it.name}</span>
                     {#if amountLabel(it)}<span class="amount">{amountLabel(it)}</span>{/if}
                   </li>
                 {/each}
@@ -207,7 +208,7 @@
   .count { font-weight: 600; opacity: 0.7; }
   .items { list-style: none; display: flex; flex-direction: column; gap: 6px; }
   .item {
-    display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 4px 12px 4px 4px;
+    display: flex; align-items: center; gap: 8px; min-height: 52px; padding-block: 4px; padding-inline: 4px 12px;
     background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-md);
   }
   .item.pending { border-style: dashed; }

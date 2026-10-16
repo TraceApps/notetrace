@@ -52,7 +52,7 @@
     <p class="cs-desc">{$_('cooktrace.send_desc')}</p>
     <ul class="cs-list">
       {#each open.slice(0, SHOWN) as it (it.uuid)}
-        <li><span class="material-symbols-rounded">add_shopping_cart</span><span class="name">{it.text}</span></li>
+        <li><span class="material-symbols-rounded">add_shopping_cart</span><span class="name" dir="auto">{it.text}</span></li>
       {/each}
       {#if open.length > SHOWN}
         <li class="more">{$_('cooktrace.more', { values: { count: open.length - SHOWN } })}</li>

@@ -27,6 +27,7 @@
   import { NoteLink } from '../../lib/note-link-extension.js';
   import { portal } from '../../lib/portal.js';
   import { foldText } from '../../lib/search-text.js';
+  import { NoteDirection } from '../../lib/tiptap-direction.js';
 
 
   /** Markdown source. Read on mount; later external changes reload it. */
@@ -161,6 +162,9 @@
         Markdown,
         Placeholder.configure({ placeholder }),
         NoteLink,
+        // Arabic and Hebrew right to left, mixed lines in the right order
+        // (TraceApps/notetrace#21). Display only: the Markdown is unchanged.
+        NoteDirection,
       ],
       content: value || '',
       contentType: 'markdown',
@@ -363,7 +367,7 @@
             <span class="t">{$_(`slash.${item.key}`)}</span>
           {:else}
             <span class="material-symbols-rounded">{item.create ? 'add_link' : 'description'}</span>
-            <span class="t">{item.create ? $_('note_links.link_new', { values: { title: item.title } }) : item.title}</span>
+            <span class="t" dir="auto">{item.create ? $_('note_links.link_new', { values: { title: item.title } }) : item.title}</span>
           {/if}
         </button>
       </li>
@@ -418,12 +422,23 @@
   .tiptap-host :global(.tiptap-body strong) { color: var(--text-1); font-weight: 600; }
   .tiptap-host :global(.tiptap-body u) { text-decoration-thickness: 0.08em; text-underline-offset: 0.15em; }
   .tiptap-host :global(.tiptap-body ul),
-  .tiptap-host :global(.tiptap-body ol) { padding-left: 1.4em; }
+  .tiptap-host :global(.tiptap-body ol) { padding-inline-start: 0; }
+  /* The indent is each item's, on its own side: in a list of Arabic and
+     English items every bullet sits where its line starts. */
+  .tiptap-host :global(.tiptap-body ul:not([data-type="taskList"]) > li),
+  .tiptap-host :global(.tiptap-body ol > li) { margin-inline-start: 1.4em; }
+  /* A line with no letters yet (just the editor's placeholder break) would
+     read left to right under dir="auto": it reads like its list or quote
+     instead, and on its own like the nearest line above it that has letters
+     (data-empty-dir, tiptap-direction.js), so Enter, Enter after an Arabic
+     line leaves the cursor on the right (TraceApps/notetrace#21). */
+  .tiptap-host :global(.tiptap-body :is(p, h1, h2, h3):has(> br.ProseMirror-trailingBreak:only-child)) { direction: inherit; }
+  .tiptap-host :global(.tiptap-body > [data-empty-dir="rtl"]:has(> br.ProseMirror-trailingBreak:only-child)) { direction: rtl; }
   .tiptap-host :global(.tiptap-body li + li) { margin-top: 0.2em; }
   .tiptap-host :global(.tiptap-body li p) { margin: 0; }
   /* Checkboxes in text: the box sits beside its line, and a ticked line fades. */
-  .tiptap-host :global(.tiptap-body ul[data-type="taskList"]) { list-style: none; padding-left: 0.1em; }
-  .tiptap-host :global(.tiptap-body ul[data-type="taskList"] ul[data-type="taskList"]) { padding-left: 1.5em; }
+  .tiptap-host :global(.tiptap-body ul[data-type="taskList"]) { list-style: none; padding-inline-start: 0.1em; }
+  .tiptap-host :global(.tiptap-body ul[data-type="taskList"] ul[data-type="taskList"]) { padding-inline-start: 1.5em; }
   .tiptap-host :global(.tiptap-body li[data-checked]) { display: flex; align-items: flex-start; gap: 0.55em; }
   .tiptap-host :global(.tiptap-body li[data-checked] > label) { flex: 0 0 auto; margin-top: 0.28em; user-select: none; }
   .tiptap-host :global(.tiptap-body li[data-checked] > div) { flex: 1; min-width: 0; }
@@ -446,8 +461,8 @@
     border-radius: 0.2em; padding: 0 0.1em; box-decoration-break: clone; -webkit-box-decoration-break: clone;
   }
   .tiptap-host :global(.tiptap-body blockquote) {
-    padding-left: 12px;
-    border-left: 3px solid var(--border-strong);
+    padding-inline-start: 12px;
+    border-inline-start: 3px solid var(--border-strong);
     color: var(--text-2);
   }
   .tiptap-host :global(.tiptap-body code) {
@@ -456,8 +471,13 @@
     background: color-mix(in srgb, var(--text-1) 8%, transparent);
     border-radius: 6px;
     padding: 2px 6px;
+    /* Code reads left to right, also inside a right-to-left line. */
+    direction: ltr;
+    unicode-bidi: isolate;
   }
   .tiptap-host :global(.tiptap-body pre) {
+    direction: ltr;
+    text-align: left;
     background: color-mix(in srgb, var(--text-1) 6%, transparent);
     border-radius: 10px;
     padding: 12px 14px;
@@ -471,8 +491,8 @@
     background: var(--accent-dim); color: var(--accent); font-weight: 500;
     text-decoration: none;
   }
-  .tiptap-host :global(.tiptap-body .note-link::before) { content: '[['; opacity: 0.45; margin-right: 1px; }
-  .tiptap-host :global(.tiptap-body .note-link::after) { content: ']]'; opacity: 0.45; margin-left: 1px; }
+  .tiptap-host :global(.tiptap-body .note-link::before) { content: '[['; opacity: 0.45; margin-inline-end: 1px; }
+  .tiptap-host :global(.tiptap-body .note-link::after) { content: ']]'; opacity: 0.45; margin-inline-start: 1px; }
   .tiptap-host :global(.tiptap-body .note-link.ProseMirror-selectednode) { outline: 2px solid var(--accent); }
   .link-suggest {
     position: fixed; z-index: 4000; width: 260px; max-width: calc(100vw - 24px);
@@ -482,7 +502,7 @@
   }
   .link-suggest button {
     width: 100%; min-height: 36px; padding: 6px 8px; border-radius: 8px;
-    display: flex; align-items: center; gap: 8px; text-align: left; font-size: 14px; color: var(--text-1);
+    display: flex; align-items: center; gap: 8px; text-align: start; font-size: 14px; color: var(--text-1);
   }
   .link-suggest button.on, .link-suggest button:hover { background: var(--accent-dim); }
   .link-suggest .material-symbols-rounded { font-size: 18px; color: var(--text-3); }

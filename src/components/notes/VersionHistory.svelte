@@ -6,6 +6,7 @@
   import { markdownToPreview } from '../../lib/note-preview.js';
   import { confirmDialog } from '../../stores/confirmDialog.js';
   import { showError, showSuccess } from '../../stores/toast.js';
+  import { textDir } from '../../lib/text-dir.js';
 
   export let noteId;
   /** False for view-only members of a shared note. */
@@ -84,18 +85,18 @@
       </ul>
       {#if selected}
         <article class="h-preview">
-          {#if selected.title}<h3>{selected.title}</h3>{/if}
+          {#if selected.title}<h3 dir="auto">{selected.title}</h3>{/if}
           {#if selected.kind === 'checklist'}
             <ul class="h-items">
               {#each selected.items as it}
-                <li class:done={it.checked}>
+                <li class:done={it.checked} dir={textDir(it.text)}>
                   <span class="material-symbols-rounded">{it.checked ? 'check_box' : 'check_box_outline_blank'}</span>
                   {it.text}
                 </li>
               {/each}
             </ul>
           {:else}
-            <p class="h-text">{markdownToPreview(selected.body_md, 4000)}</p>
+            <p class="h-text" dir="auto">{markdownToPreview(selected.body_md, 4000)}</p>
           {/if}
           {#if canRestore}
             <button class="btn btn-primary h-restore" on:click={restore} disabled={busy}>
@@ -138,7 +139,7 @@
     max-height: 60dvh; overflow-y: auto;
   }
   .h-preview h3 { font-family: var(--font-note-title); font-weight: 500; font-size: 22px; }
-  .h-text { white-space: pre-line; font-size: 15px; line-height: 1.6; color: var(--text-2); overflow-wrap: anywhere; }
+  .h-text { unicode-bidi: plaintext; white-space: pre-line; font-size: 15px; line-height: 1.6; color: var(--text-2); overflow-wrap: anywhere; }
   .h-items { list-style: none; display: flex; flex-direction: column; gap: 6px; font-size: 15px; color: var(--text-2); }
   .h-items li { display: flex; gap: 8px; align-items: flex-start; }
   .h-items .material-symbols-rounded { font-size: 18px; margin-top: 2px; }

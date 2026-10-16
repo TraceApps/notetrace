@@ -763,7 +763,7 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
             {#if m.role === 'assistant'}
               <div class="msg-avatar"><svelte:component this={Mascot} size={24} /></div>
             {/if}
-            <div class="bubble">
+            <div class="bubble" dir="auto">
               {#if m.preview}
                 <img class="msg-img" src={m.preview} alt="" />
               {/if}
