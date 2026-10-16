@@ -19,6 +19,7 @@ No accounts, no telemetry, no cloud sync unless you opt in.</p>
   <a href="https://traceapps.github.io/docs/notetrace/"><img alt="Documentation" src="https://img.shields.io/badge/docs-traceapps.github.io-8A2BE2?logo=readthedocs&logoColor=white"></a>
   <a href="https://github.com/traceapps/notetrace/pkgs/container/notetrace"><img alt="GHCR" src="https://img.shields.io/badge/ghcr.io-traceapps%2Fnotetrace-181717?logo=github&logoColor=white"></a>
   <a href="https://hub.docker.com/r/traceapps/notetrace"><img alt="Docker Hub pulls" src="https://img.shields.io/docker/pulls/traceapps/notetrace?logo=docker&logoColor=white&label=docker%20pulls&color=2496ED"></a>
+  <a href="https://hosted.weblate.org/engage/notetrace/"><img alt="Translation status" src="https://hosted.weblate.org/widget/notetrace/svg-badge.svg"></a>
 </p>
 
 <p align="center">
