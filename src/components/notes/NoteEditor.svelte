@@ -1588,6 +1588,7 @@
     <TraceActions {title} {body}
       on:replace={(e) => applyTraceText(e.detail.markdown)}
       on:prepend={(e) => applyTraceText(`${e.detail.markdown}\n\n${body}`)}
+      on:append={(e) => applyTraceText(body.trim() ? `${body.replace(/\s+$/, '')}\n\n${e.detail.markdown}` : e.detail.markdown)}
       on:checklist={(e) => applyTraceChecklist(e.detail.items)}
       on:close={() => traceOpen = false} />
   {/if}

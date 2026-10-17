@@ -1,10 +1,11 @@
 <script>
   /**
-   * TraceActions: Tidy Up, Summarize, and Make a Checklist for a text note.
+   * TraceActions: Tidy Up, Expand, Summarize, Make a Checklist, and the
+   * user's own instruction for a text note (TraceApps/notetrace#23).
    * Shows Trace's result first; nothing changes until the user applies it,
    * and applying keeps the previous text in version history.
    */
-  import { createEventDispatcher } from 'svelte';
+  import { createEventDispatcher, tick } from 'svelte';
   import { _ } from 'svelte-i18n';
   import { askTrace, TRACE_ACTIONS, cleanTraceReply, checklistLines } from '../../lib/trace-run.js';
   import { markdownToPreview } from '../../lib/note-preview.js';
@@ -13,19 +14,25 @@
   export let body = '';
 
   const dispatch = createEventDispatcher();
-  let action = null;     // 'tidy' | 'summarize' | 'checklist'
+  let action = null;     // 'tidy' | 'expand' | 'summarize' | 'checklist' | 'custom'
   let busy = false;
   let result = '';
   let error = '';
+  // Your own instruction: typed first, then run like the others.
+  let instruction = '';
+  let asking = false;
+  let instructionEl;
 
   async function run(kind) {
+    if (kind === 'custom' && !instruction.trim()) return;
     action = kind;
+    asking = false;
     busy = true;
     result = '';
     error = '';
     try {
       const a = TRACE_ACTIONS[kind];
-      result = cleanTraceReply(await askTrace({ systemPrompt: a.system, prompt: a.prompt(title, body) }));
+      result = cleanTraceReply(await askTrace({ systemPrompt: a.system, prompt: a.prompt(title, body, instruction) }));
       if (!result) error = $_('trace_actions.empty');
     } catch (e) {
       error = e?.message || $_('trace_actions.failed');
@@ -39,16 +46,42 @@
   function apply(mode) {
     if (action === 'checklist') dispatch('checklist', { items });
     else if (action === 'summarize') dispatch(mode === 'replace' ? 'replace' : 'prepend', { markdown: result });
+    else if (mode === 'append') dispatch('append', { markdown: result });
     else dispatch('replace', { markdown: result });
+  }
+
+  async function ask() {
+    asking = true;
+    await tick();
+    instructionEl?.focus();
+  }
+
+  function onInstructionKey(e) {
+    // Enter asks; Shift+Enter is a new line in the instruction. Not the Enter that
+    // confirms a Japanese or Chinese conversion (Safari reports that one as 229).
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); run('custom'); }
   }
 </script>
 
 <div class="ta">
-  {#if !action}
+  {#if asking}
+    <p class="ta-title">{$_('trace_actions.custom')}</p>
+    <textarea class="input ta-instruction" dir="auto" rows="3" enterkeyhint="send" bind:this={instructionEl} bind:value={instruction}
+      maxlength="2000" placeholder={$_('trace_actions.custom_placeholder')} aria-label={$_('trace_actions.custom')}
+      on:keydown={onInstructionKey}></textarea>
+    <div class="ta-buttons">
+      <button class="btn btn-secondary" on:click={() => asking = false}>{$_('common.back')}</button>
+      <button class="btn btn-primary" on:click={() => run('custom')} disabled={!instruction.trim()}>{$_('trace_actions.custom_go')}</button>
+    </div>
+  {:else if !action}
     <p class="ta-title">{$_('trace_actions.title')}</p>
     <button class="ta-row" on:click={() => run('tidy')}>
       <span class="material-symbols-rounded">auto_fix_high</span>
       <span><strong>{$_('trace_actions.tidy')}</strong><small>{$_('trace_actions.tidy_desc')}</small></span>
+    </button>
+    <button class="ta-row" on:click={() => run('expand')}>
+      <span class="material-symbols-rounded">expand_content</span>
+      <span><strong>{$_('trace_actions.expand')}</strong><small>{$_('trace_actions.expand_desc')}</small></span>
     </button>
     <button class="ta-row" on:click={() => run('summarize')}>
       <span class="material-symbols-rounded">short_text</span>
@@ -58,14 +91,19 @@
       <span class="material-symbols-rounded">checklist</span>
       <span><strong>{$_('trace_actions.checklist')}</strong><small>{$_('trace_actions.checklist_desc')}</small></span>
     </button>
+    <button class="ta-row" on:click={ask}>
+      <span class="material-symbols-rounded">edit_note</span>
+      <span><strong>{$_('trace_actions.custom')}</strong><small>{$_('trace_actions.custom_desc')}</small></span>
+    </button>
   {:else}
     <p class="ta-title">{$_(`trace_actions.${action}`)}</p>
+    {#if action === 'custom'}<p class="ta-asked" dir="auto">{instruction.trim()}</p>{/if}
     {#if busy}
       <p class="ta-status" aria-live="polite"><span class="material-symbols-rounded spin">progress_activity</span>{$_('trace_actions.working')}</p>
     {:else if error}
       <p class="ta-error" role="alert">{error}</p>
       <div class="ta-buttons">
-        <button class="btn btn-secondary" on:click={() => action = null}>{$_('common.back')}</button>
+        <button class="btn btn-secondary" on:click={() => { if (action === 'custom') asking = true; action = null; }}>{$_('common.back')}</button>
         <button class="btn btn-primary" on:click={() => run(action)}>{$_('trace_actions.try_again')}</button>
       </div>
     {:else}
@@ -77,10 +115,19 @@
         {/if}
       </div>
       <div class="ta-buttons">
-        <button class="btn btn-secondary" on:click={() => dispatch('close')}>{$_('common.cancel')}</button>
+        {#if action === 'custom'}
+          <!-- Back to the instruction, kept, to change it. -->
+          <button class="btn btn-secondary" on:click={() => { asking = true; action = null; tick().then(() => instructionEl?.focus()); }}>{$_('common.back')}</button>
+        {:else}
+          <button class="btn btn-secondary" on:click={() => dispatch('close')}>{$_('common.cancel')}</button>
+        {/if}
         <button class="btn btn-secondary" on:click={() => run(action)}>{$_('trace_actions.try_again')}</button>
         {#if action === 'summarize'}
           <button class="btn btn-primary" on:click={() => apply('prepend')}>{$_('trace_actions.add_to_top')}</button>
+        {:else if action === 'custom'}
+          <!-- An email or a reply made from the note goes under it; a changed note replaces it. -->
+          <button class="btn btn-secondary" on:click={() => apply('append')}>{$_('trace_actions.add_below')}</button>
+          <button class="btn btn-primary" on:click={() => apply('replace')}>{$_('trace_actions.use_this')}</button>
         {:else}
           <button class="btn btn-primary" on:click={() => apply('replace')} disabled={action === 'checklist' && !items.length}>
             {action === 'checklist' ? $_('trace_actions.use_checklist') : $_('trace_actions.use_this')}
@@ -120,4 +167,6 @@
   .ta-buttons { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
   .ta-buttons .btn { height: 38px; }
   .ta-hint { font-size: 11px; color: var(--text-3); text-align: right; }
+  .ta-instruction { width: 100%; resize: vertical; min-height: 72px; font: inherit; font-size: 14px; }
+  .ta-asked { margin-top: -4px; font-size: 13px; color: var(--text-2); overflow-wrap: anywhere; white-space: pre-line; }
 </style>
