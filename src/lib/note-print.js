@@ -14,6 +14,7 @@ import { Markdown } from '@tiptap/markdown';
 import { TaskList, TaskItem } from '@tiptap/extension-list';
 import Highlight from '@tiptap/extension-highlight';
 import { NoteLink } from './note-link-extension.js';
+import { NoteTables } from './note-table.js';
 import { isNative, resolveAssetUrl } from './platform.js';
 import { isAudio, isImage, isFile, fileTypeLabel, formatBytes, displayName } from './file-kinds.js';
 import { formatDuration } from './voice-recorder.js';
@@ -26,7 +27,7 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 export function markdownToHtml(md) {
   if (!String(md || '').trim()) return '';
   const editor = new Editor({
-    extensions: [StarterKit.configure({ heading: { levels: [1, 2, 3] } }), TaskList, TaskItem.configure({ nested: true }), Highlight, Markdown, NoteLink],
+    extensions: [StarterKit.configure({ heading: { levels: [1, 2, 3] } }), TaskList, TaskItem.configure({ nested: true }), Highlight, Markdown, NoteLink, ...NoteTables],
     content: md,
     contentType: 'markdown',
   });
@@ -74,6 +75,11 @@ const PRINT_CSS = `
   .body pre { direction: ltr; text-align: left; background: #f4f4f6; padding: 8pt; border-radius: 6px; white-space: pre-wrap; font-size: 9.5pt; }
   .body code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 9.5pt; direction: ltr; unicode-bidi: isolate; }
   .body hr { border: 0; border-top: 1px solid #d0d0d6; margin: 12pt 0; }
+  .body table { border-collapse: collapse; margin: 0 0 8pt; }
+  .body td, .body th { border: 1px solid #c8c8ce; padding: 3pt 6pt; vertical-align: top; text-align: start; overflow-wrap: anywhere; }
+  .body th { background: #f4f4f6; font-weight: 600; }
+  .body td p, .body th p { margin: 0; }
+  .body tr { break-inside: avoid; }
   .body a { color: #3a5bd9; }
   .note-link { color: #3a5bd9; }
   .body ul[data-type="taskList"] { list-style: none; padding-inline-start: 2pt; }

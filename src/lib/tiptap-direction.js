@@ -8,7 +8,7 @@
  * changes, so it costs nothing per keystroke, and it isn't part of the
  * Markdown a note is saved as.
  *
- * Lists and quotes can't use dir="auto": it skips text inside children that
+ * Lists, quotes and tables can't use dir="auto": it skips text inside children that
  * have a dir of their own, so they'd find no letters and stay left to right,
  * bullets and boxes on the left of Arabic lines. They get the direction of
  * their own first letter instead (textDir), as decorations; a list item gets
@@ -59,7 +59,8 @@ function prevDir(parent, index) {
 /** The attributes a node shows, or undefined for none. */
 function attrsFor(node, parent, index) {
   const name = node.type.name;
-  if (LISTS.has(name) || name === 'blockquote') {
+  // A table too: an Arabic one has its first column on the right.
+  if (LISTS.has(name) || name === 'blockquote' || name === 'table') {
     const dir = firstLetterDir(node);
     return dir && { dir };
   }
@@ -187,7 +188,7 @@ export const NoteDirection = Extension.create({
  * Save as PDF), where there are no decorations.
  */
 export function directHtml(root) {
-  for (const el of root.querySelectorAll('p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote')) {
+  for (const el of root.querySelectorAll('p, h1, h2, h3, h4, h5, h6, ul, ol, li, blockquote, table')) {
     const dir = textDir(el.textContent);
     if (/^(P|H\d)$/.test(el.tagName)) el.setAttribute('dir', 'auto');
     else if (dir) el.setAttribute('dir', dir);

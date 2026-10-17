@@ -1322,7 +1322,7 @@
               <span class="material-symbols-rounded">close</span>
             </button>
             <div class="fmt-scroll">
-              {#each fmtTools as t (t.key)}
+              {#each fmtTools.filter(t => (t.inTable ? formats.table : t.notInTable ? !formats.table : true)) as t (t.key)}
                 <button class="icon-btn" class:on={formats[t.key]} aria-pressed={!!formats[t.key]} aria-label={$_(t.label)}
                   on:mousedown|preventDefault on:click={() => bodyRef?.format(t.key)}>
                   <span class="material-symbols-rounded">{t.icon}</span>

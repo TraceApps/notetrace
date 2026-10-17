@@ -14,6 +14,9 @@ export function markdownToPreview(md, maxChars = MAX_CHARS) {
     .replace(/```[\s\S]*?```/g, m => m.replace(/```\w*\n?/g, ''))
     .replace(/^\s{0,3}#{1,6}\s+/gm, '')
     .replace(/^\s{0,3}>\s?/gm, '')
+    // A table reads row by row, its cells apart; the line under its header goes.
+    .replace(/^[ \t]*\|?([ \t]*:?-+:?[ \t]*\|)+([ \t]*:?-+:?[ \t]*)?$/gm, '')
+    .replace(/^[ \t]*\|(.*)\|[ \t]*$/gm, (_, row) => row.replace(/\\\|/g, '\u0000').split('|').map(c => c.replace(/\u0000/g, '|').replace(/<br\s*\/?>/gi, ' ').trim()).filter(Boolean).join(' \u00b7 '))
     .replace(/^\s*[-*+]\s+\[([ xX])\]\s+/gm, (_, c) => (c === ' ' ? '\u2610 ' : '\u2611 '))
     .replace(/==([^=\n]+)==/g, '$1')
     .replace(/\+\+([^+\n]+)\+\+/g, '$1')
