@@ -95,6 +95,7 @@ async function _hydrate(rows) {
     kind: r.kind,
     color: r.color,
     pinned: !!r.pinned,
+    locked: !!r.locked,
     in_tasks: !!r.in_tasks,
     archived: !!r.archived,
     trashed_at: r.trashed_at,
@@ -345,11 +346,11 @@ export const NotesNative = {
     const ts = _now();
     const kind = data.kind === 'checklist' ? 'checklist' : 'text';
     const id = await _insert(
-      `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived, in_tasks,
+      `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived, in_tasks, locked,
                           reminder_at, reminder_rrule, reminder_tz, created_at, updated_at, sync_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
       [LOCAL_USER_ID, String(data.title ?? ''), kind === 'text' ? String(data.body_md ?? '') : '', kind,
-       NOTE_COLORS.includes(data.color) ? data.color : null, data.pinned ? 1 : 0, data.archived ? 1 : 0, data.in_tasks ? 1 : 0,
+       NOTE_COLORS.includes(data.color) ? data.color : null, data.pinned ? 1 : 0, data.archived ? 1 : 0, data.in_tasks ? 1 : 0, data.locked ? 1 : 0,
        _reminderAt(data.reminder_at), REPEATS.includes(data.reminder_rrule) ? data.reminder_rrule : null,
        data.reminder_at ? (data.reminder_tz || null) : null, ts, ts]);
     if (kind === 'checklist' && Array.isArray(data.items)) {
@@ -376,6 +377,7 @@ export const NotesNative = {
     if ('color' in patch)   { sets.push('color = ?');   args.push(NOTE_COLORS.includes(patch.color) ? patch.color : null); }
     if ('pinned' in patch)  { sets.push('pinned = ?');  args.push(patch.pinned ? 1 : 0); }
     if ('in_tasks' in patch) { sets.push('in_tasks = ?'); args.push(patch.in_tasks ? 1 : 0); }
+    if ('locked' in patch) { sets.push('locked = ?'); args.push(patch.locked ? 1 : 0); }
     if ('archived' in patch) {
       sets.push('archived = ?'); args.push(patch.archived ? 1 : 0);
       if (patch.archived) sets.push('pinned = 0');

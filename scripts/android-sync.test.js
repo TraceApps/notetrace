@@ -1036,3 +1036,52 @@ test('a sync with nothing new reads little and writes nothing but the pull curso
   assert.deepEqual(r.scans, [], 'every attachment read again');
   assert.ok(r.calls <= 20, `an idle sync costs ${r.calls} database calls`);
 });
+
+test('note padlocks persist across devices, restarts, and offline lock/unlock (#30)', async (t) => {
+  if (skip(t)) return;
+  const made = await web(A, 'alice', 'POST', '/api/notes', { title: 'Synced read-only note', body_md: 'Keep this text', locked: true });
+  const first = phone('lock-first', A, `
+    await p.setupSignIn('alice'); await p.sync();
+    const n = (await p.NotesNative.getNotes()).find(n => n.server_id === ${made.id});
+    await p.offline(() => p.NotesNative.updateNote(n.id, { locked: false }));
+    const offline = await p.NotesNative.getNote(n.id);
+    await p.sync();
+    p.done({ pulled: n.locked, offline: offline.locked });
+  `);
+  assert.deepEqual(first, { pulled: true, offline: false });
+  assert.equal((await web(A, 'alice', 'GET', `/api/notes/${made.id}`)).locked, false);
+  const second = phone('lock-second', A, `
+    await p.setupSignIn('alice'); await p.sync();
+    const n = (await p.NotesNative.getNotes()).find(n => n.server_id === ${made.id});
+    await p.offline(() => p.NotesNative.updateNote(n.id, { locked: true }));
+    await p.sync();
+    p.done({ pulled: n.locked, title: (await p.NotesNative.getNote(n.id)).title });
+  `);
+  assert.equal(second.pulled, false);
+  assert.equal(second.title, 'Synced read-only note');
+  const reopened = phone('lock-first', A, `
+    await p.setupSignIn('alice'); await p.sync();
+    const n = (await p.NotesNative.getNotes()).find(n => n.server_id === ${made.id});
+    p.done({ locked: n.locked, body: n.body_md });
+  `);
+  assert.deepEqual(reopened, { locked: true, body: 'Keep this text' });
+});
+
+test('shared note padlocks respect edit/view permissions over the API and sync', async (t) => {
+  if (skip(t)) return;
+  const made = await web(A, 'alice', 'POST', '/api/notes', { title: 'Shared lock permission' });
+  assert.equal(made.locked, false);
+  await web(A, 'alice', 'POST', `/api/notes/${made.id}/members`, { username: 'bob', role: 'view' });
+  await web(A, 'alice', 'PATCH', `/api/notes/${made.id}`, { locked: true });
+  const viewed = await web(A, 'bob', 'PATCH', `/api/notes/${made.id}`, { locked: false });
+  assert.equal(viewed.locked, true, 'a viewer cannot unlock via the API');
+  await web(A, 'bob', 'POST', '/api/sync/push', { tables: { notes: [{ client_id: made.id, server_id: made.id, locked: 0, updated_at: '2099-01-01 00:00:00' }] } });
+  assert.equal((await web(A, 'alice', 'GET', `/api/notes/${made.id}`)).locked, true, 'a viewer cannot unlock via sync');
+  const pulled = await web(A, 'bob', 'GET', '/api/sync/pull?since=1970-01-01');
+  assert.equal(pulled.tables.notes.find(n => n.id === made.id).locked, 1);
+  const bob = A.q("SELECT id FROM users WHERE username = 'bob'")[0];
+  await web(A, 'alice', 'PATCH', `/api/notes/${made.id}/members/${bob.id}`, { role: 'edit' });
+  assert.equal((await web(A, 'bob', 'PATCH', `/api/notes/${made.id}`, { locked: false })).locked, false);
+  await web(A, 'bob', 'POST', '/api/sync/push', { tables: { notes: [{ client_id: made.id, server_id: made.id, locked: 1, updated_at: '2099-01-01 00:00:00' }] } });
+  assert.equal((await web(A, 'alice', 'GET', `/api/notes/${made.id}`)).locked, true);
+});

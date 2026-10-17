@@ -90,7 +90,7 @@ const userArgs   = (u) => u == null ? [] : [u];
 const TABLES = {
   notes: {
     cols: [
-      'title', 'body_md', 'kind', 'color', 'pinned', 'archived', 'in_tasks',
+      'title', 'body_md', 'kind', 'color', 'pinned', 'archived', 'in_tasks', 'locked',
       'trashed_at', 'reminder_at', 'reminder_rrule', 'reminder_tz',
     ],
     parents: {},
@@ -558,7 +558,7 @@ function _pullNotes(u, since, withKeys = false) {
     ).all(since);
   }
   return db.prepare(
-    `SELECT n.id, n.title, n.body_md, n.kind, n.color,
+    `SELECT n.id, n.title, n.body_md, n.kind, n.color, n.locked,
             CASE WHEN m.id IS NULL THEN n.pinned ELSE m.pinned END AS pinned,
             CASE WHEN m.id IS NULL THEN n.archived ELSE m.archived END AS archived,
             CASE WHEN m.id IS NULL THEN n.in_tasks ELSE m.in_tasks END AS in_tasks,
@@ -598,7 +598,7 @@ function _pushSharedNote(u, existing, incoming) {
       .run(...mineArgs, access.member.id);
   }
 
-  const contentCols = ['title', 'body_md', 'kind', 'color'].filter(c => incoming[c] !== undefined && incoming[c] !== existing[c]);
+  const contentCols = ['title', 'body_md', 'kind', 'color', 'locked'].filter(c => incoming[c] !== undefined && incoming[c] !== existing[c]);
   if (contentCols.length) {
     if (access.role !== 'edit') rejected = true;
     else {

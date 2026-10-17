@@ -51,7 +51,8 @@
     ? (note.attachments || []).map(a => ({ a, snip: matchSnippet(a.extracted_text, terms) })).find(x => x.snip)
     : null;
   $: owner = isOwner(note);
-  $: editable = canEdit(note);
+  $: locked = !!note.locked;
+  $: editable = canEdit(note) && !locked;
   $: shared = isShared(note);
 
   // Preview of the first link in the note.
@@ -134,6 +135,14 @@
     title={selected ? $_('select.deselect') : $_('select.select')} aria-label={selected ? $_('select.deselect') : $_('select.select')}>
     <span class="material-symbols-rounded" class:fill={selected}>{selected ? 'check_circle' : 'radio_button_unchecked'}</span>
   </button>
+  {#if view !== 'trash' && canEdit(note)}
+    <button type="button" class="card-lock" class:locked aria-pressed={locked}
+      title={$_(locked ? 'notes.unlock_note' : 'notes.lock_note')}
+      aria-label={$_(locked ? 'notes.unlock_note' : 'notes.lock_note')}
+      on:click={(e) => act(e, 'lock')}>
+      <span class="material-symbols-rounded">{locked ? 'lock' : 'lock_open'}</span>
+    </button>
+  {/if}
   {#if view === 'notes' || view === 'reminders'}
     <button
       class="card-pin"
@@ -446,7 +455,7 @@
     letter-spacing: -0.005em;
     overflow-wrap: anywhere;
     margin: -16px -18px 0;
-    padding: 12px 44px 10px 18px;
+    padding: 12px 82px 10px 18px;
     background: color-mix(in srgb, var(--note-glow, var(--accent)) 22%, transparent);
     border-bottom: 1px solid color-mix(in srgb, var(--note-glow, var(--accent)) 45%, var(--note-border));
     border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
@@ -458,7 +467,7 @@
   }
   /* Under an image or a link preview the band isn't the top of the card. */
   .card-title.below-media { margin-top: 0; border-radius: 0; }
-  :global(html.density-compact) .card-title { margin: -11px -13px 0; padding: 8px 38px 7px 13px; border-radius: calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0 0; }
+  :global(html.density-compact) .card-title { margin: -11px -13px 0; padding: 8px 82px 7px 13px; border-radius: calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0 0; }
   .card-body {
     font-size: 14px;
     line-height: 1.55;
@@ -472,7 +481,7 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
   }
-  .note-card:not(:has(.card-title)) .card-body { padding-right: 26px; }
+  .note-card:not(:has(.card-title)) .card-body { padding-right: 66px; }
   .card-placeholder { color: var(--text-3); font-style: italic; }
 
   .card-match {
@@ -522,6 +531,11 @@
   :global(html.density-compact) .card-file { height: 24px; font-size: 11.5px; }
   .card-check:disabled { opacity: 0.5; cursor: default; }
 
+  .card-lock { position: absolute; top: 8px; right: 48px; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; border-radius: 10px; color: var(--text-3); }
+  .card-lock.locked { color: var(--accent); }
+  .card-lock:hover { background: color-mix(in srgb, var(--text-1) 9%, transparent); }
+  .card-lock .material-symbols-rounded { font-size: 19px; }
+  .note-card.selecting .card-lock { visibility: hidden; }
   .card-pin, .card-act {
     display: flex; align-items: center; justify-content: center;
     color: var(--text-2);

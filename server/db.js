@@ -342,6 +342,7 @@ if (!columnExists('checklist_items', 'checked_at')) db.exec(`ALTER TABLE checkli
 if (!columnExists('labels', 'icon')) db.exec(`ALTER TABLE labels ADD COLUMN icon TEXT`);
 // Show in Tasks: the owner's choice on notes, a member's own on note_members.
 // A checklist named Tasks (the Tasks view's own list) starts out shown.
+if (!columnExists('notes', 'locked')) db.exec(`ALTER TABLE notes ADD COLUMN locked INTEGER NOT NULL DEFAULT 0`);
 if (!columnExists('notes', 'in_tasks')) {
   db.exec(`ALTER TABLE notes ADD COLUMN in_tasks INTEGER NOT NULL DEFAULT 0`);
   db.exec(`UPDATE notes SET in_tasks = 1 WHERE kind = 'checklist' AND lower(trim(title)) = 'tasks'`);

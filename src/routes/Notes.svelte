@@ -514,6 +514,10 @@
   async function runAction(note, action, anchor = null) {
     try {
       switch (action) {
+        case 'lock':
+          if (!canEdit(note)) return;
+          replace(await NoteApi.updateNote(note.id, { locked: !note.locked }));
+          break;
         case 'pin':
           replace(await NoteApi.updateNote(note.id, { pinned: !note.pinned }));
           break;
@@ -573,6 +577,7 @@
 
   async function onToggleItem(e) {
     const { note, item } = e.detail;
+    if (note.locked || !canEdit(note)) return;
     // Optimistic: flip it in place so the card responds instantly (a repeating
     // task moves to its next date instead).
     const patch = { checked: !item.checked, today: todayStr() };

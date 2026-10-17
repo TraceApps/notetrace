@@ -10,6 +10,7 @@
    * Every save goes through one queue so operations on a brand-new note
    * wait for its create call instead of racing it.
    */
+  import NoteLockButton from './NoteLockButton.svelte';
   import LabelGlyph from './LabelGlyph.svelte';
   import { onMount, onDestroy, createEventDispatcher, tick } from 'svelte';
   import { fade, fly } from 'svelte/transition';
@@ -19,7 +20,7 @@
   import { portal } from '../../lib/portal.js';
   import { dialogFocus } from '../../lib/dialog-focus.js';
   import { NoteApi } from '../../lib/api.js';
-  import { labelsById, signalNotesChanged, signalCountsChanged, refreshLabels } from '../../stores/notes.js';
+  import { labelsById, notesChanged, signalNotesChanged, signalCountsChanged, refreshLabels } from '../../stores/notes.js';
   import { noteColorStyle, colorDot } from '../../lib/note-colors.js';
   import { isEmptyNote } from '../../lib/note-preview.js';
   import { relativeTime } from '../../lib/relative-time.js';
@@ -82,6 +83,9 @@
   let kind = note?.kind ?? prefill?.kind ?? initialKind;
   let color = note?.color ?? prefill?.color ?? null;
   let pinned = !!note?.pinned;
+  let locked = !!note?.locked;
+  let lockPending = false;
+  let lockRevision = 0;
   let inTasks = !!note?.in_tasks;
   let archived = !!note?.archived;
   let trashed = !!note?.trashed_at;
@@ -119,7 +123,7 @@
   // Shared notes: 'view' members can't change content; reminders and
   // trash belong to the owner.
   $: isOwner = shareRole === 'owner';
-  $: contentLocked = readOnly || shareRole === 'view';
+  $: contentLocked = readOnly || locked || shareRole === 'view';
   $: shared = shareRole !== 'owner' || shareCount > 0;
   $: chips = noteLabels.map(id => $labelsById.get(id)).filter(Boolean);
   // The reading pane's breadcrumb: the note's first label as a path (Home › Garage).
@@ -139,6 +143,7 @@
     noteId = n.id;
     updatedAt = n.updated_at;
     pinned = !!n.pinned;
+    if (!lockPending) locked = !!n.locked;
     inTasks = !!n.in_tasks;
     archived = !!n.archived;
     trashed = !!n.trashed_at;
@@ -167,7 +172,52 @@
     return noteId;
   }
 
+  async function toggleLock() {
+    if (!noteId || trashed || shareRole === 'view' || lockPending) return;
+    const next = !locked;
+    // Flush pending edits before queuing the lock. Engage the UI guard
+    // immediately; earlier saves finish first and cannot undo this toggle.
+    if (next) {
+      checklistRef?.flush?.();
+      if (textTimer) saveText();
+    }
+    lockPending = true;
+    const revision = ++lockRevision;
+    const before = locked;
+    locked = next;
+    await enqueue(async () => {
+      try {
+        const n = await NoteApi.updateNote(noteId, { locked: next });
+        if (revision === lockRevision) locked = !!n.locked;
+        apply(n);
+        touched = true;
+        signalNotesChanged();
+      } catch (e) {
+        if (revision === lockRevision) locked = before;
+        throw e;
+      } finally {
+        lockPending = false;
+      }
+    });
+  }
+
+  async function refreshLock() {
+    if (!noteId || lockPending) return;
+    const revision = lockRevision;
+    try {
+      const n = await NoteApi.getNote(noteId);
+      if (n && revision === lockRevision && !lockPending) {
+        if (n.locked && !locked) {
+          checklistRef?.flush?.();
+          if (textTimer) saveText();
+        }
+        locked = !!n.locked;
+      }
+    } catch { /* the existing local state remains available offline */ }
+  }
+
   function scheduleText() {
+    if (contentLocked) return;
     touched = true;
     clearTimeout(textTimer);
     textTimer = setTimeout(saveText, TEXT_SAVE_MS);
@@ -201,6 +251,7 @@
 
   // ── Checklist ops ─────────────────────────────────────────────────
   function onItemAdd(e) {
+    if (contentLocked) return;
     touched = true;
     const { uuid, text, position } = e.detail;
     items = [...items, { uuid, text, checked: false, position }];
@@ -211,6 +262,7 @@
     });
   }
   function onItemUpdate(e) {
+    if (contentLocked) return;
     touched = true;
     const { uuid, patch: p } = e.detail;
     // itemAfterPatch applies the repeat rule, so a repeating task moves on here too.
@@ -228,6 +280,7 @@
    * everything, since something may have been ticked in between.
    */
   function onUncheckAll(e) {
+    if (contentLocked) return;
     touched = true;
     const { uuids } = e.detail;
     if (!uuids?.length) return;
@@ -244,6 +297,7 @@
     showUndo($_('notes.undo_uncheck_all'), () => recheck(uuids));
   }
   function recheck(uuids) {
+    if (contentLocked) return;
     touched = true;
     const today = todayStr();
     items = items.map(i => (uuids.includes(i.uuid) ? { ...i, checked: true } : i));
@@ -263,6 +317,7 @@
 
   /** Everything done, cleared out, with one way back. */
   function onDeleteChecked(e) {
+    if (contentLocked) return;
     touched = true;
     const gone = e.detail.items || [];
     if (!gone.length) return;
@@ -279,6 +334,7 @@
     showUndo($_('notes.undo_delete_checked', { values: { count: gone.length } }), () => restoreChecked(gone));
   }
   function restoreChecked(gone) {
+    if (contentLocked) return;
     touched = true;
     items = [...items, ...gone].sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
     checklistRef?.restoreChecked(gone);
@@ -296,6 +352,7 @@
   }
 
   function onItemDelete(e) {
+    if (contentLocked) return;
     touched = true;
     const { uuid } = e.detail;
     const at = items.findIndex(i => i.uuid === uuid);
@@ -309,6 +366,7 @@
     if (gone) showUndo($_('notes.undo_item'), () => restoreItem(gone, at));
   }
   function restoreItem(item, at) {
+    if (contentLocked) return;
     touched = true;
     items = [...items.slice(0, at), item, ...items.slice(at)];
     editorKey++;
@@ -319,6 +377,7 @@
     });
   }
   function onItemReorder(e) {
+    if (contentLocked) return;
     const { uuids } = e.detail;
     enqueue(async () => {
       if (!noteId) { await ensureNote(); return; }
@@ -352,10 +411,11 @@
     if (voiceFirst && !noteId && isEmptyNote({ title, body_md: body, items, attachments })) close();
   }
   async function suggestTitle(text) {
+    if (contentLocked) return;
     try {
       const reply = await askTrace({ systemPrompt: TRACE_ACTIONS.title.system, prompt: TRACE_ACTIONS.title.prompt('', text.slice(0, 4000)) });
       const t = titleLine(reply);
-      if (t && !title.trim()) { title = t; scheduleText(); }
+      if (t && !title.trim() && !contentLocked) { title = t; scheduleText(); }
     } catch { /* the note keeps no title */ }
   }
 
@@ -494,6 +554,7 @@
     }
   }
   function removeImage(e) {
+    if (contentLocked) return;
     const uuid = e.detail;
     touched = true;
     const gone = attachments.find(a => a.uuid === uuid);
@@ -506,6 +567,7 @@
     if (gone) showUndo($_(isAudio(gone) ? 'notes.undo_voice' : isFile(gone) ? 'files.undo_removed' : 'notes.undo_image'), () => restoreAttachment(gone));
   }
   function restoreAttachment(att) {
+    if (contentLocked) return;
     touched = true;
     removedImages.delete(att.uuid);
     if (!attachments.some(a => a.uuid === att.uuid)) attachments = [...attachments, att];
@@ -612,6 +674,7 @@
   }
 
   async function onDrawingDone(e) {
+    if (contentLocked) return;
     const { drawing, changed } = e.detail;
     const target = drawingFor?.att || null;
     if (!changed) {
@@ -728,6 +791,7 @@
   }
   // A Trace rewrite always leaves a restore point, however recent the last edit.
   async function applyTraceText(markdown) {
+    if (contentLocked) return;
     traceOpen = false;
     touched = true;
     body = markdown;
@@ -738,6 +802,7 @@
     });
   }
   async function applyTraceChecklist(lines) {
+    if (contentLocked) return;
     traceOpen = false;
     await applyTraceText(lines.join('\n'));
     await convert();
@@ -782,6 +847,7 @@
   }
 
   async function convert(undoing = false) {
+    if (contentLocked) return;
     const next = kind === 'text' ? 'checklist' : 'text';
     const before = { kind, body, items: items.map(i => ({ ...i })) };
     checklistRef?.flush?.();
@@ -817,6 +883,7 @@
   }
   /** Convert back, then put the exact text or items from before back. */
   async function undoConvert(before) {
+    if (contentLocked) return;
     await convert(true);
     touched = true;
     kind = before.kind;
@@ -871,6 +938,7 @@
   }
 
   function onRestoredVersion(e) {
+    if (contentLocked) return;
     const n = e.detail;
     apply(n);
     title = n.title; body = n.body_md; kind = n.kind;
@@ -933,7 +1001,7 @@
       try { await NoteApi.updateNote(noteId, { title, rename_links_from: renamedFrom }); } catch { /* links can be fixed by hand */ }
     }
     // A note that ended up empty is removed instead of lingering as a blank card.
-    if (!skipDiscard && noteId && !trashed && !hasPendingFor(noteId) && isEmptyNote({ title, body_md: body, items, attachments })) {
+    if (!skipDiscard && noteId && !contentLocked && !trashed && !hasPendingFor(noteId) && isEmptyNote({ title, body_md: body, items, attachments })) {
       try { await NoteApi.deleteNoteForever(noteId); } catch { /* best effort */ }
       noteId = null;
     }
@@ -1068,7 +1136,13 @@
     tick().then(() => fn(fake));
   }
 
+  let stopLockRefresh = () => {};
   onMount(async () => {
+    let initial = true;
+    stopLockRefresh = notesChanged.subscribe(() => {
+      if (initial) { initial = false; return; }
+      refreshLock();
+    });
     if (autoRecord && canRecord && !noteId) startQuickVoice();
     if (autoDraw && !noteId && !contentLocked) { drawFirst = true; newDrawing(); }
     loadLinks();
@@ -1086,6 +1160,7 @@
     }
   });
   onDestroy(() => {
+    stopLockRefresh();
     window.removeEventListener('keydown', onKey);
     window.removeEventListener('note:voice-uploaded', onVoiceUploaded);
     window.removeEventListener('resize', onResize);
@@ -1149,6 +1224,9 @@
             {#if saving}{$_('notes.saving')}{:else if updatedAt}{$_('notes.edited', { values: { when: relativeTime(updatedAt).toLowerCase() } })}{/if}
           </span>
           <span class="spacer"></span>
+          {#if noteId && shareRole !== 'view'}
+            <NoteLockButton {locked} disabled={lockPending || uploading > 0 || Object.keys(extracting).length > 0 || drawingBusy} on:click={toggleLock} />
+          {/if}
           <button class="icon-btn" class:on={pinned} on:click={togglePin}
             title={pinned ? $_('notes.unpin') : $_('notes.pin')} aria-label={pinned ? $_('notes.unpin') : $_('notes.pin')} aria-pressed={pinned}>
             <span class="material-symbols-rounded" class:fill={pinned}>keep</span>
@@ -1223,6 +1301,7 @@
       </div>
 
       <div class="editor-scroll">
+        {#if locked}<p class="lock-status"><span class="material-symbols-rounded" aria-hidden="true">lock</span>{$_('notes.locked_hint')}</p>{/if}
         {#if imageAttachments.length || uploading}
           <div class="editor-images">
             <AttachmentGrid attachments={imageAttachments} pending={uploading} editable={!contentLocked}
@@ -1359,6 +1438,9 @@
                 <span class="material-symbols-rounded">notification_add</span>
               </button>
             {/if}
+            {#if noteId && shareRole !== 'view'}
+              <NoteLockButton {locked} disabled={lockPending || uploading > 0 || Object.keys(extracting).length > 0 || drawingBusy} on:click={toggleLock} />
+            {/if}
             <span class="spacer"></span>
             <span class="edited phone-edited" aria-live="polite">
               {#if saving}{$_('notes.saving')}{:else if updatedAt}{$_('notes.edited', { values: { when: relativeTime(updatedAt).toLowerCase() } })}{/if}
@@ -1369,6 +1451,9 @@
           </div>
         {:else}
           <div class="bar-actions">
+            {#if noteId && shareRole !== 'view'}
+              <NoteLockButton {locked} disabled={lockPending || uploading > 0 || Object.keys(extracting).length > 0 || drawingBusy} on:click={toggleLock} />
+            {/if}
             {#if isOwner}
               <button class="icon-btn" on:click={openReminder} title={$_('reminders.remind_me')} aria-label={$_('reminders.remind_me')}>
                 <span class="material-symbols-rounded">notification_add</span>
@@ -1611,6 +1696,8 @@
 <style>
   .editor-host { display: contents; }
   .editor-images { margin-bottom: 14px; }
+  .lock-status { display: flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 13px; }
+  .lock-status .material-symbols-rounded { font-size: 17px; }
   .pending-voice { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .pending-voice li {
     display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md);

@@ -185,6 +185,7 @@
   }
 
   function onKeydown(e, item) {
+    if (!editable) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       flushText(item.uuid);

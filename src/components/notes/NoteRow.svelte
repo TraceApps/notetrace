@@ -61,6 +61,7 @@
       {#if note.reminder_at}<span class="meta"><span class="material-symbols-rounded">notifications</span></span>{/if}
       {#if hasVoice}<span class="meta"><span class="material-symbols-rounded">mic</span></span>{/if}
       {#if fileCount}<span class="meta"><span class="material-symbols-rounded">attach_file</span>{fileCount > 1 ? fileCount : ''}</span>{/if}
+      {#if note.locked}<span class="meta" title={$_('notes.locked_hint')}><span class="material-symbols-rounded" aria-label={$_('notes.locked')}>lock</span></span>{/if}
       {#if shared}<span class="meta"><span class="material-symbols-rounded">group</span></span>{/if}
       {#each noteLabels as l (l.id)}
         <span class="row-label"><span class="dot" style="background:{colorDot(l.color)}"></span><span dir="auto">{l.name}</span></span>

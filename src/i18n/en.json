@@ -460,6 +460,10 @@
     }
   },
   "notes": {
+    "lock_note": "Lock note for reading",
+    "unlock_note": "Unlock note for editing",
+    "locked": "Read-only note",
+    "locked_hint": "Read-only. Select and copy text, or unlock to edit.",
     "take_a_note":             "Capture a thought…",
     "new_note":                "New Note",
     "new_checklist":           "New Checklist",

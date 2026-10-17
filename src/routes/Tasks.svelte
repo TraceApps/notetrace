@@ -22,7 +22,7 @@
   import { NoteApi } from '../lib/api.js';
   import { notesChanged, signalCountsChanged } from '../stores/notes.js';
   import { showError, showUndo } from '../stores/toast.js';
-  import { canEdit } from '../lib/note-sharing.js';
+  import { canEditContent as canEdit } from '../lib/note-sharing.js';
   import { colorDot } from '../lib/note-colors.js';
   import { groupByDue, dueLabel, dueStatus, todayStr } from '../lib/due-dates.js';
   import { rowSwipe } from '../lib/row-swipe.js';
@@ -256,7 +256,7 @@
 
   /** The Tasks list, made the first time something is added to it. */
   async function ensureInbox() {
-    let inbox = notes.find(n => isTasksInbox(n, inboxTitle) && n.share_role !== 'view' && n.share_role !== 'edit');
+    let inbox = notes.find(n => isTasksInbox(n, inboxTitle) && !n.locked && n.share_role !== 'view' && n.share_role !== 'edit');
     if (!inbox) {
       inbox = await NoteApi.createNote({ title: inboxTitle, kind: 'checklist', items: [], in_tasks: true });
       putNote(inbox);

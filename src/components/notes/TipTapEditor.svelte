@@ -228,7 +228,11 @@
     lastEmitted = value;
     editor.commands.setContent(value || '', { contentType: 'markdown', emitUpdate: false });
   }
-  $: if (editor && editor.isEditable !== editable) editor.setEditable(editable);
+  $: if (editor && editor.isEditable !== editable) {
+    // Changing the viewing mode is not a content edit or an autosave.
+    editor.setEditable(editable, false);
+    if (!editable) { suggest = null; bubble = null; }
+  }
 
   function refreshActive() {
     if (!editor) return;
@@ -255,7 +259,7 @@
   /** The formatting tools, for a toolbar outside this component (the phone editor bar). */
   export function formatTools() { return tools.map(({ key, icon, label, inTable, notInTable }) => ({ key, icon, label, inTable, notInTable })); }
   export function format(key) { const t = tools.find(x => x.key === key); if (t) useTool(t); }
-  function useTool(t) { if (t.action) t.action(); else run(t.fn); }
+  function useTool(t) { if (!editable) return; if (t.action) t.action(); else run(t.fn); }
 
   function run(fn) {
     if (!editor) return;
@@ -362,7 +366,7 @@
     {/each}
   </div>
 {/if}
-{#if bubble && bubbleTools.length}
+{#if editable && bubble && bubbleTools.length}
   <div class="sel-bubble" bind:this={bubbleEl} class:below={bubble.below} use:portal role="toolbar" aria-label={$_('notes.formatting')}
     style="left:{bubble.x}px; top:{bubble.y}px">
     {#each bubbleTools as t (t.key)}

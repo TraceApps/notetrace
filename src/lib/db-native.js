@@ -45,6 +45,7 @@ const SCHEMA = `
     pinned         INTEGER NOT NULL DEFAULT 0,
     archived       INTEGER NOT NULL DEFAULT 0,
     in_tasks       INTEGER NOT NULL DEFAULT 0,
+    locked         INTEGER NOT NULL DEFAULT 0,
     trashed_at     TEXT,
     reminder_at    TEXT,
     reminder_rrule TEXT,
@@ -255,6 +256,7 @@ async function _migrateShareColumns() {
     const db = await getDb();
     const info = await db.query(`PRAGMA table_info(notes)`);
     const have = new Set((info?.values || []).map(c => c.name));
+    if (!have.has('locked')) await db.run(`ALTER TABLE notes ADD COLUMN locked INTEGER NOT NULL DEFAULT 0`);
     if (!have.has('share_role')) await db.run(`ALTER TABLE notes ADD COLUMN share_role TEXT DEFAULT 'owner'`);
     if (!have.has('share_owner')) await db.run(`ALTER TABLE notes ADD COLUMN share_owner TEXT`);
     if (!have.has('share_count')) await db.run(`ALTER TABLE notes ADD COLUMN share_count INTEGER DEFAULT 0`);
