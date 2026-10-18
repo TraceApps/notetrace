@@ -347,6 +347,10 @@ if (!columnExists('notes', 'in_tasks')) {
   db.exec(`UPDATE notes SET in_tasks = 1 WHERE kind = 'checklist' AND lower(trim(title)) = 'tasks'`);
 }
 if (!columnExists('note_members', 'in_tasks')) db.exec(`ALTER TABLE note_members ADD COLUMN in_tasks INTEGER NOT NULL DEFAULT 0`);
+// Read Only: a note that opens for reading, guarded against accidental edits
+// (TraceApps/notetrace#30). The note's own, like its color: everyone it's
+// shared with sees it so, and anyone who can edit it can turn it off.
+if (!columnExists('notes', 'read_only')) db.exec(`ALTER TABLE notes ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0`);
 
 // Search covers transcripts and image text too.
 {

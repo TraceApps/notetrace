@@ -17,7 +17,8 @@
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
   import { _ } from 'svelte-i18n';
   import { get } from 'svelte/store';
-  import { Editor } from '@tiptap/core';
+  import { Editor, Extension } from '@tiptap/core';
+  import { Plugin } from '@tiptap/pm/state';
   import StarterKit from '@tiptap/starter-kit';
   import { TaskList, TaskItem } from '@tiptap/extension-list';
   import Highlight from '@tiptap/extension-highlight';
@@ -35,6 +36,8 @@
   export let value = '';
   export let placeholder = '';
   export let editable = true;
+  /** Checkboxes in the text can be ticked while it can't be edited (a Read Only note), not on a public page. */
+  export let checkable = false;
   export let showToolbar = true;
   /** Titles offered after typing [[ (other notes the user can see). */
   export let linkTitles = [];
@@ -152,6 +155,38 @@
     suggest = null;
   }
 
+  // While the text can't be edited (Read Only, the trash, a view-only share,
+  // the public page) nothing changes it: key shortcuts would otherwise still
+  // run (Backspace, Enter). Only a reload from outside (preventUpdate) and a
+  // ticked checkbox (TICK) get through.
+  const TICK = 'noteReadOnlyTick';
+  const ReadOnlyGuard = Extension.create({
+    name: 'readOnlyGuard',
+    addProseMirrorPlugins() {
+      const ed = this.editor;
+      return [new Plugin({ filterTransaction: (tr) => !tr.docChanged || ed.isEditable || !!tr.getMeta('preventUpdate') || !!tr.getMeta(TICK) })];
+    },
+  });
+
+  // A checkbox ticked in text that can't be edited (a Read Only note): Tiptap
+  // only keeps the box ticked on screen (onReadOnlyChecked), so the tick goes
+  // into the note here, and is saved like any other change.
+  function onReadOnlyTick(e) {
+    const box = e.target;
+    if (!editor || editor.isEditable || !checkable || box?.type !== 'checkbox') return;
+    const li = box.closest('li[data-checked]');
+    if (!li || !el.contains(li)) return;
+    const $p = editor.state.doc.resolve(editor.view.posAtDOM(li, 0));
+    for (let d = $p.depth; d > 0; d--) {
+      const node = $p.node(d);
+      if (node.type.name !== 'taskItem') continue;
+      if (node.attrs.checked !== box.checked) {
+        editor.view.dispatch(editor.state.tr.setNodeMarkup($p.before(d), undefined, { ...node.attrs, checked: box.checked }).setMeta(TICK, true));
+      }
+      return;
+    }
+  }
+
   onMount(() => {
     editor = new Editor({
       element: el,
@@ -163,7 +198,7 @@
         }),
         // Checkboxes inside a text note (- [ ] in Markdown) and ==highlighted== text.
         TaskList,
-        TaskItem.configure({ nested: true }),
+        TaskItem.configure({ nested: true, onReadOnlyChecked: () => checkable }),
         // Not inclusive: typing on after a highlight, or a new line, isn't highlighted too.
         Highlight.extend({ inclusive: false }),
         Markdown,
@@ -174,6 +209,7 @@
         NoteDirection,
         // Tables, saved as Markdown tables (TraceApps/notetrace#26).
         ...NoteTables,
+        ReadOnlyGuard,
       ],
       content: value || '',
       contentType: 'markdown',
@@ -205,6 +241,7 @@
     });
     refreshActive();
     el.addEventListener('click', onLinkClick);
+    el.addEventListener('change', onReadOnlyTick);
     window.addEventListener('scroll', hideBubble, true);
   });
 
@@ -220,7 +257,7 @@
 
   // Scrolling moves the text out from under the bar; it comes back with the next selection change.
   const hideBubble = () => { if (bubble) bubble = null; };
-  onDestroy(() => { el?.removeEventListener('click', onLinkClick); window.removeEventListener('scroll', hideBubble, true); editor?.destroy(); });
+  onDestroy(() => { el?.removeEventListener('click', onLinkClick); el?.removeEventListener('change', onReadOnlyTick); window.removeEventListener('scroll', hideBubble, true); editor?.destroy(); });
 
   // Reload when the value changes from outside (version restore, sync),
   // never for our own keystrokes, or the cursor would jump.

@@ -16,7 +16,7 @@
 import { itemAfterPatch } from '../../server/lib/task-rules.js';
 
 /** Note fields an offline edit may change. */
-export const NOTE_FIELDS = ['title', 'body_md', 'color', 'pinned', 'archived', 'in_tasks', 'reminder_at', 'reminder_rrule', 'reminder_tz'];
+export const NOTE_FIELDS = ['title', 'body_md', 'color', 'pinned', 'archived', 'in_tasks', 'read_only', 'reminder_at', 'reminder_rrule', 'reminder_tz'];
 
 /** A server-style timestamp (UTC, no zone), as the sync push expects. */
 export const stamp = (ms = Date.now()) => new Date(ms).toISOString().replace('T', ' ').replace('Z', '');
@@ -61,7 +61,7 @@ export function applyOp(byId, op) {
     const n = op.note || {};
     byId.set(op.id, {
       id: op.id, title: n.title || '', body_md: n.body_md || '', kind: n.kind === 'checklist' ? 'checklist' : 'text',
-      color: n.color ?? null, pinned: !!n.pinned, in_tasks: !!n.in_tasks, archived: false, trashed_at: null,
+      color: n.color ?? null, pinned: !!n.pinned, in_tasks: !!n.in_tasks, read_only: !!n.read_only, archived: false, trashed_at: null,
       reminder_at: n.reminder_at ?? null, reminder_rrule: n.reminder_rrule ?? null, reminder_tz: n.reminder_tz ?? null,
       created_at: at, updated_at: at, labels: [...(n.labels || [])],
       items: (n.items || []).map((i, idx) => ({

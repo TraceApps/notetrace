@@ -67,7 +67,7 @@ export const NOTE_TOOLS = [
   },
   {
     name: 'update_note',
-    description: "Change a note's title, replace its Markdown text, or change color, pinned, archived, or whether a checklist shows in Tasks. The previous text is kept in version history. To add to a note without replacing it, use append_to_note.",
+    description: "Change a note's title, replace its Markdown text, or change color, pinned, archived, whether a checklist shows in Tasks, or turn on Read Only. The previous text is kept in version history. To add to a note without replacing it, use append_to_note. A Read Only note's title, text and items can't be changed here; only the user can turn Read Only off.",
     parameters: {
       type: 'object',
       properties: {
@@ -78,6 +78,7 @@ export const NOTE_TOOLS = [
         pinned: { type: 'boolean' },
         archived: { type: 'boolean' },
         show_in_tasks: { type: 'boolean', description: 'Checklists only: show every item in the Tasks list.' },
+        read_only: { type: 'boolean', description: 'true makes the note Read Only: it opens for reading, safe from accidental edits. Only the user can turn it off.' },
       },
       required: ['id'],
     },
@@ -200,6 +201,7 @@ function _summary(note, labelName) {
     pinned: !!note.pinned,
     archived: !!note.archived,
     ...(note.kind === 'checklist' ? { show_in_tasks: !!note.in_tasks } : {}),
+    ...(note.read_only ? { read_only: true } : {}),
     reminder: _reminder(note),
     images: (note.attachments || []).length,
     updated_at: note.updated_at,
@@ -219,6 +221,7 @@ function _full(note, labelName) {
     pinned: !!note.pinned,
     archived: !!note.archived,
     show_in_tasks: note.kind === 'checklist' ? !!note.in_tasks : undefined,
+    read_only: !!note.read_only,
     trashed: !!note.trashed_at,
     reminder: _reminder(note),
     images: (note.attachments || []).filter(a => !/^audio\//i.test(a.mime || '')).map(a => ({ text: a.extracted_text || null })),
@@ -310,6 +313,10 @@ export async function executeNoteTool(name, args = {}, api, opts = {}) {
     return note;
   };
   const canEdit = (note) => note.share_role !== 'view';
+  // Read Only guards a note's content (title, text, items) against accidental
+  // changes, an agent's included (TraceApps/notetrace#30). Ticking items,
+  // labels, pin, archive, reminders and trash aren't content, so they still work.
+  const READ_ONLY = { error: "This note is Read Only, so its title, text and items can't be changed. The user can tap Edit in the note, or turn off Read Only in its More Options." };
 
   switch (name) {
     case 'search_notes': {
@@ -354,9 +361,11 @@ export async function executeNoteTool(name, args = {}, api, opts = {}) {
     }
     case 'update_note': {
       const note = await need(a.id);
-      if (!canEdit(note) && (a.title !== undefined || a.text !== undefined || a.color !== undefined)) {
+      if (!canEdit(note) && (a.title !== undefined || a.text !== undefined || a.color !== undefined || a.read_only !== undefined)) {
         return { error: 'This note is shared with the user as view only, so its content can\'t be changed.' };
       }
+      if (note.read_only && (a.title !== undefined || a.text !== undefined)) return READ_ONLY;
+      if (a.read_only === false && note.read_only) return { error: 'Only the user can turn off Read Only: in the note, More Options, Read Only.' };
       const patch = {};
       if (a.title !== undefined) patch.title = String(a.title);
       if (a.text !== undefined) {
@@ -371,12 +380,14 @@ export async function executeNoteTool(name, args = {}, api, opts = {}) {
         if (note.kind !== 'checklist') return { error: 'Only checklists can show in Tasks.' };
         patch.in_tasks = !!a.show_in_tasks;
       }
+      if (a.read_only === true) patch.read_only = true;
       const updated = await api.updateNote(note.id, patch);
       return { ok: true, note: _full(updated, await _labelNames(api)) };
     }
     case 'append_to_note': {
       const note = await need(a.id);
       if (!canEdit(note)) return { error: 'This note is shared as view only.' };
+      if (note.read_only) return READ_ONLY;
       const text = String(a.text || '').trim();
       if (!text) return { error: 'text is required' };
       if (note.kind === 'checklist') {
@@ -391,6 +402,7 @@ export async function executeNoteTool(name, args = {}, api, opts = {}) {
     case 'add_checklist_items': {
       const note = await need(a.id);
       if (!canEdit(note)) return { error: 'This note is shared as view only.' };
+      if (note.read_only) return READ_ONLY;
       if (note.kind !== 'checklist') return { error: 'This is a text note. Use append_to_note, or ask the user to switch it to a checklist.' };
       const items = (Array.isArray(a.items) ? a.items : []).map(t => String(t).trim()).filter(Boolean);
       if (!items.length) return { error: 'items is required' };
@@ -415,6 +427,7 @@ export async function executeNoteTool(name, args = {}, api, opts = {}) {
     case 'set_due_date': {
       const note = await need(a.id);
       if (!canEdit(note)) return { error: 'This note is shared as view only.' };
+      if (note.read_only) return READ_ONLY;
       if (note.kind !== 'checklist') return { error: 'This note is not a checklist.' };
       const found = _findItem(note.items || [], a.item);
       if (found.error) return { error: found.error };

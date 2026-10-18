@@ -31,9 +31,11 @@
  *     (its client_key), and a child of a parent the server lost is
  *     answered `missing_parent` so the device sends the parent first.
  *
- *   GET /api/sync/pull?since=<ISO>[&keys=1]
+ *   GET /api/sync/pull?since=<ISO>[&keys=1][&ro=1]
  *     keys=1 (the app that sends client_key): rows come with it. Older apps
  *     store every column a row comes with, so they never get it.
+ *     ro=1 (the app that knows Read Only): notes come with read_only, for
+ *     the same reason left out for older apps.
  *     response: { now: 'ISO', tables: { [name]: [{ id, ...cols, updated_at, deleted_at }] },
  *                 revoked_notes: [serverNoteId, ...], chat_ids: [serverChatId, ...] }
  *     chat_ids: every chat message the account has now; the app drops the
@@ -91,8 +93,12 @@ const TABLES = {
   notes: {
     cols: [
       'title', 'body_md', 'kind', 'color', 'pinned', 'archived', 'in_tasks',
-      'trashed_at', 'reminder_at', 'reminder_rrule', 'reminder_tz',
+      'trashed_at', 'reminder_at', 'reminder_rrule', 'reminder_tz', 'read_only',
     ],
+    // Columns an older app doesn't have: it never sends them (its rows are
+    // still whole), and its pull leaves them out (it would fail writing a
+    // column its database doesn't have). An app that has them pulls with ro=1.
+    optional: ['read_only'],
     parents: {},
     softDelete: true,
   },
@@ -221,7 +227,7 @@ router.post('/push', wrap((req, res) => {
         // A whole row (the Android app sends every column): one this server
         // no longer has can go in as new. The web's offline outbox sends
         // only what changed, which can't make a row.
-        const whole = spec.cols.every(c => translated[c] !== undefined);
+        const whole = spec.cols.every(c => translated[c] !== undefined || spec.optional?.includes(c));
         let revived = false;
         if (row.server_id) {
           existing = db.prepare(`SELECT * FROM ${name} WHERE id = ?`).get(row.server_id) || null;
@@ -393,6 +399,8 @@ router.get('/pull', wrap((req, res) => {
   // by the next one (>= below makes an overlap harmless: pulls are upserts).
   const now = new Date().toISOString().replace('T', ' ').replace('Z', '');
   const withKeys = req.query.keys === '1';
+  // ro=1: the app knows Read Only (read_only); without it, an older app's pull leaves it out.
+  const withOptional = req.query.ro === '1';
 
   const out = {};
   for (const [name, spec] of Object.entries(TABLES)) {
@@ -412,7 +420,7 @@ router.get('/pull', wrap((req, res) => {
     // the relationship silently disappears on the first sync after
     // it was attached (SQLite orders NULLs first in ASC by default,
     // so top-level parents naturally lead).
-    if (name === 'notes') { out.notes = _pullNotes(u, since, withKeys); continue; }
+    if (name === 'notes') { out.notes = _pullNotes(u, since, withKeys, withOptional); continue; }
     if ((name === 'checklist_items' || name === 'note_attachments') && u != null) {
       // Their own uuid matches them on the phone; a shared note's items
       // never carry anyone's install key to another account.
@@ -548,17 +556,18 @@ function _translateParents(row, spec, idMaps, u, editAt = NaN, childEdit = new M
 
 // Notes as a member's device sees them: the member's own pin and archive,
 // no reminder (reminders belong to the owner), plus the share fields.
-function _pullNotes(u, since, withKeys = false) {
+function _pullNotes(u, since, withKeys = false, withOptional = false) {
   const key = withKeys ? ', client_key' : '';
+  const cols = TABLES.notes.cols.filter(c => withOptional || !TABLES.notes.optional.includes(c));
   if (u == null) {
     return db.prepare(
-      `SELECT id, ${TABLES.notes.cols.join(', ')}, created_at, updated_at, deleted_at${key},
+      `SELECT id, ${cols.join(', ')}, created_at, updated_at, deleted_at${key},
               'owner' AS share_role, NULL AS share_owner, 0 AS share_count
          FROM notes WHERE user_id IS NULL AND synced_at >= ?`
     ).all(since);
   }
   return db.prepare(
-    `SELECT n.id, n.title, n.body_md, n.kind, n.color,
+    `SELECT n.id, n.title, n.body_md, n.kind, n.color,${withOptional ? ' n.read_only,' : ''}
             CASE WHEN m.id IS NULL THEN n.pinned ELSE m.pinned END AS pinned,
             CASE WHEN m.id IS NULL THEN n.archived ELSE m.archived END AS archived,
             CASE WHEN m.id IS NULL THEN n.in_tasks ELSE m.in_tasks END AS in_tasks,
@@ -598,7 +607,7 @@ function _pushSharedNote(u, existing, incoming) {
       .run(...mineArgs, access.member.id);
   }
 
-  const contentCols = ['title', 'body_md', 'kind', 'color'].filter(c => incoming[c] !== undefined && incoming[c] !== existing[c]);
+  const contentCols = ['title', 'body_md', 'kind', 'color', 'read_only'].filter(c => incoming[c] !== undefined && incoming[c] !== existing[c]);
   if (contentCols.length) {
     if (access.role !== 'edit') rejected = true;
     else {

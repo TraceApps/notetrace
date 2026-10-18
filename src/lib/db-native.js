@@ -45,6 +45,7 @@ const SCHEMA = `
     pinned         INTEGER NOT NULL DEFAULT 0,
     archived       INTEGER NOT NULL DEFAULT 0,
     in_tasks       INTEGER NOT NULL DEFAULT 0,
+    read_only      INTEGER NOT NULL DEFAULT 0,
     trashed_at     TEXT,
     reminder_at    TEXT,
     reminder_rrule TEXT,
@@ -261,6 +262,15 @@ async function _migrateShareColumns() {
     if (have.size && !have.has('in_tasks')) {
       await db.run(`ALTER TABLE notes ADD COLUMN in_tasks INTEGER NOT NULL DEFAULT 0`);
       await db.run(`UPDATE notes SET in_tasks = 1 WHERE kind = 'checklist' AND lower(trim(title)) = 'tasks'`);
+    }
+    // Read Only (TraceApps/notetrace#30). An app that synced before it had the
+    // column holds 0 for every note, Read Only on the server or not: the pull
+    // starts over to bring each note's down, and until it has (read_only_unknown)
+    // pushes leave read_only out, or a tick here would turn it off there.
+    if (have.size && !have.has('read_only')) {
+      await db.run(`ALTER TABLE notes ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0`);
+      await db.run(`DELETE FROM sync_meta WHERE key = 'last_pull_at'`, []);
+      await dbSetMeta('read_only_unknown', '1');
     }
     const att = await db.query(`PRAGMA table_info(note_attachments)`);
     const attCols = new Set((att?.values || []).map(c => c.name));
@@ -530,6 +540,21 @@ export async function dbSetServerId(table, clientId, serverId, snapshotUpdatedAt
       `UPDATE ${table} SET server_id = ?, sync_status = 'synced' WHERE id = ?`,
       [serverId, clientId]
     );
+  }
+}
+
+/**
+ * Every pulled note's read_only, also onto notes waiting to go up (which a
+ * pull otherwise leaves as they are): the first full pull after this app
+ * gained Read Only (see _migrateShareColumns).
+ */
+export async function dbSetReadOnlyFromPull(payload) {
+  if (!isNative) return;
+  const db = await getDb();
+  for (const row of payload?.tables?.notes || []) {
+    if (row && 'read_only' in row && row.id != null) {
+      await db.run(`UPDATE notes SET read_only = ? WHERE server_id = ?`, [row.read_only ? 1 : 0, row.id]);
+    }
   }
 }
 

@@ -12,6 +12,13 @@ export const sharingAvailable = derived(userMgmtActive, ($active) => !!$active &
 export const roleOf = (note) => note?.share_role || 'owner';
 export const isOwner = (note) => roleOf(note) === 'owner';
 export const canEdit = (note) => roleOf(note) !== 'view';
+/**
+ * Whether a note's content (title, text, items, due dates) can be changed
+ * here: it can be edited, and it isn't Read Only (TraceApps/notetrace#30).
+ * Ticking an item only needs canEdit: Read Only guards what a note says,
+ * not using it.
+ */
+export const canChange = (note) => canEdit(note) && !note?.read_only;
 export const isShared = (note) => !!note && (roleOf(note) !== 'owner' || (note.share_count || 0) > 0);
 
 /**

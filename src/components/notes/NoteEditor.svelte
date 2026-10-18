@@ -83,6 +83,10 @@
   let color = note?.color ?? prefill?.color ?? null;
   let pinned = !!note?.pinned;
   let inTasks = !!note?.in_tasks;
+  // Read Only (TraceApps/notetrace#30): the note opens for reading. Edit lifts
+  // it for this visit only; closing the note guards it again.
+  let readOnlyNote = !!note?.read_only;
+  let editingAnyway = false;
   let archived = !!note?.archived;
   let trashed = !!note?.trashed_at;
   let noteLabels = note?.labels ? [...note.labels] : [...initialLabels];
@@ -119,7 +123,12 @@
   // Shared notes: 'view' members can't change content; reminders and
   // trash belong to the owner.
   $: isOwner = shareRole === 'owner';
-  $: contentLocked = readOnly || shareRole === 'view';
+  // Nothing here can change: in the trash, or shared as view only.
+  $: baseLocked = readOnly || shareRole === 'view';
+  // Read Only guards the content (title, text, items, attachments), not
+  // ticking items or the note's color, labels, pin and reminder.
+  $: guarded = readOnlyNote && !editingAnyway && !baseLocked;
+  $: contentLocked = baseLocked || guarded;
   $: shared = shareRole !== 'owner' || shareCount > 0;
   $: chips = noteLabels.map(id => $labelsById.get(id)).filter(Boolean);
   // The reading pane's breadcrumb: the note's first label as a path (Home › Garage).
@@ -140,6 +149,7 @@
     updatedAt = n.updated_at;
     pinned = !!n.pinned;
     inTasks = !!n.in_tasks;
+    readOnlyNote = !!n.read_only;
     archived = !!n.archived;
     trashed = !!n.trashed_at;
     color = n.color;
@@ -758,6 +768,27 @@
 
   // ── Actions ───────────────────────────────────────────────────────
   function togglePin() { pinned = !pinned; patch({ pinned }); }
+
+  // ── Read Only ─────────────────────────────────────────────────────
+  async function toggleReadOnly() {
+    const next = !readOnlyNote;
+    // What's typed is saved before the note turns read only.
+    if (next) await flushAll();
+    readOnlyNote = next;
+    editingAnyway = false;
+    patch({ read_only: next });
+    showInfo($_(next ? 'notes.read_only_on' : 'notes.read_only_off'));
+  }
+  // Edit, for this visit: the note stays Read Only and is guarded again when
+  // it closes. The cursor goes where the next tap puts it, so the keyboard
+  // doesn't jump up with it parked at the end.
+  function editAnyway() {
+    editingAnyway = true;
+  }
+  async function stopEditing() {
+    await flushAll();
+    editingAnyway = false;
+  }
   function toggleInTasks() { inTasks = !inTasks; patch({ in_tasks: inTasks }); }
   $: canShowInTasks = kind === 'checklist' && !readOnly && !$tasksAllChecklists;
   function setColor(c) { color = c; patch({ color: c }); }
@@ -929,7 +960,8 @@
     closing = true;
     await flushAll();
     const renamedFrom = openedTitle.trim();
-    if (noteId && !trashed && !contentLocked && renamedFrom && title.trim() && renamedFrom !== title.trim()) {
+    // Not contentLocked: a title changed with Edit, or just before Read Only went on, still renames its links.
+    if (noteId && !trashed && !baseLocked && renamedFrom && title.trim() && renamedFrom !== title.trim()) {
       try { await NoteApi.updateNote(noteId, { title, rename_links_from: renamedFrom }); } catch { /* links can be fixed by hand */ }
     }
     // A note that ended up empty is removed instead of lingering as a blank card.
@@ -1178,6 +1210,8 @@
                 <span class="material-symbols-rounded">mic</span>
               </button>
             {/if}
+          {/if}
+          {#if !baseLocked && !tightBar}
             <button class="icon-btn" on:click={openColor} title={$_('notes.color')} aria-label={$_('notes.color')}>
               <span class="material-symbols-rounded">palette</span>
             </button>
@@ -1223,6 +1257,19 @@
       </div>
 
       <div class="editor-scroll">
+        {#if readOnlyNote && !baseLocked}
+          <div class="ro-bar" class:editing={editingAnyway} role="status">
+            <span class="material-symbols-rounded">{editingAnyway ? 'edit' : 'edit_off'}</span>
+            <span class="ro-text">{editingAnyway ? $_('notes.read_only_editing') : $_('notes.read_only')}</span>
+            {#if editingAnyway}
+              <button class="ro-btn" on:click={stopEditing}>{$_('notes.read_only_done')}</button>
+            {:else}
+              <button class="ro-btn" on:click={editAnyway}>
+                <span class="material-symbols-rounded">edit</span>{$_('notes.read_only_edit')}
+              </button>
+            {/if}
+          </div>
+        {/if}
         {#if imageAttachments.length || uploading}
           <div class="editor-images">
             <AttachmentGrid attachments={imageAttachments} pending={uploading} editable={!contentLocked}
@@ -1250,14 +1297,14 @@
           on:open={openFile} on:remove={removeImage} />
         {#key editorKey}
           {#if kind === 'text'}
-            <TipTapEditor bind:this={bodyRef} bind:value={body} editable={!contentLocked} showToolbar={!narrow}
+            <TipTapEditor bind:this={bodyRef} bind:value={body} editable={!contentLocked} checkable={!baseLocked} showToolbar={!narrow}
               on:formats={(e) => formats = e.detail}
               slashActions={contentLocked ? [] : ['checklist', 'image', 'file', 'drawing', ...(canRecord ? ['voice'] : []), ...(isOwner ? ['reminder'] : [])]}
               on:slash={(e) => onSlash(e.detail)}
               linkTitles={linkTitles.filter(t => t.toLowerCase() !== title.trim().toLowerCase())}
               placeholder={$_('notes.body_placeholder')} on:change={scheduleText} on:openlink={(e) => openLinked(e.detail)} />
           {:else}
-            <ChecklistEditor bind:this={checklistRef} {items} editable={!contentLocked}
+            <ChecklistEditor bind:this={checklistRef} {items} editable={!contentLocked} checkable={!baseLocked}
               on:add={onItemAdd} on:update={onItemUpdate} on:delete={onItemDelete} on:reorder={onItemReorder}
               on:uncheck-all={onUncheckAll} on:delete-checked={onDeleteChecked} />
           {/if}
@@ -1350,6 +1397,8 @@
                   <span class="material-symbols-rounded">mic</span>
                 </button>
               {/if}
+            {/if}
+            {#if !baseLocked}
               <button class="icon-btn" on:mousedown|preventDefault on:click={openColor} aria-label={$_('notes.color')} title={$_('notes.color')}>
                 <span class="material-symbols-rounded">palette</span>
               </button>
@@ -1404,6 +1453,8 @@
                   <span class="material-symbols-rounded">mic</span>
                 </button>
               {/if}
+            {/if}
+            {#if !baseLocked}
               <button class="icon-btn" on:click={openColor} title={$_('notes.color')} aria-label={$_('notes.color')}>
                 <span class="material-symbols-rounded">palette</span>
               </button>
@@ -1510,6 +1561,8 @@
               <span class="material-symbols-rounded">mic</span>{$_('voice.record')}
             </button>
           {/if}
+        {/if}
+        {#if !baseLocked}
           <button class="sheet-item" on:click={() => fromSheet(openColor, moreAnchor)}>
             <span class="material-symbols-rounded">palette</span>{$_('notes.color')}
           </button>
@@ -1546,6 +1599,12 @@
     {#if cooktraceOn($cooktraceLink) && kind === 'checklist' && !fullBar}
       <button class="sheet-item" on:click={() => fromSheet(openCooktrace, moreAnchor)}>
         <span class="material-symbols-rounded">add_shopping_cart</span>{$_('cooktrace.send')}
+      </button>
+    {/if}
+    {#if noteId && !baseLocked}
+      <button class="sheet-item" role="menuitemcheckbox" aria-checked={readOnlyNote} on:click={() => { moreOpen = false; toggleReadOnly(); }}>
+        <span class="material-symbols-rounded">edit_off</span>{$_('notes.read_only')}
+        {#if readOnlyNote}<span class="material-symbols-rounded sheet-check">check</span>{/if}
       </button>
     {/if}
     <button class="sheet-item" on:click={() => fromSheet(archive, moreAnchor)}>
@@ -1595,7 +1654,7 @@
 </Popover>
 <Popover bind:open={cookOpen} anchor={cookAnchor} label={$_('cooktrace.send')}>
   {#if cookOpen}
-    <CooktraceSend {items} canCheck={!contentLocked} on:sent={(e) => onCooktraceSent(e.detail.uuids)} on:close={() => cookOpen = false} />
+    <CooktraceSend {items} canCheck={!baseLocked} on:sent={(e) => onCooktraceSent(e.detail.uuids)} on:close={() => cookOpen = false} />
   {/if}
 </Popover>
 <Popover bind:open={shareOpen} anchor={shareAnchor} label={$_('sharing.share')}>
@@ -1612,6 +1671,22 @@
   .editor-host { display: contents; }
   .editor-images { margin-bottom: 14px; }
   .pending-voice { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  /* Read Only: what the note is, and Edit for this visit. */
+  .ro-bar {
+    display: flex; align-items: center; gap: 8px; margin: 0 0 10px; padding: 6px 6px 6px 10px;
+    border-radius: 10px; font-size: 13px; color: var(--text-2);
+    background: color-mix(in srgb, var(--text-1) 6%, transparent);
+  }
+  .ro-bar > .material-symbols-rounded { font-size: 18px; color: var(--text-3); }
+  .ro-bar.editing { background: var(--accent-dim); color: var(--text-1); }
+  .ro-bar.editing > .material-symbols-rounded { color: var(--accent); }
+  .ro-text { flex: 1; min-width: 0; }
+  .ro-btn {
+    display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; height: 30px; padding: 0 10px;
+    border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--accent);
+  }
+  .ro-btn:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .ro-btn .material-symbols-rounded { font-size: 17px; }
   .pending-voice li {
     display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--warning, #ffb547) 12%, transparent); color: var(--text-1); font-size: 13.5px;

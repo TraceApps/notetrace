@@ -222,8 +222,11 @@
       {#if files.length > 2}<span class="card-file card-file-more">+{files.length - 2}</span>{/if}
     </div>
   {/if}
-  {#if noteLabels.length || note.reminder_at || shared || voice.length}
+  {#if noteLabels.length || note.reminder_at || shared || voice.length || note.read_only}
     <div class="card-chips">
+      {#if note.read_only}
+        <span class="chip chip-ro" title={$_('notes.read_only')} aria-label={$_('notes.read_only')}><span class="material-symbols-rounded chip-icon">edit_off</span></span>
+      {/if}
       {#if voice.length}
         <span class="chip"><span class="material-symbols-rounded chip-icon">mic</span>{voice.length > 1 ? `${voice.length} · ` : ''}{formatDuration(voice.reduce((t, a) => t + (a.duration_ms || 0), 0))}</span>
       {/if}

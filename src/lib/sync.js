@@ -16,7 +16,7 @@
 import { writable } from 'svelte/store';
 import { isNative, getServerUrl, getAuthToken, apiUrl } from './platform.js';
 import {
-  dbGetPendingChanges, dbGetPendingSettingsForPush,
+  dbGetPendingChanges, dbGetPendingSettingsForPush, dbSetReadOnlyFromPull,
   dbSetServerId, dbApplyPull,
   dbGetMeta, dbSetMeta, dbMarkSettingsSynced, dbMarkTableSynced,
   dbCountUnsynced, dbInstallId, createKeyOf,
@@ -414,6 +414,9 @@ async function pushChanges({ token = getAuthToken(), signal = null, gen = accoun
   // its own id here), so a retry, two syncs at once or a lost answer never
   // makes it twice (server/lib/create-keys.js).
   const install = await dbInstallId();
+  // Until the first full pull since this app gained Read Only, its notes'
+  // read_only isn't known here: it stays out of the push (db-native.js).
+  const readOnlyUnknown = (await dbGetMeta('read_only_unknown')) === '1';
 
   const tablesToSend = {};
   let total = 0;
@@ -430,6 +433,7 @@ async function pushChanges({ token = getAuthToken(), signal = null, gen = accoun
       if (install) row.client_key = createKeyOf(install, table, r);
       delete row.id;
       delete row.sync_status;
+      if (table === 'notes' && readOnlyUnknown) delete row.read_only;
       // Local FK ids become server ids. A parent with no server id yet is
       // pending in this same push, so its local id goes through and is
       // listed in _local_fks for the server to map.
@@ -568,7 +572,8 @@ async function pullChanges({ token = getAuthToken(), signal = null, gen = accoun
   const since = (await dbGetMeta(LAST_PULL_KEY)) || '1970-01-01T00:00:00';
   // keys=1: rows this phone made come back with the key they were sent
   // with, so one whose push answer was lost is matched to its row here.
-  const res = await fetch(apiUrl(`/api/sync/pull?since=${encodeURIComponent(since)}&keys=1`), {
+  // ro=1: this app knows Read Only, so notes come with read_only (older apps don't ask).
+  const res = await fetch(apiUrl(`/api/sync/pull?since=${encodeURIComponent(since)}&keys=1&ro=1`), {
     method: 'GET',
     headers: _headers(token),
     signal: _deadline(signal),
@@ -587,6 +592,12 @@ async function pullChanges({ token = getAuthToken(), signal = null, gen = accoun
   if (since.startsWith('1970') && (await dbGetMeta('reconcile_missing')) === '1') {
     await dbServerIdsMissingFromPull(body);
     await dbSetMeta('reconcile_missing', null);
+  }
+  // The first full pull since this app gained Read Only: every note's comes
+  // down, also onto notes waiting to go up, and pushes carry it again.
+  if (since.startsWith('1970') && (await dbGetMeta('read_only_unknown')) === '1') {
+    await dbSetReadOnlyFromPull(body);
+    await dbSetMeta('read_only_unknown', null);
   }
   await dbSetMeta(LAST_PULL_KEY, body.now || new Date().toISOString());
   let pulled = 0;

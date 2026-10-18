@@ -21,6 +21,8 @@
 
   export let items = [];
   export let editable = true;
+  /** Items can be ticked (and Uncheck All used) even when the list can't be edited: a Read Only list still gets used. */
+  export let checkable = editable;
 
   const dispatch = createEventDispatcher();
   const FLIP_MS = 160;
@@ -106,7 +108,7 @@
   }
 
   function toggle(item) {
-    if (!editable) return;
+    if (!checkable) return;
     const today = todayStr();
     // A repeating item moves to its next date instead of being ticked, the same
     // rule the server applies when it receives the tick.
@@ -129,7 +131,7 @@
    * other tick does rather than needing a rule of its own.
    */
   function uncheckAll() {
-    if (!editable) return;
+    if (!checkable) return;
     const back = list.filter(i => i.checked);
     if (!back.length) return;
     list = list.map(i => (i.checked ? { ...i, checked: false } : i));
@@ -240,7 +242,7 @@
             <span class="material-symbols-rounded">drag_indicator</span>
           </span>
         {/if}
-        <button type="button" class="check" aria-label={$_('notes.check_item')} on:click={() => toggle(item)}></button>
+        <button type="button" class="check" aria-label={$_('notes.check_item')} disabled={!checkable} on:click={() => toggle(item)}></button>
         <textarea
           class="item-text"
           dir={openDirs[i] || 'auto'}
@@ -288,14 +290,16 @@
         <span class="material-symbols-rounded chevron" class:collapsed={!showChecked}>expand_more</span>
         {$_('notes.checked_items', { values: { count: done.length } })}
       </button>
-      {#if editable}
+      {#if checkable}
         <div class="checked-actions">
           <button type="button" class="uncheck-all" on:click={uncheckAll}>
             {$_('notes.uncheck_all')}
           </button>
-          <button type="button" class="delete-checked" on:click={deleteChecked}>
-            {$_('notes.delete_checked')}
-          </button>
+          {#if editable}
+            <button type="button" class="delete-checked" on:click={deleteChecked}>
+              {$_('notes.delete_checked')}
+            </button>
+          {/if}
         </div>
       {/if}
     </div>
@@ -303,7 +307,7 @@
       <ul class="items" transition:slide={{ duration: 160 }}>
         {#each done as item, i (item.uuid)}
           <li class="item done" dir={doneDirs[i]}>
-            <button type="button" class="check on" aria-label={$_('notes.uncheck_item')} on:click={() => toggle(item)}>
+            <button type="button" class="check on" aria-label={$_('notes.uncheck_item')} disabled={!checkable} on:click={() => toggle(item)}>
               <span class="material-symbols-rounded">check</span>
             </button>
             <span class="item-text static" dir="auto">{item.text}</span>

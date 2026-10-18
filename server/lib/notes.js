@@ -11,7 +11,7 @@
  * Every function takes the signed-in user id `u` (null in single-user
  * mode). A note belongs to its owner (notes.user_id) and can be shared
  * with other accounts through note_members:
- *   - 'edit' members change the title, body, color, and checklist
+ *   - 'edit' members change the title, body, color, Read Only, and checklist
  *   - 'view' members only read it
  *   - pin, archive, and labels are personal to each person
  *   - reminders, trash, and permanent delete stay with the owner
@@ -165,6 +165,7 @@ function _hydrate(rows, u) {
       body_md: r.body_md,
       kind: r.kind,
       color: r.color,
+      read_only: !!r.read_only,
       pinned: !!(member ? r.m_pinned : r.pinned),
       in_tasks: !!(member ? r.m_in_tasks : r.in_tasks),
       archived: !!(member ? r.m_archived : r.archived),
@@ -417,11 +418,11 @@ export const createNote = db.transaction((u, data = {}) => {
   const ts = now();
   const kind = NOTE_KINDS.has(data.kind) ? data.kind : 'text';
   const info = db.prepare(
-    `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived, in_tasks,
+    `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived, in_tasks, read_only,
                         reminder_at, reminder_rrule, reminder_tz, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(u, _cleanTitle(data.title), kind === 'text' ? _cleanBody(data.body_md) : '',
-        kind, _cleanColor(data.color), data.pinned ? 1 : 0, data.archived ? 1 : 0, data.in_tasks ? 1 : 0,
+        kind, _cleanColor(data.color), data.pinned ? 1 : 0, data.archived ? 1 : 0, data.in_tasks ? 1 : 0, data.read_only ? 1 : 0,
         _cleanReminderAt(data.reminder_at), _cleanRepeat(data.reminder_rrule), _cleanTz(data.reminder_tz), ts, ts);
   const id = Number(info.lastInsertRowid);
   if (kind === 'checklist' && Array.isArray(data.items)) {
@@ -452,6 +453,7 @@ export const updateNote = db.transaction((u, id, patch = {}) => {
   if ('color' in patch)   { sets.push('color = ?');   args.push(_cleanColor(patch.color)); }
   if ('pinned' in patch)  { sets.push('pinned = ?');  args.push(patch.pinned ? 1 : 0); }
   if ('in_tasks' in patch) { sets.push('in_tasks = ?'); args.push(patch.in_tasks ? 1 : 0); }
+  if ('read_only' in patch) { sets.push('read_only = ?'); args.push(patch.read_only ? 1 : 0); }
   if ('archived' in patch) {
     sets.push('archived = ?'); args.push(patch.archived ? 1 : 0);
     if (patch.archived) { sets.push('pinned = 0'); }
@@ -502,6 +504,7 @@ function _updateAsMember(u, { row, role, member }, patch) {
     if ('title' in patch)   { sets.push('title = ?');   args.push(_cleanTitle(patch.title)); }
     if ('body_md' in patch) { sets.push('body_md = ?'); args.push(_cleanBody(patch.body_md)); }
     if ('color' in patch)   { sets.push('color = ?');   args.push(_cleanColor(patch.color)); }
+    if ('read_only' in patch) { sets.push('read_only = ?'); args.push(patch.read_only ? 1 : 0); }
     if (sets.length) db.prepare(`UPDATE notes SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).run(...args, ts, id);
     if ('title' in patch && patch.rename_links !== false) _renameLinks(row.user_id, id, patch.rename_links_from != null ? _cleanTitle(patch.rename_links_from) : row.title, _cleanTitle(patch.title), ts);
   }
@@ -1076,11 +1079,11 @@ export const importNotes = db.transaction((u, list = []) => {
 
     const reminderAt = _cleanReminderAt(raw.reminder_at);
     const info = db.prepare(
-      `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived, in_tasks, trashed_at,
+      `INSERT INTO notes (user_id, title, body_md, kind, color, pinned, archived, in_tasks, read_only, trashed_at,
                           reminder_at, reminder_rrule, reminder_tz, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(u, title, body, kind, _cleanColor(raw.color),
-          raw.pinned && !raw.archived && !raw.trashed ? 1 : 0, raw.archived ? 1 : 0, kind === 'checklist' && raw.in_tasks ? 1 : 0,
+          raw.pinned && !raw.archived && !raw.trashed ? 1 : 0, raw.archived ? 1 : 0, kind === 'checklist' && raw.in_tasks ? 1 : 0, raw.read_only ? 1 : 0,
           raw.trashed ? ts : null,
           reminderAt, reminderAt ? _cleanRepeat(raw.reminder_rrule) : null, reminderAt ? _cleanTz(raw.reminder_tz) : null,
           created, updated);

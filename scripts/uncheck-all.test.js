@@ -48,10 +48,13 @@ test('both can be undone, and the undo puts back exactly what went', () => {
   assert.match(note, /uuid: item\.uuid, text: item\.text, checked: true,\s*\n\s*position: item\.position, due_date: item\.due_date \|\| null,/);
 });
 
-test('a read-only note is offered neither', () => {
-  assert.match(editor, /function uncheckAll\(\) \{\s*\n\s*if \(!editable\) return;/);
+test('a note that can\'t be ticked (in the trash, shared view only) is offered neither; a Read Only one keeps Uncheck All', () => {
+  // Uncheck All is ticking, so it follows checkable (false in the trash and
+  // for view only, true on a Read Only list); Delete Checked changes the list.
+  assert.match(editor, /function uncheckAll\(\) \{\s*\n\s*if \(!checkable\) return;/);
   assert.match(editor, /function deleteChecked\(\) \{\s*\n\s*if \(!editable\) return;/);
-  assert.match(editor, /\{#if editable\}\s*\n\s*<div class="checked-actions">/);
+  assert.match(editor, /\{#if checkable\}\s*\n\s*<div class="checked-actions">/);
+  assert.match(editor, /\{#if editable\}\s*\n\s*<button type="button" class="delete-checked"/);
 });
 
 test('unchecking never moves a repeating task on', () => {

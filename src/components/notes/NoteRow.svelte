@@ -62,6 +62,7 @@
       {#if hasVoice}<span class="meta"><span class="material-symbols-rounded">mic</span></span>{/if}
       {#if fileCount}<span class="meta"><span class="material-symbols-rounded">attach_file</span>{fileCount > 1 ? fileCount : ''}</span>{/if}
       {#if shared}<span class="meta"><span class="material-symbols-rounded">group</span></span>{/if}
+      {#if note.read_only}<span class="meta" title={$_('notes.read_only')} aria-label={$_('notes.read_only')}><span class="material-symbols-rounded">edit_off</span></span>{/if}
       {#each noteLabels as l (l.id)}
         <span class="row-label"><span class="dot" style="background:{colorDot(l.color)}"></span><span dir="auto">{l.name}</span></span>
       {/each}

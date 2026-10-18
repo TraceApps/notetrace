@@ -22,7 +22,7 @@
   import { NoteApi } from '../lib/api.js';
   import { notesChanged, signalCountsChanged } from '../stores/notes.js';
   import { showError, showUndo } from '../stores/toast.js';
-  import { canEdit } from '../lib/note-sharing.js';
+  import { canEdit, canChange } from '../lib/note-sharing.js';
   import { colorDot } from '../lib/note-colors.js';
   import { groupByDue, dueLabel, dueStatus, todayStr } from '../lib/due-dates.js';
   import { rowSwipe } from '../lib/row-swipe.js';
@@ -68,7 +68,8 @@
   // A task: an open item with a due date, or on a checklist shown in Tasks (see task-rules.js).
   $: tasks = notes.flatMap(n => (n.items || [])
     .filter(i => leaving.has(i.uuid) ? String(i.text || '').trim() : isTask(n, i, { allChecklists: $tasksAllChecklists || isTasksInbox(n, inboxTitle) }))
-    .map(i => ({ ...i, id: i.uuid, key: i.uuid, note: n, editable: canEdit(n) })));
+    // checkable: can be ticked; editable: its text, date and place can change (not on a Read Only list).
+    .map(i => ({ ...i, id: i.uuid, key: i.uuid, note: n, checkable: canEdit(n), editable: canChange(n) })));
   // Lists that belong in Tasks keep their place By List even when there's nothing open on them.
   $: taskLists = notes.filter(n => n.in_tasks || isTasksInbox(n, inboxTitle) || tasks.some(t => t.note.id === n.id));
   $: groups = $tasksGroupBy === 'note'
@@ -77,12 +78,12 @@
   $: completed = notes.flatMap(n => (n.items || [])
       .filter(i => i.checked && !leaving.has(i.uuid) && i.checked_at && Date.now() - tsMs(i.checked_at) < COMPLETED_DAYS * 864e5
         && (i.due_date || n.in_tasks || $tasksAllChecklists || isTasksInbox(n, inboxTitle)))
-      .map(i => ({ ...i, key: `c${i.uuid}`, note: n, editable: canEdit(n) })))
+      .map(i => ({ ...i, key: `c${i.uuid}`, note: n, checkable: canEdit(n), editable: canChange(n) })))
     .sort((a, b) => tsMs(b.checked_at) - tsMs(a.checked_at))
     .slice(0, 50);
   let showCompleted = false;
   // Lists a task can be added or moved to: the ones already in Tasks, then the rest.
-  $: writableLists = notes.filter(n => canEdit(n))
+  $: writableLists = notes.filter(n => canChange(n))
     .sort((a, b) => Number(isTasksInbox(b, inboxTitle)) - Number(isTasksInbox(a, inboxTitle)) || String(a.title || '').localeCompare(String(b.title || '')));
   $: listsInTasks = writableLists.filter(n => $tasksAllChecklists || n.in_tasks || isTasksInbox(n, inboxTitle));
   $: otherLists = writableLists.filter(n => !($tasksAllChecklists || n.in_tasks || isTasksInbox(n, inboxTitle)));
@@ -117,7 +118,7 @@
   }
 
   async function toggle(task) {
-    if (!task.editable) return;
+    if (!task.checkable) return;
     const checking = !task.checked;
     const after = itemAfterPatch(task, { checked: checking }, todayStr());
     const moved = checking && !after.checked;
@@ -272,6 +273,8 @@
     adding = true;
     try {
       const target = quickList || await ensureInbox();
+      // A Read Only list takes no new items from here (TraceApps/notetrace#30).
+      if (target.read_only) { showError($_('tasks.list_read_only', { values: { list: target.title || $_('notes.untitled') } })); return; }
       putNote(await NoteApi.addItem(target.id, { uuid: newUuid(), text, due_date: newDue, due_repeat: newDue ? newRepeat : null }));
       if (await keepInTasks(target, newDue)) {
         showUndo($_('tasks.added_shown', { values: { list: target.title || $_('notes.untitled') } }),
@@ -437,12 +440,12 @@
             <span class="count">{g.items.length}</span>
           </h2>
           <ul class="task-list"
-            use:dragHandleZone={{ items: shown, flipDurationMs: FLIP_MS, dropTargetStyle: {}, type: `tasks-${g.key}`, dragDisabled: !byList || !canEdit(g.note || {}) }}
+            use:dragHandleZone={{ items: shown, flipDurationMs: FLIP_MS, dropTargetStyle: {}, type: `tasks-${g.key}`, dragDisabled: !byList || !canChange(g.note || {}) }}
             on:consider={(e) => onConsider(g, e)} on:finalize={(e) => onFinalize(g, e)}>
             {#each shown as task (task.id)}
               <li class="task" dir={textDir(editUuid === task.uuid ? draft : task.text)} class:done={task.checked} class:editing={editUuid === task.uuid} data-task-key={task.key} tabindex="-1"
                 animate:flip={{ duration: FLIP_MS }} out:fly={{ x: 24, duration: 200 }}
-                use:rowSwipe={{ enabled: touch && task.editable && editUuid !== task.uuid, onSwipe: (dir) => dir === 'right' ? toggle(task) : removeTask(task) }}
+                use:rowSwipe={{ enabled: touch && task.checkable && editUuid !== task.uuid, left: task.editable, onSwipe: (dir) => dir === 'right' ? toggle(task) : removeTask(task) }}
                 on:contextmenu|preventDefault={(e) => openMenu({ currentTarget: { getBoundingClientRect: () => ({ left: e.clientX, top: e.clientY, bottom: e.clientY, x: e.clientX, y: e.clientY }) } }, task)}>
                 <span class="swipe-bg swipe-done" aria-hidden="true"><span class="material-symbols-rounded">check_circle</span></span>
                 <span class="swipe-bg swipe-delete" aria-hidden="true"><span class="material-symbols-rounded">delete</span></span>
@@ -452,7 +455,7 @@
                       <span class="material-symbols-rounded">drag_indicator</span>
                     </span>
                   {/if}
-                  <button class="task-check" class:on={task.checked} disabled={!task.editable} on:click={() => toggle(task)}
+                  <button class="task-check" class:on={task.checked} disabled={!task.checkable} on:click={() => toggle(task)}
                     aria-label={task.checked ? $_('notes.uncheck_item') : $_('notes.check_item')}>
                     <span class="material-symbols-rounded" class:fill={task.checked}>{task.checked ? 'check_circle' : 'radio_button_unchecked'}</span>
                   </button>
@@ -485,7 +488,7 @@
               </li>
             {/each}
           </ul>
-          {#if byList && canEdit(g.note)}
+          {#if byList && canChange(g.note)}
             <form class="list-add" on:submit|preventDefault={() => addToList(g.note)}>
               <span class="material-symbols-rounded">add</span>
               <input dir="auto" bind:value={listDrafts[g.note.id]} placeholder={$_('tasks.add_placeholder')} maxlength="5000"
@@ -506,7 +509,7 @@
               {#each completed as task (task.key)}
                 <li class="task done" dir={textDir(task.text)} animate:flip={{ duration: FLIP_MS }}>
                   <div class="swipe-body">
-                    <button class="task-check on" disabled={!task.editable} on:click={() => patchTask(task, { checked: false })}
+                    <button class="task-check on" disabled={!task.checkable} on:click={() => patchTask(task, { checked: false })}
                       aria-label={$_('notes.uncheck_item')}>
                       <span class="material-symbols-rounded fill">check_circle</span>
                     </button>
