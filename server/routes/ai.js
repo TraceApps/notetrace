@@ -6,6 +6,8 @@ import { makeRateLimiter } from '../middleware/rate-limit.js';
 import { getOpenAIChatParams, openAIBase } from '../lib/openai-chat-params.js';
 import { applyTokenLimits, serverTokenLimits, openAIAnswer } from '../lib/ai-token-limits.js';
 import { createToolSupportMemory, sendWithToolFallback } from '../lib/tool-support.js';
+import { fetchAIResponse } from '../lib/ai-stream.js';
+import { streamAI } from '../lib/ai-stream-relay.js';
 import db from '../db.js';
 import multer from 'multer';
 import { transcribeAudio, transcribeFile, readImageText } from '../lib/ai-extract.js';
@@ -202,10 +204,11 @@ export function relayRequest(cfg, body, tokenLimits) {
     return { url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(cfg.model)}:generateContent?key=${encodeURIComponent(cfg.apiKey || '')}`, headers: { 'Content-Type': 'application/json' }, body: out };
   }
   out.model = cfg.model;
-  // The relay passes back one JSON reply, never a stream (TraceApps/nutritrace#258).
-  out.stream = false;
+  // Old clients and branded providers retain their JSON contract. Custom
+  // providers can opt in to streaming without losing tool fallback.
+  out.stream = custom && body.stream === true;
   const base = cfg.provider === 'openai' ? 'https://api.openai.com' : String(cfg.baseUrl || '').replace(/\/+$/, '');
-  const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+  const headers = { 'Content-Type': 'application/json', 'Accept': out.stream ? 'text/event-stream, application/json' : 'application/json' };
   if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
   const limits = custom ? serverTokenLimits(tokenLimits ?? { maxTokens: out.max_tokens ?? out.max_completion_tokens }, cfg.tokenConfig) : null;
   return { url: `${base}/v1/chat/completions`, headers, body: limits ? applyTokenLimits(out, limits) : out, tokenLimits: limits };
@@ -225,6 +228,22 @@ router.post('/relay', requireAuth, aiChatLimit, wrap(async (req, res) => {
   let r;
   try { r = relayRequest(cfg, body, req.body.tokenLimits); }
   catch (e) { return res.status(400).json({ error: { message: e.message, code: e.code } }); }
+  if (local && r.body.stream) {
+    return streamAI(res, async ({ signal, onText }) => {
+      const sendStream = b => fetchAIResponse(fetch, r.url, {
+        method: 'POST', headers: r.headers, body: JSON.stringify(applyTokenLimits(b, r.tokenLimits)),
+      }, { signal, onText });
+      const out = await sendWithToolFallback(r.body, sendStream, { memory: relayToolSupport, baseUrl: r.url, model: r.body.model });
+      if (out.ok) {
+        openAIAnswer(out.data);
+        if (out.toolsDropped) {
+          out.data.trace_tools_unsupported = true;
+          if (out.toolsRouted) out.data.trace_tools_routed = true;
+        }
+      }
+      return { ok: out.ok, status: out.status, data: out.data };
+    });
+  }
   const send = async (b) => {
     const upstream = await fetch(r.url, { method: 'POST', headers: r.headers, body: JSON.stringify(r.tokenLimits ? applyTokenLimits(b, r.tokenLimits) : b), signal: AbortSignal.timeout(120_000) });
     const data = await upstream.json().catch(() => ({ error: { message: `AI provider error ${upstream.status}` } }));
@@ -288,6 +307,15 @@ router.post('/chat', requireAuth, aiChatLimit, wrap(async (req, res) => {
   if (provider === 'oai-compat' || provider === 'custom') {
     if (!baseUrl) return res.status(503).json({ error: 'AI_PROVIDER=oai-compat requires AI_BASE_URL in environment.' });
     if (!model)   return res.status(503).json({ error: 'AI_PROVIDER=oai-compat requires AI_MODEL in environment.' });
+    if (req.body.stream === true) {
+      let limits;
+      try { limits = serverTokenLimits(tokenLimits, cfg); }
+      catch (e) { return res.status(422).json({ error: e.message, code: e.code }); }
+      return streamAI(res, async options => ({
+        ok: true, status: 200,
+        data: { text: await _callOpenAI(apiKey || 'no-key', model, messages, systemPrompt, baseUrl, limits, options) },
+      }));
+    }
   }
 
   let text;
@@ -333,13 +361,23 @@ async function _callClaude(apiKey, model, messages, systemPrompt) {
   return data.content[0].text;
 }
 
-async function _callOpenAI(apiKey, model, messages, systemPrompt, baseUrl = 'https://api.openai.com', tokenLimits) {
+async function _callOpenAI(apiKey, model, messages, systemPrompt, baseUrl = 'https://api.openai.com', tokenLimits, options) {
   let body = {
     model,
     messages: [{ role: 'system', content: systemPrompt }, ...messages],
     ...getOpenAIChatParams({ baseUrl, model, hasTools: false, maxTokens: 1024 }),
   };
   if (tokenLimits) body = applyTokenLimits(body, tokenLimits);
+  if (options) {
+    body.stream = true;
+    const { ok, status, data } = await fetchAIResponse(fetch, `${baseUrl}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream, application/json', ...(apiKey !== 'no-key' ? { Authorization: `Bearer ${apiKey}` } : {}) },
+      body: JSON.stringify(body),
+    }, options);
+    if (!ok) throw Object.assign(new Error(data.error?.message || `AI provider error ${status}`), { code: data.error?.code });
+    return openAIAnswer(data).content || '';
+  }
   const res = await fetch(`${baseUrl}/v1/chat/completions`, {
     method: 'POST',
     headers: {

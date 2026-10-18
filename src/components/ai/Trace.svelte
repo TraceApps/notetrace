@@ -272,6 +272,7 @@
   }
   let input = '';
   let busy = false;
+  let streamingReply = '';
   let messagesEl;
   let toolStatus = '';
   // Says once per conversation that the model can't use tools (TraceApps/nutritrace#259).
@@ -344,6 +345,7 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
     NoteApi.post('/api/ai/history', { role: 'user', content: userMsg.content })
       .catch(e => console.warn('[Trace] history save (user) failed:', e?.message || e));
     busy = true;
+    streamingReply = '';
     toolStatus = '';
     await tick(); _scrollToBottom();
 
@@ -372,6 +374,10 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
             messages: apiMessages,
             tokenLimits: $aiTokenLimits,
             systemPrompt: _systemPrompt(smartLog),
+            onText: (text, reset = false) => {
+              streamingReply = reset ? text : streamingReply + text;
+              tick().then(_scrollToBottom);
+            },
             tools: TOOLS,
             onToolCall: (toolName) => { toolStatus = `Calling ${toolName.replace(/_/g, ' ')}…`; },
             onToolsUnsupported,
@@ -385,6 +391,7 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
       messages = [...messages, { role: 'assistant', content: `⚠ ${e.message || 'AI request failed'}`, time: _fmtTime() }];
     } finally {
       busy = false;
+      streamingReply = '';
       toolStatus = '';
       attachedImage = null;
       await tick(); _scrollToBottom();
@@ -773,7 +780,13 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
           </div>
           {/if}
         {/each}
-        {#if busy}
+        {#if busy && streamingReply}
+          <div class="msg assistant" aria-busy="true">
+            <div class="msg-avatar"><svelte:component this={Mascot} size={24} /></div>
+            <div class="bubble" dir="auto">{streamingReply}</div>
+          </div>
+        {/if}
+        {#if busy && !streamingReply}
           <div class="msg assistant">
             <div class="msg-avatar"><svelte:component this={Mascot} size={24} /></div>
             <div class="bubble typing">
