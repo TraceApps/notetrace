@@ -16,7 +16,7 @@ export const USER_PREFS = new Set([
   'accentColor','pageBanners','bannerStyle','bannerAnimation','startPage',
   'language','dateFormat','timeFormat','timezone',
   // AI Assistant ("Trace" persona)
-  'aiEnabled','aiProvider','aiApiKey','aiModel','aiBaseUrl','aiAssistantName','aiKeyVerified',
+  'aiEnabled','aiProvider','aiApiKey','aiModel','aiBaseUrl','aiAssistantName','aiKeyVerified','aiTokenLimits',
   // Smart Log (hold-to-record on the FAB → AI parses spoken intent → tool execution)
   'smartLogEnabled',
   // Language the Smart Log microphone listens for ('auto' = device locale)
@@ -455,6 +455,7 @@ export const aiProvider      = createSettingStore('aiProvider',      'claude');
 export const aiApiKey        = createSettingStore('aiApiKey',        '');
 export const aiModel         = createSettingStore('aiModel',         '');
 export const aiBaseUrl       = createSettingStore('aiBaseUrl',       '');
+export const aiTokenLimits   = createSettingStore('aiTokenLimits', { maxTokens: 16384, contextSize: 0 });
 export const aiAssistantName = createSettingStore('aiAssistantName', 'Trace');
 // True after a successful "Test" in Settings → Trace. The Trace FAB
 // only shows when this flips on (or when the AI is env-locked, since

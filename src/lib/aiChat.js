@@ -22,6 +22,14 @@ import { _ } from 'svelte-i18n';
 import { getOpenAIChatParams, openAIBase } from './openai-chat-params.js';
 import { createToolSupportMemory, sendWithToolFallback } from './tool-support.js';
 import { NOTE_TOOLS } from './trace-note-tools.js';
+import { normalizeTokenLimits, applyTokenLimits, openAIAnswer } from './ai-token-limits.js';
+
+function localizeTokenError(error) {
+  if (error?.code?.startsWith('ai_tokens_')) {
+    try { error.message = get(_)(`trace_tokens.errors.${error.code.slice(10)}`); } catch {}
+  }
+  return error;
+}
 
 // ── Provider catalog (kept in NoteTrace's `id`-keyed shape so the
 //    existing SettingsTrace dropdown keeps working). ───────────────────────
@@ -117,7 +125,7 @@ export const TOOLS = NOTE_TOOLS;
  */
 // onToolsUnsupported runs when the model can't use tools and answered
 // without them (TraceApps/nutritrace#259).
-export async function callAI({ provider, apiKey, model, messages, systemPrompt, tools, onToolCall, onToolResult, onToolsUnsupported, baseUrl, relay = false }) {
+export async function callAI({ provider, apiKey, model, messages, systemPrompt, tools, onToolCall, onToolResult, onToolsUnsupported, baseUrl, relay = false, tokenLimits }) {
   // 'custom' is the legacy NoteTrace name for the same OpenAI-compatible
   // path that NutriTrace calls 'oai-compat'. Both are accepted.
   if (!relay && !apiKey && provider !== 'custom' && provider !== 'oai-compat') {
@@ -138,7 +146,10 @@ export async function callAI({ provider, apiKey, model, messages, systemPrompt, 
       const base = relay ? baseUrl : openAIBase(baseUrl);
       if (!base)  throw new Error('OpenAI-compatible provider needs a Base URL. Set one in Settings → Trace.');
       if (!model) throw new Error('OpenAI-compatible provider needs a model name. Set one in Settings → Trace.');
-      return _callOpenAIWithTools(apiKey || 'no-key', model, messages, systemPrompt, tools, cb, base);
+      try {
+        cb.tokenLimits = normalizeTokenLimits(tokenLimits);
+        return await _callOpenAIWithTools(apiKey || 'no-key', model, messages, systemPrompt, tools, cb, base);
+      } catch (e) { throw localizeTokenError(e); }
     }
     default: throw new Error(`Unknown AI provider: ${provider}`);
   }
@@ -185,7 +196,7 @@ export async function fetchProvider(url, init) {
 }
 
 /** POST a provider request, directly or through the server relay. */
-async function _post(relay, url, headers, body) {
+async function _post(relay, url, headers, body, tokenLimits) {
   if (!relay) {
     const res = await fetchProvider(url, { method: 'POST', headers, body: JSON.stringify(body) });
     return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
@@ -199,7 +210,7 @@ async function _post(relay, url, headers, body) {
     const csrf = typeof localStorage !== 'undefined' ? localStorage.getItem('note:csrf') : null;
     if (csrf) h['X-CSRF-Token'] = csrf;
   }
-  const res = await fetch(apiUrl('/api/ai/relay'), { method: 'POST', credentials: 'include', headers: h, body: JSON.stringify({ body }) });
+  const res = await fetch(apiUrl('/api/ai/relay'), { method: 'POST', credentials: 'include', headers: h, body: JSON.stringify({ body, ...(tokenLimits ? { tokenLimits } : {}) }) });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401) return { ok: false, status: 401, data: { error: { message: 'Not signed in. Sign in again to use Trace.' } } };
   return { ok: res.ok, status: res.status, data };
@@ -207,7 +218,7 @@ async function _post(relay, url, headers, body) {
 
 /** Server-proxy fallback for env-locked installs. Text-only — tools
  *  aren't relayed because the server can't execute client-side. */
-export async function callAIProxy({ messages, systemPrompt }) {
+export async function callAIProxy({ messages, systemPrompt, tokenLimits }) {
   const { apiUrl, isNative, getServerUrl, getAuthToken } = await import('./platform.js');
   const headers = { 'Content-Type': 'application/json' };
   if (isNative && getServerUrl()) {
@@ -224,12 +235,12 @@ export async function callAIProxy({ messages, systemPrompt }) {
     method: 'POST',
     credentials: 'include',
     headers,
-    body: JSON.stringify({ messages, systemPrompt }),
+    body: JSON.stringify({ messages, systemPrompt, tokenLimits }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401) throw new Error('Not signed in — sign in again to use AI features.');
-    throw new Error(data.error || `AI proxy error ${res.status}`);
+    throw localizeTokenError(Object.assign(new Error(data.error || `AI proxy error ${res.status}`), { code: data.code }));
   }
   return data.text || data.content || data.message || (data.choices?.[0]?.message?.content) || '';
 }
@@ -305,21 +316,21 @@ async function _callOpenAIWithTools(apiKey, model, messages, systemPrompt, tools
         baseUrl,
         model: selectedModel,
         hasTools: openaiTools.length > 0,
+        maxTokens: cb?.tokenLimits?.maxTokens,
       }),
     };
     if (openaiTools.length) body.tools = openaiTools;
     const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
     if (apiKey && apiKey !== 'no-key') headers['Authorization'] = `Bearer ${apiKey}`;
-    const send = (b) => _post(cb?.relay, `${baseUrl}/v1/chat/completions`, headers, b);
+    const send = (b) => _post(cb?.relay, `${baseUrl}/v1/chat/completions`, headers, cb?.tokenLimits ? applyTokenLimits(b, cb.tokenLimits) : b, cb?.tokenLimits);
     // A model that can't use tools gets the request again without them.
     // Through the relay the server may already have done that (it says so
     // with trace_tools_unsupported).
     const { ok, status, data, toolsDropped, toolsRouted } = await sendWithToolFallback(body, send, { memory: toolSupport, baseUrl, model: selectedModel });
-    if (!ok) throw new Error(data.error?.message || `AI API error ${status}`);
+    if (!ok) throw Object.assign(new Error(data.error?.message || `AI API error ${status}`), { code: data.error?.code });
     if (toolsDropped || data.trace_tools_unsupported) onToolsUnsupported?.({ routed: toolsRouted || !!data.trace_tools_routed });
 
-    const choice = data.choices[0];
-    const msg = choice.message;
+    const msg = cb?.tokenLimits ? openAIAnswer(data) : data.choices[0].message;
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
       return msg.content || '';
     }

@@ -1899,5 +1899,20 @@
       "view_notes":       "View Release Notes",
       "channel_note":     "To switch server channels, change your docker-compose.yml image tag (:latest, :dev) and re-run docker-compose pull && docker-compose up -d."
     }
+  },
+  "trace_tokens": {
+    "max_output": "Maximum output tokens",
+    "max_output_desc": "Maximum generated tokens per response, including reasoning where the provider counts it. Default: 16,384. Stay within your model’s output limit.",
+    "context": "Context window (tokens)",
+    "context_desc": "Enter the context size actually loaded on your inference server, larger than maximum output. 0 leaves context checks to the provider. NoteTrace estimates text and tool tokens and reserves the remaining space for output; images and exact token counts are checked by the provider. This does not resize the server’s context window.",
+    "save": "Save token limits",
+    "saved": "Token limits saved.",
+    "errors": {
+      "invalid": "Use whole token counts up to 1,048,576. Maximum output must be at least 1; context must be 0 or larger than maximum output.",
+      "context": "The estimated prompt leaves no room for a response. Shorten the note or chat, or increase the context setting within your server’s capacity.",
+      "output": "The model reached its output-token limit before completing the answer. Increase maximum output tokens in Settings → Trace, or reduce reasoning in your inference server.",
+      "reasoning": "The model returned reasoning without a final answer. Increase maximum output tokens in Settings → Trace, or reduce reasoning in your inference server.",
+      "server": "These token limits exceed the server administrator’s configured limits."
+    }
   }
 }

@@ -19,7 +19,7 @@
   import { _ } from 'svelte-i18n';
   import TraceFace from './TraceFace.svelte';
   import {
-    aiEnabled, aiEffectivelyEnabled, envLocks, aiAssistantName, aiProvider, aiApiKey, aiModel, aiBaseUrl,
+    aiEnabled, aiEffectivelyEnabled, envLocks, aiAssistantName, aiProvider, aiApiKey, aiModel, aiBaseUrl, aiTokenLimits,
     aiKeyVerified, dateFormat, smartLogEnabled, smartLogVoiceLang,
   } from '../../stores/settings.js';
   // Voice input language from Settings; 'auto' means the device locale.
@@ -370,6 +370,7 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
       const reply = await callAI({
             provider, apiKey, model, baseUrl: aiEnvLocked ? '' : baseUrl, relay: aiEnvLocked,
             messages: apiMessages,
+            tokenLimits: $aiTokenLimits,
             systemPrompt: _systemPrompt(smartLog),
             tools: TOOLS,
             onToolCall: (toolName) => { toolStatus = `Calling ${toolName.replace(/_/g, ' ')}…`; },

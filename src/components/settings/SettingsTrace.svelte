@@ -1,10 +1,11 @@
 <script>
   import Toggle from './Toggle.svelte';
   import { _ } from 'svelte-i18n';
-  import { aiEnabled, aiProvider, aiApiKey, aiModel, aiBaseUrl, aiAssistantName, aiKeyVerified, smartLogEnabled, smartLogVoiceLang, autoTranscribe, autoSummarizeLong, autoReadImages, aiTranscribeModel, envLocks as envLocksStore } from '../../stores/settings.js';
+  import { aiEnabled, aiProvider, aiApiKey, aiModel, aiBaseUrl, aiTokenLimits, aiAssistantName, aiKeyVerified, smartLogEnabled, smartLogVoiceLang, autoTranscribe, autoSummarizeLong, autoReadImages, aiTranscribeModel, envLocks as envLocksStore } from '../../stores/settings.js';
   import { AI_PROVIDERS, AI_DEFAULT_MODELS, AI_MODELS, AI_MODEL_LABELS, AI_MODEL_CUSTOM, renamedModel, callAI, callAIProxy } from '../../lib/aiChat.js';
   import { showError, showSuccess } from '../../stores/toast.js';
   import ConnectionStatus from './ConnectionStatus.svelte';
+  import TraceTokenLimits from './TraceTokenLimits.svelte';
 
   // Subscribe to the global envLocks store (populated by App.svelte at
   // startup). Same envLocks shape across the apps. Mirrors NutriTrace #36.
@@ -205,13 +206,14 @@
       const systemPrompt = 'You are a test bot. Reply with exactly one short word.';
       let text;
       if (envLocks.ai) {
-        text = await callAIProxy({ messages, systemPrompt });
+        text = await callAIProxy({ messages, systemPrompt, tokenLimits: $aiTokenLimits });
       } else {
         text = await callAI({
           provider:  $aiProvider,
           apiKey:    $aiApiKey,
           model:     $aiModel,
           baseUrl:   $aiBaseUrl,
+          tokenLimits: $aiTokenLimits,
           messages,
           systemPrompt,
         });
@@ -366,6 +368,10 @@
         </button>
       </div>
     </div>
+    {/if}
+
+    {#if (envLocks.ai ? lockedProvider : $aiProvider) === 'custom'}
+      <TraceTokenLimits />
     {/if}
 
     <!-- Always here, not only in the status banner, which shows nothing

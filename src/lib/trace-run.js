@@ -9,7 +9,7 @@
  */
 import { derived, get } from 'svelte/store';
 import { callAI, callAIProxy, AI_DEFAULT_MODELS } from './aiChat.js';
-import { aiEffectivelyEnabled, aiKeyVerified, envLocks, aiProvider, aiApiKey, aiModel, aiBaseUrl } from '../stores/settings.js';
+import { aiEffectivelyEnabled, aiKeyVerified, envLocks, aiProvider, aiApiKey, aiModel, aiBaseUrl, aiTokenLimits } from '../stores/settings.js';
 
 /** True when Trace is on and has a working provider. */
 export const traceReady = derived(
@@ -19,13 +19,14 @@ export const traceReady = derived(
 
 export async function askTrace({ systemPrompt, prompt }) {
   const messages = [{ role: 'user', content: prompt }];
-  if (get(envLocks).ai) return callAIProxy({ messages, systemPrompt });
+  if (get(envLocks).ai) return callAIProxy({ messages, systemPrompt, tokenLimits: get(aiTokenLimits) });
   const provider = get(aiProvider);
   return callAI({
     provider,
     apiKey: get(aiApiKey),
     model: get(aiModel) || AI_DEFAULT_MODELS[provider] || '',
     baseUrl: get(aiBaseUrl),
+    tokenLimits: get(aiTokenLimits),
     messages,
     systemPrompt,
     tools: [],
