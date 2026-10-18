@@ -45,5 +45,32 @@
 </div>
 
 <style>
+  .setting-divider { height: 1px; background: var(--border); margin: 0 16px; }
+  .setting-row.stack {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    min-width: 0;
+    padding: 14px 16px;
+  }
+  .setting-label { display: block; font-size: 14px; color: var(--text-1); }
+  .setting-desc {
+    display: block;
+    font-size: 12px;
+    color: var(--text-3);
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+  .input {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    padding: 9px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+  }
+  .input + .setting-label { margin-top: 8px; }
+  .btn { align-self: flex-end; max-width: 100%; white-space: normal; }
   .token-error { color: var(--danger); font-size: 13px; }
 </style>
