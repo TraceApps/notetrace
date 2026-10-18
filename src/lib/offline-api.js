@@ -70,7 +70,9 @@ const _STORES = ['notes', 'outbox', 'meta'];
 async function _absorb(oldName, db) {
   if (!db) return;
   const old = await new Promise((resolve) => {
-    const req = indexedDB.open(oldName);
+    let req;
+    try { req = _idb()?.open(oldName); } catch { req = null; }
+    if (!req) return resolve(null);
     req.onsuccess = () => resolve(req.result);
     req.onerror = req.onblocked = () => resolve(null);
   });
@@ -117,8 +119,18 @@ async function _absorb(oldName, db) {
   _publish();
 }
 
+/**
+ * The browser's IndexedDB, or null. A browser refusing this site storage can
+ * throw just for asking (a SecurityError), and that has to read as "no
+ * database" like every other way of not having one.
+ */
+function _idb() {
+  try { return typeof indexedDB === 'undefined' ? null : indexedDB; } catch { return null; }
+}
+
 function _db() {
-  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
+  const idb = _idb();
+  if (!idb) return Promise.resolve(null);
   const name = _dbName();
   if (_dbPromise && _dbPromise.name === name) return _dbPromise;
   // The first reads of a page happen before the app knows who is signed in,
@@ -126,7 +138,11 @@ function _db() {
   // what was kept with it rather than leaving it where nothing reads it.
   const leaving = _dbPromise?.name && _dbPromise.name !== name ? _dbPromise.name : null;
   const p = new Promise((resolve) => {
-    const req = indexedDB.open(name, 1);
+    // Opening throws outright when the browser refuses this site storage.
+    // Thrown here it rejected every read and write of this layer, so a
+    // Profile save failed before any request was made (TraceApps/nutritrace#269).
+    let req;
+    try { req = idb.open(name, 1); } catch { resolve(null); return; }
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains('notes')) db.createObjectStore('notes', { keyPath: 'id' });
@@ -196,6 +212,18 @@ function _offlineError() {
   return err;
 }
 
+/**
+ * This browser would not keep a change to send later (storage full, blocked
+ * or broken). Not "offline": the screen says what actually went wrong.
+ */
+function _storageError() {
+  let message = 'This browser could not keep the change to send later.';
+  try { const t = get(_); if (typeof t === 'function') message = t('offline.not_kept'); } catch { /* strings not loaded yet */ }
+  const err = new Error(message);
+  err.storage = true;
+  return err;
+}
+
 const _online = () => typeof navigator === 'undefined' || navigator.onLine !== false;
 
 async function _localNotes() {
@@ -229,7 +257,7 @@ async function queue(op) {
   const ops = await _loadOps();
   if (op.type !== 'create' && !applyOps(await _all('notes'), ops).has(op.id)) throw _offlineError();
   const seq = await _addOp(op);
-  if (seq == null) throw _offlineError();
+  if (seq == null) throw _storageError();
   op.seq = seq;
   ops.push(op);
   _publish();
@@ -249,13 +277,69 @@ export async function queueRequest({ kind, key, method, path, body, noteId = nul
   const ops = await _loadOps();
   const op = { type: 'request', kind, key, method, path, body, noteId, at: Date.now() };
   const seq = await _addOp(op);
-  if (seq == null) throw _offlineError();
+  if (seq == null) throw _storageError();
   op.seq = seq;
   ops.push(op);
   _publish();
   _channel?.postMessage({ type: 'outbox' });
   _scheduleFlush(_online() ? 0 : _retryMs);
   return op;
+}
+
+/**
+ * Queue a change; if this browser cannot keep it, send it now when that is
+ * safe. Changes wait behind what is already queued so they go up in the
+ * order they were made. But when the queue cannot be written and nothing
+ * waiting can be read back either (the store broke after the page loaded),
+ * no flush will send anything ahead of this one, so with a connection it
+ * goes straight to the server rather than failing (TraceApps/nutritrace#269).
+ * `send` is null when this save was already tried directly (it may have
+ * landed), or when it names something the server has never had.
+ */
+async function _queueOrSend(queue, send) {
+  try {
+    return await queue();
+  } catch (err) {
+    if (!err?.storage || !send || !_online()) throw err;
+    if ((await _all('outbox')).length) throw err;
+    try {
+      return await send();
+    } catch (e) {
+      if (!isUnavailableError(e)) throw e;
+      if (isOfflineError(e)) _publish({ online: false });
+      throw err;
+    }
+  }
+}
+
+/**
+ * Send a request that supersedes queued ones with the same key (a profile
+ * save carries the whole profile), and drop those once it lands. Held under
+ * the flush's lock, so a flush in this or another tab can't send an older
+ * one after it.
+ */
+function _superseding(key, send) {
+  const run = async () => {
+    const answer = await send();
+    const stale = (await _all('outbox')).filter(op => op.type === 'request' && op.key === key).map(op => op.seq);
+    if (stale.length) {
+      await _tx('outbox', 'readwrite', s => { for (const seq of stale) s.delete(seq); });
+      _channel?.postMessage({ type: 'outbox' });
+    }
+    _ops = null;
+    await _loadOps();
+    _publish();
+    return answer;
+  };
+  if (typeof navigator !== 'undefined' && navigator.locks?.request) {
+    return navigator.locks.request('notetrace-offline-flush', run);
+  }
+  // No Web Locks (a page on plain http): stand in for the flush, so one
+  // that starts meanwhile waits for this rather than sending the older one.
+  const mine = (_flushing || Promise.resolve()).catch(() => {}).then(run);
+  const held = mine.then(() => false, () => false).finally(() => { if (_flushing === held) { _flushing = null; _scheduleFlush(0); } });
+  _flushing = held;
+  return mine;
 }
 
 // ── Sending the outbox ───────────────────────────────────────────────
@@ -449,17 +533,22 @@ export function createOfflineApi(http) {
   async function write(op, send) {
     _changedSomething = true;
     const ops = await _loadOps();
-    if (!ops.length && _online()) {
+    const direct = async () => {
+      const result = await send();
+      await remember(result);
+      return result;
+    };
+    const tried = !ops.length && _online();
+    if (tried) {
       try {
-        const result = await send();
-        await remember(result);
-        return result;
+        return await direct();
       } catch (err) {
         if (!isUnavailableError(err)) throw err;
         if (isOfflineError(err)) offlineState.update(s => ({ ...s, online: false }));
       }
     }
-    return queue(op);
+    // A change to a note made here names a temporary id the server never had.
+    return _queueOrSend(() => queue(op), tried || (op.type !== 'create' && isTempId(op.id)) ? null : direct);
   }
 
   const api = {
@@ -470,7 +559,9 @@ export function createOfflineApi(http) {
      * into a file when it arrives. Same shape in the other Trace apps.
      */
     async uploadImage(file) {
-      if (_online() && !(await _loadOps()).length) {
+      // Only a missing connection keeps it here: an upload has nothing to
+      // wait for in the queue, since the row it ends up in keeps its own place.
+      if (_online()) {
         try {
           return await http.uploadImage(file);
         } catch (err) {
@@ -484,7 +575,9 @@ export function createOfflineApi(http) {
 
     /** A file for a note, kept the same way when there is no connection. */
     async uploadFile(file) {
-      if (_online() && !(await _loadOps()).length) {
+      // Only a missing connection keeps it here: an upload has nothing to
+      // wait for in the queue, since the row it ends up in keeps its own place.
+      if (_online()) {
         try {
           return await http.uploadFile(file);
         } catch (err) {
@@ -500,9 +593,15 @@ export function createOfflineApi(http) {
 
     /** Your own profile, including a picture chosen with no connection. */
     async updateProfile(data) {
-      if (_online() && !(await _loadOps()).length) {
+      if (_online()) {
         try {
-          return await http.updateProfile(data);
+          // A save carries the whole profile and nothing else in the queue
+          // depends on it, so only an earlier save of it still waiting has
+          // to stay behind this one (it is dropped once this lands). Other
+          // queued work no longer holds it up, and neither does a store that
+          // can't be written (TraceApps/nutritrace#269).
+          const earlier = (await _loadOps()).some(op => op.type === 'request' && op.key === 'profile');
+          return earlier ? await _superseding('profile', () => http.updateProfile(data)) : await http.updateProfile(data);
         } catch (err) {
           if (!isUnavailableError(err)) throw err;
           if (isOfflineError(err)) _publish({ online: false });
@@ -515,20 +614,24 @@ export function createOfflineApi(http) {
     /** Pictures and drawings added to a note, kept until there is a server. */
     async addAttachments(id, attachments) {
       const real = _mapId(await _idMap(), id);
-      if (_online() && !(await _loadOps()).length && !isTempId(real)) {
+      const direct = isTempId(real) ? null : () => http.addAttachments(real, attachments);
+      const tried = _online() && !(await _loadOps()).length && !!direct;
+      if (tried) {
         try {
-          return await http.addAttachments(real, attachments);
+          return await direct();
         } catch (err) {
           if (!isUnavailableError(err)) throw err;
           if (isOfflineError(err)) _publish({ online: false });
         }
       }
-      await queueRequest({
-        kind: 'a picture you added', key: `attach:${real}:${Date.now()}`,
-        method: 'POST', path: '/api/notes/{id}/attachments', body: { attachments }, noteId: real,
-      });
-      const note = (await _localNotes()).find(n => n.id === real);
-      return { ...(note || { id: real }), attachments: [...(note?.attachments || []), ...attachments], queued: true, offline: true };
+      return _queueOrSend(async () => {
+        await queueRequest({
+          kind: 'a picture you added', key: `attach:${real}:${Date.now()}`,
+          method: 'POST', path: '/api/notes/{id}/attachments', body: { attachments }, noteId: real,
+        });
+        const note = (await _localNotes()).find(n => n.id === real);
+        return { ...(note || { id: real }), attachments: [...(note?.attachments || []), ...attachments], queued: true, offline: true };
+      }, tried ? null : direct);
     },
 
     async getNotes(query = {}) {

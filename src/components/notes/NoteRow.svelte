@@ -47,12 +47,12 @@
   <div class="row-main">
     <div class="row-top">
       {#if note.pinned}<span class="material-symbols-rounded fill pin" aria-label={$_('notes.pinned')}>keep</span>{/if}
-      <span class="row-title" class:untitled={!note.title}><Highlight text={note.title || firstLine || $_('notes.untitled')} {terms} /></span>
+      <span class="row-title" dir="auto" class:untitled={!note.title}><Highlight text={note.title || firstLine || $_('notes.untitled')} {terms} /></span>
       {#if selecting}
         <span class="material-symbols-rounded row-check" class:fill={selected} aria-hidden="true">{selected ? 'check_circle' : 'radio_button_unchecked'}</span>
       {/if}
     </div>
-    {#if preview && !firstLine}<p class="row-preview"><Highlight text={preview} {terms} /></p>{/if}
+    {#if preview && !firstLine}<p class="row-preview" dir="auto"><Highlight text={preview} {terms} /></p>{/if}
     <div class="row-meta">
       <span class="row-date">{relativeTime(note.updated_at)}</span>
       {#if note.kind === 'checklist' && items.length}
@@ -61,9 +61,10 @@
       {#if note.reminder_at}<span class="meta"><span class="material-symbols-rounded">notifications</span></span>{/if}
       {#if hasVoice}<span class="meta"><span class="material-symbols-rounded">mic</span></span>{/if}
       {#if fileCount}<span class="meta"><span class="material-symbols-rounded">attach_file</span>{fileCount > 1 ? fileCount : ''}</span>{/if}
+      {#if note.locked}<span class="meta" title={$_('notes.locked_hint')}><span class="material-symbols-rounded" aria-label={$_('notes.locked')}>lock</span></span>{/if}
       {#if shared}<span class="meta"><span class="material-symbols-rounded">group</span></span>{/if}
       {#each noteLabels as l (l.id)}
-        <span class="row-label"><span class="dot" style="background:{colorDot(l.color)}"></span>{l.name}</span>
+        <span class="row-label"><span class="dot" style="background:{colorDot(l.color)}"></span><span dir="auto">{l.name}</span></span>
       {/each}
     </div>
   </div>

@@ -7,6 +7,8 @@ export function seedAiFromEnv() {
     AI_PROVIDER: 'ai_provider',
     AI_API_KEY:  'ai_api_key',
     AI_MODEL:    'ai_model',
+    AI_MAX_TOKENS: 'ai_max_tokens',
+    AI_CONTEXT_SIZE: 'ai_context_size',
     // AI_BASE_URL enables server-side proxying for the `oai-compat`
     // provider (Ollama, LM Studio, LocalAI, vLLM, etc.). Required when
     // AI_PROVIDER=oai-compat; ignored otherwise. Lets self-hosters put
@@ -23,6 +25,8 @@ export function seedAiFromEnv() {
     if (process.env[envKey] != null) {
       upsert.run(dbKey, process.env[envKey]);
       locked = true;
+    } else if (envKey === 'AI_MAX_TOKENS' || envKey === 'AI_CONTEXT_SIZE') {
+      del.run(dbKey);
     }
   }
   if (locked) {

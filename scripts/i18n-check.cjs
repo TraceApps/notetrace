@@ -215,7 +215,7 @@ function main() {
 
   const locales = fs.readdirSync(I18N_DIR).filter(f => f.endsWith('.json') && f !== SOURCE_FILE);
   if (locales.length === 0) {
-    console.log('\n  English only: no other locale files (by design).');
+    console.log('\n  English only so far: no other locale files yet.');
   } else {
     console.log('');
     for (const file of locales.sort()) {

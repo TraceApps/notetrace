@@ -284,6 +284,10 @@ const SERVER_ONLY_METHODS = new Set([
   // CRUD, etc.). NoteApiNative stubs these to throw in pure local mode;
   // in server-connected mode they must actually reach the server.
   'get', 'post', 'put', 'patch', 'del',
+  // Your profile is not one of the synced tables. Without it here, Android
+  // with a server had no way to save it at all, and every save failed
+  // before any request was made (TraceApps/nutritrace#269).
+  'updateProfile',
 ]);
 
 // Smart uploadImage for native connected mode. Tries the server first so

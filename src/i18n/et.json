@@ -1,0 +1,17 @@
+{
+  "nav": {
+    "notes": "Märkmed",
+    "reminders": "Meeldetuletused",
+    "archive": "Arhiiv",
+    "trash": "Prügikast",
+    "labels": "Sildid",
+    "settings": "Seadistused",
+    "shared": "Jagatud minuga",
+    "search": "Otsi",
+    "tasks": "Ülesanded",
+    "shopping": "Ostuloend"
+  },
+  "list": {
+    "layout": "Paigutus"
+  }
+}

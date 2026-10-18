@@ -3,7 +3,8 @@ import { requireAuth, userMgmtActive } from '../middleware/auth.js';
 import { wrap } from '../logger.js';
 import { getAiConfig } from '../ai.js';
 import { makeRateLimiter } from '../middleware/rate-limit.js';
-import { getOpenAIChatParams } from '../lib/openai-chat-params.js';
+import { getOpenAIChatParams, openAIBase } from '../lib/openai-chat-params.js';
+import { applyTokenLimits, serverTokenLimits, openAIAnswer } from '../lib/ai-token-limits.js';
 import { createToolSupportMemory, sendWithToolFallback } from '../lib/tool-support.js';
 import db from '../db.js';
 import multer from 'multer';
@@ -138,7 +139,8 @@ function _serverCfg() {
     provider,
     apiKey: cfg.ai_api_key,
     model: modelFor(provider, cfg.ai_model || AI_DEFAULT_MODELS[provider] || ''),
-    baseUrl: cfg.ai_base_url,
+    baseUrl: openAIBase(cfg.ai_base_url),
+    tokenConfig: { ai_max_tokens: cfg.ai_max_tokens, ai_context_size: cfg.ai_context_size },
     transcribeModel: process.env.AI_TRANSCRIBE_MODEL || '',
   };
 }
@@ -183,12 +185,13 @@ const RELAY_FIELDS = {
 };
 const RELAY_MAX_TOKENS = 8192;
 
-export function relayRequest(cfg, body) {
+export function relayRequest(cfg, body, tokenLimits) {
+  const custom = cfg.provider === 'oai-compat' || cfg.provider === 'custom';
   const kind = cfg.provider === 'claude' ? 'claude' : cfg.provider === 'gemini' ? 'gemini' : 'openai';
   const out = {};
   for (const k of RELAY_FIELDS[kind]) if (body[k] !== undefined) out[k] = body[k];
   for (const k of ['max_tokens', 'max_completion_tokens']) {
-    if (out[k] !== undefined) out[k] = Math.min(RELAY_MAX_TOKENS, Math.max(1, Number(out[k]) || 1024));
+    if (!custom && out[k] !== undefined) out[k] = Math.min(RELAY_MAX_TOKENS, Math.max(1, Number(out[k]) || 1024));
   }
   if (kind === 'claude') {
     out.model = cfg.model;
@@ -204,7 +207,8 @@ export function relayRequest(cfg, body) {
   const base = cfg.provider === 'openai' ? 'https://api.openai.com' : String(cfg.baseUrl || '').replace(/\/+$/, '');
   const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
   if (cfg.apiKey) headers.Authorization = `Bearer ${cfg.apiKey}`;
-  return { url: `${base}/v1/chat/completions`, headers, body: out };
+  const limits = custom ? serverTokenLimits(tokenLimits ?? { maxTokens: out.max_tokens ?? out.max_completion_tokens }, cfg.tokenConfig) : null;
+  return { url: `${base}/v1/chat/completions`, headers, body: limits ? applyTokenLimits(out, limits) : out, tokenLimits: limits };
 }
 
 // Models the relay found can't use tools, by endpoint and model
@@ -218,9 +222,11 @@ router.post('/relay', requireAuth, aiChatLimit, wrap(async (req, res) => {
   const local = cfg.provider === 'oai-compat' || cfg.provider === 'custom';
   if (!cfg.apiKey && !local) return res.status(503).json({ error: { message: 'AI not configured on server. Set AI_API_KEY in environment.' } });
   if (local && (!cfg.baseUrl || !cfg.model)) return res.status(503).json({ error: { message: 'AI_PROVIDER=oai-compat requires AI_BASE_URL and AI_MODEL in environment.' } });
-  const r = relayRequest(cfg, body);
+  let r;
+  try { r = relayRequest(cfg, body, req.body.tokenLimits); }
+  catch (e) { return res.status(400).json({ error: { message: e.message, code: e.code } }); }
   const send = async (b) => {
-    const upstream = await fetch(r.url, { method: 'POST', headers: r.headers, body: JSON.stringify(b), signal: AbortSignal.timeout(120_000) });
+    const upstream = await fetch(r.url, { method: 'POST', headers: r.headers, body: JSON.stringify(r.tokenLimits ? applyTokenLimits(b, r.tokenLimits) : b), signal: AbortSignal.timeout(120_000) });
     const data = await upstream.json().catch(() => ({ error: { message: `AI provider error ${upstream.status}` } }));
     return { ok: upstream.ok, status: upstream.status, data };
   };
@@ -234,6 +240,7 @@ router.post('/relay', requireAuth, aiChatLimit, wrap(async (req, res) => {
       ? await sendWithToolFallback(r.body, send, { memory: relayToolSupport, baseUrl: r.url, model: r.body.model })
       : await send(r.body);
   } catch (e) {
+    if (e.code?.startsWith('ai_tokens_')) return res.status(400).json({ error: { message: e.message, code: e.code } });
     return res.status(502).json({ error: { message: e?.name === 'TimeoutError' ? 'The AI provider didn\'t answer in time.' : 'Couldn\'t reach the AI provider.' } });
   }
   if (out.toolsDropped && out.data && typeof out.data === 'object' && !Array.isArray(out.data)) {
@@ -256,7 +263,7 @@ router.post('/read-image', requireAuth, aiChatLimit, wrap(async (req, res) => {
 }));
 
 router.post('/chat', requireAuth, aiChatLimit, wrap(async (req, res) => {
-  const { messages: rawMessages, systemPrompt } = req.body;
+  const { messages: rawMessages, systemPrompt, tokenLimits } = req.body;
   if (!Array.isArray(rawMessages)) return res.status(400).json({ error: 'messages array required' });
   const messages = rawMessages.map(_normaliseImagePartsToOpenAI);
   if (messages.length > AI_MAX_MESSAGES) {
@@ -271,27 +278,33 @@ router.post('/chat', requireAuth, aiChatLimit, wrap(async (req, res) => {
   const provider = cfg.ai_provider || 'claude';
   const model    = modelFor(provider, cfg.ai_model || AI_DEFAULT_MODELS[provider] || '');
   const apiKey   = cfg.ai_api_key;
-  const baseUrl  = cfg.ai_base_url;
+  const baseUrl  = openAIBase(cfg.ai_base_url);
 
   // API key required for cloud providers; oai-compat local endpoints
   // (Ollama, LM Studio, etc.) often don't need one — mirror callAI().
-  if (!apiKey && provider !== 'oai-compat') {
+  if (!apiKey && provider !== 'oai-compat' && provider !== 'custom') {
     return res.status(503).json({ error: 'AI not configured on server. Set AI_API_KEY in environment.' });
   }
-  if (provider === 'oai-compat') {
+  if (provider === 'oai-compat' || provider === 'custom') {
     if (!baseUrl) return res.status(503).json({ error: 'AI_PROVIDER=oai-compat requires AI_BASE_URL in environment.' });
     if (!model)   return res.status(503).json({ error: 'AI_PROVIDER=oai-compat requires AI_MODEL in environment.' });
   }
 
   let text;
-  switch (provider) {
-    case 'claude':     text = await _callClaude(apiKey, model, messages, systemPrompt); break;
-    case 'openai':     text = await _callOpenAI(apiKey, model, messages, systemPrompt, 'https://api.openai.com'); break;
-    case 'gemini':     text = await _callGemini(apiKey, model, messages, systemPrompt); break;
-    case 'oai-compat': text = await _callOpenAI(apiKey || 'no-key', model, messages, systemPrompt, baseUrl.replace(/\/+$/, '')); break;
-    default: return res.status(400).json({ error: `Unknown provider: ${provider}` });
+  try {
+    switch (provider) {
+      case 'claude':     text = await _callClaude(apiKey, model, messages, systemPrompt); break;
+      case 'openai':     text = await _callOpenAI(apiKey, model, messages, systemPrompt, 'https://api.openai.com'); break;
+      case 'gemini':     text = await _callGemini(apiKey, model, messages, systemPrompt); break;
+      case 'custom':
+      case 'oai-compat': text = await _callOpenAI(apiKey || 'no-key', model, messages, systemPrompt, baseUrl, serverTokenLimits(tokenLimits, cfg)); break;
+      default: return res.status(400).json({ error: `Unknown provider: ${provider}` });
+    }
+    res.json({ text });
+  } catch (e) {
+    if (e.code?.startsWith('ai_tokens_')) return res.status(422).json({ error: e.message, code: e.code });
+    throw e;
   }
-  res.json({ text });
 }));
 
 export default router;
@@ -320,7 +333,13 @@ async function _callClaude(apiKey, model, messages, systemPrompt) {
   return data.content[0].text;
 }
 
-async function _callOpenAI(apiKey, model, messages, systemPrompt, baseUrl = 'https://api.openai.com') {
+async function _callOpenAI(apiKey, model, messages, systemPrompt, baseUrl = 'https://api.openai.com', tokenLimits) {
+  let body = {
+    model,
+    messages: [{ role: 'system', content: systemPrompt }, ...messages],
+    ...getOpenAIChatParams({ baseUrl, model, hasTools: false, maxTokens: 1024 }),
+  };
+  if (tokenLimits) body = applyTokenLimits(body, tokenLimits);
   const res = await fetch(`${baseUrl}/v1/chat/completions`, {
     method: 'POST',
     headers: {
@@ -328,15 +347,11 @@ async function _callOpenAI(apiKey, model, messages, systemPrompt, baseUrl = 'htt
       'Accept': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'system', content: systemPrompt }, ...messages],
-      ...getOpenAIChatParams({ baseUrl, model, hasTools: false, maxTokens: 1024 }),
-    }),
+    body: JSON.stringify(body),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error?.message || `OpenAI API error ${res.status}`);
-  return data.choices[0].message.content;
+  return tokenLimits ? (openAIAnswer(data).content || '') : data.choices[0].message.content;
 }
 
 async function _callGemini(apiKey, model, messages, systemPrompt) {

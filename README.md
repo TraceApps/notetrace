@@ -19,6 +19,7 @@ No accounts, no telemetry, no cloud sync unless you opt in.</p>
   <a href="https://traceapps.github.io/docs/notetrace/"><img alt="Documentation" src="https://img.shields.io/badge/docs-traceapps.github.io-8A2BE2?logo=readthedocs&logoColor=white"></a>
   <a href="https://github.com/traceapps/notetrace/pkgs/container/notetrace"><img alt="GHCR" src="https://img.shields.io/badge/ghcr.io-traceapps%2Fnotetrace-181717?logo=github&logoColor=white"></a>
   <a href="https://hub.docker.com/r/traceapps/notetrace"><img alt="Docker Hub pulls" src="https://img.shields.io/docker/pulls/traceapps/notetrace?logo=docker&logoColor=white&label=docker%20pulls&color=2496ED"></a>
+  <a href="https://hosted.weblate.org/engage/notetrace/"><img alt="Translation status" src="https://hosted.weblate.org/widget/notetrace/svg-badge.svg"></a>
 </p>
 
 <p align="center">
@@ -69,7 +70,7 @@ It runs as a single Docker container on your own hardware, with a PWA for the br
 Stable since v1.0.0. What it does today:
 
 - **Notes and checklists.** Card grid with a pinned section and quick capture, checklists with drag to reorder, images on any note, labels with colors and icons, sixteen note colors, archive, trash with a 30-day purge, full-text search (Ctrl+K), and version history.
-- **A real editor.** Markdown underneath, with bold, italic, underline, highlight, links, headings, quotes, code, lists that indent, and checkboxes inside a text note. Select text and a small bar offers the common ones; slash commands and keyboard shortcuts cover the rest. Undo for deleted items and attachments.
+- **A real editor.** Markdown underneath, with bold, italic, underline, highlight, links, headings, quotes, code, tables, lists that indent, and checkboxes inside a text note. Select text and a small bar offers the common ones; slash commands and keyboard shortcuts cover the rest. Undo for deleted items and attachments.
 - **Templates and printing.** Save a note as a template and start new notes from it. Print a note or save it as a PDF, from the browser or the Android app.
 - **Reminders.** One-off or repeating (daily, weekly, monthly, yearly), kept at the same local time across daylight saving. Android fires them as exact alarms even with the app closed, the browser shows them while NoteTrace is open, and the server delivers them through your push service and a `reminder.fired` webhook.
 - **Sharing.** Share a note or list with other accounts on your server, with view or edit access. Pin, archive, labels, and reminders stay personal. Or make a public link: anyone with it reads the note without an account, and chat apps show a preview of it.
@@ -77,7 +78,7 @@ Stable since v1.0.0. What it does today:
 - **Links and timeline.** `[[Note title]]` links with suggestions as you type and a Linked From section on the linked note; renaming a note updates the links. Switch the grid to a timeline grouped by day.
 - **Voice notes.** Start one from Capture a thought, the + button, a home screen shortcut, or `v`. Pause while recording, with a level meter; the Android app keeps recording with the screen off, for up to 3 hours. Scrub the waveform, change the play speed, and pick up where you left off. Audio files, shared recordings, and Google Keep's voice recordings come in too (converted by the server's built-in ffmpeg when needed). Trace transcribes each one with timestamps you can tap, splitting long recordings to fit the provider.
 - **Image text.** Trace reads the text in images, so a photo of a receipt or a whiteboard turns up in search.
-- **Trace in your notes.** Tidy Up, Summarize, and Make a Checklist from the editor, and a Trace chat that can find, create, and update notes, check items off, and set reminders. The same note tools are on the MCP endpoint for external AI agents.
+- **Trace in your notes.** Tidy Up, Expand, Summarize, Make a Checklist, or your own Custom Instruction from the editor, and a Trace chat that can find, create, and update notes, check items off, and set reminders. The same note tools are on the MCP endpoint for external AI agents.
 - **Tasks and List layout.** A Tasks view of checklist items with due dates and of checklists you choose to show there, grouped by due date or list, with a daily Tasks Due notification. A List layout with grouping by label, color, or date that opens the note beside the list on wide screens.
 - **Fast with thousands of notes.** Notes draw a screenful at a time as you scroll; search, Select All, and the keyboard still cover the whole library.
 - **Offline in the browser.** The installed web app opens without a connection, shows the notes, images, and voice notes it has seen, and lets you write. Edits, new notes, ticks, colors, labels, and reminders wait in an outbox and go up when you're back, merged the same way the phone's changes are. Open tabs stay in step, and a voice note whose upload fails waits on the device and goes up later.
@@ -206,6 +207,14 @@ Part of the **TraceApps** family. Sister apps: [NutriTrace](https://github.com/t
 
 ---
 
+## Translations
+
+NoteTrace is translated with [Weblate](https://weblate.org/), a free web platform for libre translation projects. No coding required: pick your language, translate the strings, submit. Missing strings fall back to English, so a partial translation is safe to use.
+
+Start translating at [hosted.weblate.org/projects/notetrace/](https://hosted.weblate.org/projects/notetrace/). See [CONTRIBUTING.md](CONTRIBUTING.md#translations) for guidance (note-taking terms, proper nouns, tone).
+
+---
+
 ## More
 
 [ROADMAP.md](ROADMAP.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [PRIVACY.md](PRIVACY.md)
@@ -223,3 +232,7 @@ Helping doesn't have to cost anything: starring the repo, reporting bugs with de
 ## License
 
 [AGPL-3.0](LICENSE): entire codebase including the Android app source.
+
+## Fork Docker images
+
+This fork publishes `ghcr.io/harikiran-lab/notetrace:latest` from `main` (Docker Prod) and `ghcr.io/harikiran-lab/notetrace:dev` from `dev` (Docker Dev). Both workflows run on branch pushes or manually from Actions, and publish Linux AMD64 and ARM64 images using the built-in `GITHUB_TOKEN`.

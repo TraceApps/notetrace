@@ -5,12 +5,10 @@
   // something to do.
   import { _ } from 'svelte-i18n';
 
-  // Help Translate points at the TraceApps translation guide until
-  // NoteTrace has its own Weblate project.
   const HELP = [
     { icon: 'star',       key: 'star',       href: 'https://github.com/TraceApps/notetrace' },
     { icon: 'bug_report', key: 'report_bug', href: 'https://github.com/TraceApps/notetrace/issues/new/choose' },
-    { icon: 'translate',  key: 'translate',  href: 'https://traceapps.github.io/docs/contribute/translations/' },
+    { icon: 'translate',  key: 'translate',  href: 'https://hosted.weblate.org/engage/notetrace/' },
   ];
 </script>
 

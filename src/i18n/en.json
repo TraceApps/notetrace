@@ -180,6 +180,7 @@
     "synced":            "Edits synced",
     "retry":             "Sync now",
     "needs_connection":  "You're offline. This needs a connection.",
+    "not_kept":          "This browser couldn't keep this change to send later. Check that it has free space and allows this site to store data, then try again.",
     "logout_title":      "Sign out with unsynced edits?",
     "logout_message":    "{n, plural, one {# edit made offline hasn't} other {# edits made offline haven't}} reached the server yet. Signing out removes them from this browser.",
     "logout_confirm":    "Sign Out Anyway"
@@ -222,6 +223,7 @@
     "quote":     "Quote",
     "code":      "Code Block",
     "divider":   "Divider",
+    "table":     "Table",
     "link":      "Link to a Note",
     "date":      "Today's Date",
     "time":      "Current Time",
@@ -458,6 +460,10 @@
     }
   },
   "notes": {
+    "lock_note": "Lock note for reading",
+    "unlock_note": "Unlock note for editing",
+    "locked": "Read-only note",
+    "locked_hint": "Read-only. Select and copy text, or unlock to edit.",
     "take_a_note":             "Capture a thought…",
     "new_note":                "New Note",
     "new_checklist":           "New Checklist",
@@ -563,6 +569,12 @@
     "fmt_numbers":             "Numbered List",
     "fmt_quote":               "Quote",
     "fmt_code":                "Code",
+    "fmt_table":               "Table",
+    "table_add_row":           "Add Row",
+    "table_add_column":        "Add Column",
+    "table_delete_row":        "Delete Row",
+    "table_delete_column":     "Delete Column",
+    "table_delete":            "Delete Table",
     "saving":                  "Saving…",
     "edited":                  "Edited {when}",
     "done":                    "Done",
@@ -614,10 +626,17 @@
     "title":          "Ask Trace",
     "tidy":           "Tidy Up",
     "tidy_desc":      "Fix spelling and grammar, and add structure",
+    "expand":         "Expand",
+    "expand_desc":    "Turn short notes into full sentences",
     "summarize":      "Summarize",
     "summarize_desc": "A few bullet points with the key facts and to-dos",
     "checklist":      "Make a Checklist",
     "checklist_desc": "Turn this note into checkable items",
+    "custom":         "Custom Instruction",
+    "custom_desc":    "Tell Trace what to do with this note",
+    "custom_placeholder": "Translate to Spanish, make it a table, write it as an email…",
+    "custom_go":      "Ask Trace",
+    "add_below":      "Add Below",
     "working":        "Trace is working on it…",
     "failed":         "Trace couldn't finish that",
     "empty":          "Trace didn't return anything. Try again.",
@@ -1179,6 +1198,7 @@
     "account_deleted":      "Account deleted",
     "errors": {
       "save_failed":            "Could not save profile",
+      "needs_connection":       "Saving your profile needs a connection. Try again once you're back online.",
       "upload_failed":          "Upload failed",
       "password_change_failed": "Could not change password",
       "delete_account_failed":  "Could not delete account"
@@ -1437,17 +1457,23 @@
   },
   "settings_trace_ct": {
     "env_lock_banner":           "Configured via environment variables, changes are disabled.",
-    "enable_desc":               "Floating chat button on every page. Uses your own AI provider key, never shared.",
+    "enable_desc":               "Floating chat button on every page, once the connection test passes. Uses your own AI provider key, never shared.",
     "enable_desc_locked":        "Floating chat button on every page. The server provides the AI.",
     "server_default":            "Server default",
     "toast": {
       "fill_fields":             "Fill in provider, API key, and model first",
+      "fill_fields_custom":      "Fill in the Base URL and model first",
       "connected":               "Trace AI connected, assistant is ready"
     },
     "enable_assistant":          "Enable Trace Assistant",
     "provider":                  "Provider",
     "base_url":                  "Base URL",
-    "base_url_desc":             "/v1/chat/completions endpoint",
+    "base_url_desc":             "Your provider's address, with or without /v1",
+    "test_connection":           "Test Connection",
+    "test_connection_desc":      "Checks that Trace can reach your provider. The chat button shows once it passes.",
+    "test_connection_desc_locked": "Checks that Trace can reach the server's AI provider.",
+    "test":                      "Test",
+    "testing":                   "Testing…",
     "model":                     "Model",
     "custom_model_id":           "Custom Model ID",
     "assistant_name":            "Assistant Name",
@@ -1729,6 +1755,9 @@
     "brand":                     "NoteTrace"
   },
   "trace_ai_ct": {
+    "unreachable":               "Couldn't get an answer from {host}. Check the Base URL in Settings, AI Assistant. If it's right, that server has to allow requests from {origin} on every answer, errors included (with nginx, add_header … always), or Trace can be set up on the NoteTrace server instead.",
+    "unreachable_insecure":      "This page is on HTTPS, so the browser won't call {host} over plain HTTP. Give your provider an https:// address, or set Trace up on the NoteTrace server instead.",
+    "unreachable_official":      "{host} didn't answer. Check this device's connection.",
     "toast": {
       "voice_unsupported":       "Voice input not supported in this browser",
       "configure_ai":            "Configure Trace AI in Settings to use hold-to-talk",
@@ -1873,6 +1902,21 @@
       "copy_failed":      "Copy failed. Copy the command manually.",
       "view_notes":       "View Release Notes",
       "channel_note":     "To switch server channels, change your docker-compose.yml image tag (:latest, :dev) and re-run docker-compose pull && docker-compose up -d."
+    }
+  },
+  "trace_tokens": {
+    "max_output": "Maximum output tokens",
+    "max_output_desc": "Maximum generated tokens per response, including reasoning where the provider counts it. Default: 16,384. Stay within your model’s output limit.",
+    "context": "Context window (tokens)",
+    "context_desc": "Enter the context size actually loaded on your inference server, larger than maximum output. 0 leaves context checks to the provider. NoteTrace estimates text and tool tokens and reserves the remaining space for output; images and exact token counts are checked by the provider. This does not resize the server’s context window.",
+    "save": "Save token limits",
+    "saved": "Token limits saved.",
+    "errors": {
+      "invalid": "Use whole token counts up to 1,048,576. Maximum output must be at least 1; context must be 0 or larger than maximum output.",
+      "context": "The estimated prompt leaves no room for a response. Shorten the note or chat, or increase the context setting within your server’s capacity.",
+      "output": "The model reached its output-token limit before completing the answer. Increase maximum output tokens in Settings → Trace, or reduce reasoning in your inference server.",
+      "reasoning": "The model returned reasoning without a final answer. Increase maximum output tokens in Settings → Trace, or reduce reasoning in your inference server.",
+      "server": "These token limits exceed the server administrator’s configured limits."
     }
   }
 }

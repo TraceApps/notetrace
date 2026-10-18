@@ -75,3 +75,20 @@ test('the labels exist in English', () => {
     assert.equal(typeof en.notes[k], 'string', k);
   }
 });
+
+
+test('read-only checklist keyboard navigation cannot add or remove rows (#30)', () => {
+  // Exercise the actual component handler with its collaborators replaced.
+  const handler = editor.match(/function onKeydown\(e, item\) \{[\s\S]*?\n  \}/)[0];
+  const changes = [];
+  const build = new Function('editable', 'flushText', 'addAfter', 'remove', `return ${handler}`);
+  const mutate = (...args) => changes.push(args);
+  const locked = build(false, mutate, mutate, mutate);
+  for (const key of ['Enter', 'Backspace', 'ArrowDown', 'c']) {
+    locked({ key, preventDefault: mutate }, { uuid: 'empty', text: '' });
+  }
+  assert.deepEqual(changes, [], 'reading and copying do not mutate the list');
+  const unlocked = build(true, mutate, mutate, mutate);
+  unlocked({ key: 'Enter', preventDefault: mutate }, { uuid: 'one', text: 'Task' });
+  assert.equal(changes.length, 3, 'unlock restores Enter: prevent default, flush, add');
+});

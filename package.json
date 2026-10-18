@@ -1,6 +1,6 @@
 {
   "name": "notetrace",
-  "version": "1.1.2",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -37,6 +37,7 @@
     "@capacitor/status-bar": "^8.0.2",
     "@tiptap/core": "^3.31.3",
     "@tiptap/extension-highlight": "^3.31.3",
+    "@tiptap/extension-table": "^3.31.3",
     "@tiptap/extensions": "^3.31.3",
     "@tiptap/markdown": "^3.31.3",
     "@tiptap/pm": "^3.31.3",

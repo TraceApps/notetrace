@@ -27,6 +27,8 @@
   import { NoteLink } from '../../lib/note-link-extension.js';
   import { portal } from '../../lib/portal.js';
   import { foldText } from '../../lib/search-text.js';
+  import { NoteDirection } from '../../lib/tiptap-direction.js';
+  import { NoteTables, inTable, addRowBelow, addColumnRight } from '../../lib/note-table.js';
 
 
   /** Markdown source. Read on mount; later external changes reload it. */
@@ -62,6 +64,7 @@
     { key: 'quote',     icon: 'format_quote',         words: 'quote blockquote' },
     { key: 'code',      icon: 'code_blocks',          words: 'code block snippet' },
     { key: 'divider',   icon: 'horizontal_rule',      words: 'divider line rule separator' },
+    { key: 'table',     icon: 'table',                words: 'table grid rows columns' },
     { key: 'link',      icon: 'add_link',             words: 'link note wiki' },
     { key: 'date',      icon: 'today',                words: 'date today now' },
     { key: 'time',      icon: 'schedule',             words: 'time now clock' },
@@ -71,10 +74,14 @@
     { key: 'voice',     icon: 'mic',                  words: 'voice record audio', parent: true },
     { key: 'reminder',  icon: 'notification_add',     words: 'reminder remind alarm', parent: true },
   ];
+  // In a table cell only what fits on the cell's one line (and the note's own actions).
+  const CELL_SLASH = new Set(['highlight', 'link', 'date', 'time']);
   function _slashMatches(query, actions) {
     const q = foldText(query).trim();
+    const cell = editor && inTable(editor.state);
     return SLASH
       .filter(c => !c.parent || (actions || []).includes(c.key))
+      .filter(c => !cell || c.parent || CELL_SLASH.has(c.key))
       .filter(c => !q || c.key.startsWith(q) || c.words.split(' ').some(w => w.startsWith(q)) || foldText($_(`slash.${c.key}`)).includes(q))
       .slice(0, 10)
       .map(c => ({ ...c, slash: true }));
@@ -95,6 +102,7 @@
       case 'quote': chain.toggleBlockquote().run(); break;
       case 'code': chain.toggleCodeBlock().run(); break;
       case 'divider': chain.setHorizontalRule().run(); break;
+      case 'table': chain.insertTable(NEW_TABLE).run(); break;
       case 'link': chain.insertContent('[[').run(); break;
       case 'date': chain.insertContent(now.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) + ' ').run(); break;
       case 'time': chain.insertContent(now.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) + ' ').run(); break;
@@ -161,6 +169,11 @@
         Markdown,
         Placeholder.configure({ placeholder }),
         NoteLink,
+        // Arabic and Hebrew right to left, mixed lines in the right order
+        // (TraceApps/notetrace#21). Display only: the Markdown is unchanged.
+        NoteDirection,
+        // Tables, saved as Markdown tables (TraceApps/notetrace#26).
+        ...NoteTables,
       ],
       content: value || '',
       contentType: 'markdown',
@@ -215,7 +228,11 @@
     lastEmitted = value;
     editor.commands.setContent(value || '', { contentType: 'markdown', emitUpdate: false });
   }
-  $: if (editor && editor.isEditable !== editable) editor.setEditable(editable);
+  $: if (editor && editor.isEditable !== editable) {
+    // Changing the viewing mode is not a content edit or an autosave.
+    editor.setEditable(editable, false);
+    if (!editable) { suggest = null; bubble = null; }
+  }
 
   function refreshActive() {
     if (!editor) return;
@@ -232,6 +249,7 @@
       highlight: editor.isActive('highlight'),
       quote: editor.isActive('blockquote'),
       code: editor.isActive('code'),
+      table: inTable(editor.state),
     };
     dispatch('formats', active);
   }
@@ -239,9 +257,9 @@
   export function focus() { editor?.commands.focus('end'); }
 
   /** The formatting tools, for a toolbar outside this component (the phone editor bar). */
-  export function formatTools() { return tools.map(({ key, icon, label }) => ({ key, icon, label })); }
+  export function formatTools() { return tools.map(({ key, icon, label, inTable, notInTable }) => ({ key, icon, label, inTable, notInTable })); }
   export function format(key) { const t = tools.find(x => x.key === key); if (t) useTool(t); }
-  function useTool(t) { if (t.action) t.action(); else run(t.fn); }
+  function useTool(t) { if (!editable) return; if (t.action) t.action(); else run(t.fn); }
 
   function run(fn) {
     if (!editor) return;
@@ -249,6 +267,9 @@
     refreshActive();
   }
 
+  const NEW_TABLE = { rows: 3, cols: 3, withHeaderRow: true };
+  // Table tools only in a table, a new table only outside one.
+  const toolShown = (t, inTbl) => (t.inTable ? inTbl : t.notInTable ? !inTbl : true);
   const tools = [
     { key: 'h', icon: 'title', label: 'notes.fmt_heading', fn: c => c.toggleHeading({ level: 2 }) },
     { key: 'bold', icon: 'format_bold', label: 'notes.fmt_bold', fn: c => c.toggleBold() },
@@ -262,6 +283,13 @@
     { key: 'quote', icon: 'format_quote', label: 'notes.fmt_quote', fn: c => c.toggleBlockquote() },
     { key: 'code', icon: 'code', label: 'notes.fmt_code', fn: c => c.toggleCode() },
     { key: 'link', icon: 'link', label: 'notes.fmt_link', action: () => editLink() },
+    // A new table; in a table, its rows and columns instead.
+    { key: 'table', icon: 'table', label: 'notes.fmt_table', notInTable: true, fn: c => c.insertTable(NEW_TABLE) },
+    { key: 'tableAddRow', icon: 'add_row_below', label: 'notes.table_add_row', inTable: true, action: () => { editor?.commands.focus(); if (editor) addRowBelow(editor); refreshActive(); } },
+    { key: 'tableAddColumn', icon: 'add_column_right', label: 'notes.table_add_column', inTable: true, action: () => { editor?.commands.focus(); if (editor) addColumnRight(editor); refreshActive(); } },
+    { key: 'tableDeleteRow', icon: 'variable_remove', label: 'notes.table_delete_row', inTable: true, fn: c => c.deleteRow() },
+    { key: 'tableDeleteColumn', icon: 'view_column', label: 'notes.table_delete_column', inTable: true, fn: c => c.deleteColumn() },
+    { key: 'tableDelete', icon: 'delete', label: 'notes.table_delete', inTable: true, fn: c => c.deleteTable() },
     { key: 'clear', icon: 'format_clear', label: 'notes.fmt_clear', fn: c => c.unsetAllMarks() },
     // Nesting uses Tab on a keyboard; a phone has no Tab key, so its bar gets buttons.
     { key: 'outdent', icon: 'format_indent_decrease', label: 'notes.fmt_outdent', phone: true, action: () => nest(false) },
@@ -328,7 +356,7 @@
 
 {#if showToolbar && editable}
   <div class="fmt-bar" bind:this={fmtBarEl} role="toolbar" aria-label={$_('notes.formatting')}>
-    {#each tools.filter(t => !t.phone) as t (t.key)}
+    {#each tools.filter(t => !t.phone && toolShown(t, active.table)) as t (t.key)}
       <button type="button" class="fmt-btn" class:on={active[t.key]}
         title={$_(t.label)} aria-label={$_(t.label)} aria-pressed={!!active[t.key]}
         on:mousedown|preventDefault
@@ -338,7 +366,7 @@
     {/each}
   </div>
 {/if}
-{#if bubble && bubbleTools.length}
+{#if editable && bubble && bubbleTools.length}
   <div class="sel-bubble" bind:this={bubbleEl} class:below={bubble.below} use:portal role="toolbar" aria-label={$_('notes.formatting')}
     style="left:{bubble.x}px; top:{bubble.y}px">
     {#each bubbleTools as t (t.key)}
@@ -363,7 +391,7 @@
             <span class="t">{$_(`slash.${item.key}`)}</span>
           {:else}
             <span class="material-symbols-rounded">{item.create ? 'add_link' : 'description'}</span>
-            <span class="t">{item.create ? $_('note_links.link_new', { values: { title: item.title } }) : item.title}</span>
+            <span class="t" dir="auto">{item.create ? $_('note_links.link_new', { values: { title: item.title } }) : item.title}</span>
           {/if}
         </button>
       </li>
@@ -418,12 +446,23 @@
   .tiptap-host :global(.tiptap-body strong) { color: var(--text-1); font-weight: 600; }
   .tiptap-host :global(.tiptap-body u) { text-decoration-thickness: 0.08em; text-underline-offset: 0.15em; }
   .tiptap-host :global(.tiptap-body ul),
-  .tiptap-host :global(.tiptap-body ol) { padding-left: 1.4em; }
+  .tiptap-host :global(.tiptap-body ol) { padding-inline-start: 0; }
+  /* The indent is each item's, on its own side: in a list of Arabic and
+     English items every bullet sits where its line starts. */
+  .tiptap-host :global(.tiptap-body ul:not([data-type="taskList"]) > li),
+  .tiptap-host :global(.tiptap-body ol > li) { margin-inline-start: 1.4em; }
+  /* A line with no letters yet (just the editor's placeholder break) would
+     read left to right under dir="auto": it reads like its list or quote
+     instead, and on its own like the nearest line above it that has letters
+     (data-empty-dir, tiptap-direction.js), so Enter, Enter after an Arabic
+     line leaves the cursor on the right (TraceApps/notetrace#21). */
+  .tiptap-host :global(.tiptap-body :is(p, h1, h2, h3):has(> br.ProseMirror-trailingBreak:only-child)) { direction: inherit; }
+  .tiptap-host :global(.tiptap-body > [data-empty-dir="rtl"]:has(> br.ProseMirror-trailingBreak:only-child)) { direction: rtl; }
   .tiptap-host :global(.tiptap-body li + li) { margin-top: 0.2em; }
   .tiptap-host :global(.tiptap-body li p) { margin: 0; }
   /* Checkboxes in text: the box sits beside its line, and a ticked line fades. */
-  .tiptap-host :global(.tiptap-body ul[data-type="taskList"]) { list-style: none; padding-left: 0.1em; }
-  .tiptap-host :global(.tiptap-body ul[data-type="taskList"] ul[data-type="taskList"]) { padding-left: 1.5em; }
+  .tiptap-host :global(.tiptap-body ul[data-type="taskList"]) { list-style: none; padding-inline-start: 0.1em; }
+  .tiptap-host :global(.tiptap-body ul[data-type="taskList"] ul[data-type="taskList"]) { padding-inline-start: 1.5em; }
   .tiptap-host :global(.tiptap-body li[data-checked]) { display: flex; align-items: flex-start; gap: 0.55em; }
   .tiptap-host :global(.tiptap-body li[data-checked] > label) { flex: 0 0 auto; margin-top: 0.28em; user-select: none; }
   .tiptap-host :global(.tiptap-body li[data-checked] > div) { flex: 1; min-width: 0; }
@@ -446,8 +485,8 @@
     border-radius: 0.2em; padding: 0 0.1em; box-decoration-break: clone; -webkit-box-decoration-break: clone;
   }
   .tiptap-host :global(.tiptap-body blockquote) {
-    padding-left: 12px;
-    border-left: 3px solid var(--border-strong);
+    padding-inline-start: 12px;
+    border-inline-start: 3px solid var(--border-strong);
     color: var(--text-2);
   }
   .tiptap-host :global(.tiptap-body code) {
@@ -456,8 +495,13 @@
     background: color-mix(in srgb, var(--text-1) 8%, transparent);
     border-radius: 6px;
     padding: 2px 6px;
+    /* Code reads left to right, also inside a right-to-left line. */
+    direction: ltr;
+    unicode-bidi: isolate;
   }
   .tiptap-host :global(.tiptap-body pre) {
+    direction: ltr;
+    text-align: left;
     background: color-mix(in srgb, var(--text-1) 6%, transparent);
     border-radius: 10px;
     padding: 12px 14px;
@@ -471,8 +515,8 @@
     background: var(--accent-dim); color: var(--accent); font-weight: 500;
     text-decoration: none;
   }
-  .tiptap-host :global(.tiptap-body .note-link::before) { content: '[['; opacity: 0.45; margin-right: 1px; }
-  .tiptap-host :global(.tiptap-body .note-link::after) { content: ']]'; opacity: 0.45; margin-left: 1px; }
+  .tiptap-host :global(.tiptap-body .note-link::before) { content: '[['; opacity: 0.45; margin-inline-end: 1px; }
+  .tiptap-host :global(.tiptap-body .note-link::after) { content: ']]'; opacity: 0.45; margin-inline-start: 1px; }
   .tiptap-host :global(.tiptap-body .note-link.ProseMirror-selectednode) { outline: 2px solid var(--accent); }
   .link-suggest {
     position: fixed; z-index: 4000; width: 260px; max-width: calc(100vw - 24px);
@@ -482,7 +526,7 @@
   }
   .link-suggest button {
     width: 100%; min-height: 36px; padding: 6px 8px; border-radius: 8px;
-    display: flex; align-items: center; gap: 8px; text-align: left; font-size: 14px; color: var(--text-1);
+    display: flex; align-items: center; gap: 8px; text-align: start; font-size: 14px; color: var(--text-1);
   }
   .link-suggest button.on, .link-suggest button:hover { background: var(--accent-dim); }
   .link-suggest .material-symbols-rounded { font-size: 18px; color: var(--text-3); }
@@ -491,6 +535,21 @@
   .link-suggest.slash .material-symbols-rounded { color: var(--accent); }
   .suggest-head { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); padding: 6px 8px 4px; }
   .tiptap-host :global(.tiptap-body hr) { border: none; border-top: 1px solid var(--border-strong); }
+  /* Tables: a wide one scrolls sideways on its own instead of the page. */
+  .tiptap-host :global(.tiptap-body .tableWrapper) { overflow-x: auto; max-width: 100%; }
+  .tiptap-host :global(.tiptap-body table) { border-collapse: collapse; margin: 0.2em 0; }
+  .tiptap-host :global(.tiptap-body :is(td, th)) {
+    position: relative; min-width: 6em; padding: 6px 10px; vertical-align: top; text-align: start;
+    border: 1px solid var(--border-strong);
+    /* Long words wrap, but a column never squeezes down to a letter wide. */
+    overflow-wrap: break-word;
+  }
+  .tiptap-host :global(.tiptap-body th) { font-weight: 600; color: var(--text-1); background: color-mix(in srgb, var(--text-1) 6%, transparent); }
+  .tiptap-host :global(.tiptap-body :is(td, th) p) { margin: 0; }
+  .tiptap-host :global(.tiptap-body .selectedCell::after) {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+  }
   .tiptap-host :global(.tiptap-body p.is-editor-empty:first-child::before) {
     content: attr(data-placeholder);
     color: var(--text-3);

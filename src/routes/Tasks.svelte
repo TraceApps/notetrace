@@ -22,13 +22,14 @@
   import { NoteApi } from '../lib/api.js';
   import { notesChanged, signalCountsChanged } from '../stores/notes.js';
   import { showError, showUndo } from '../stores/toast.js';
-  import { canEdit } from '../lib/note-sharing.js';
+  import { canEditContent as canEdit } from '../lib/note-sharing.js';
   import { colorDot } from '../lib/note-colors.js';
   import { groupByDue, dueLabel, dueStatus, todayStr } from '../lib/due-dates.js';
   import { rowSwipe } from '../lib/row-swipe.js';
   import Popover from '../components/notes/Popover.svelte';
   import DuePicker from '../components/notes/DuePicker.svelte';
   import NoteEditor from '../components/notes/NoteEditor.svelte';
+  import { textDir } from '../lib/text-dir.js';
 
   const FLIP_MS = 200;
   const COMPLETED_DAYS = 7;
@@ -255,7 +256,7 @@
 
   /** The Tasks list, made the first time something is added to it. */
   async function ensureInbox() {
-    let inbox = notes.find(n => isTasksInbox(n, inboxTitle) && n.share_role !== 'view' && n.share_role !== 'edit');
+    let inbox = notes.find(n => isTasksInbox(n, inboxTitle) && !n.locked && n.share_role !== 'view' && n.share_role !== 'edit');
     if (!inbox) {
       inbox = await NoteApi.createNote({ title: inboxTitle, kind: 'checklist', items: [], in_tasks: true });
       putNote(inbox);
@@ -388,7 +389,7 @@
     <div class="tasks-toolbar">
       <form class="quick-add" on:submit|preventDefault={add}>
         <span class="material-symbols-rounded">add_task</span>
-        <input bind:this={quickInput} bind:value={newText} placeholder={$_('tasks.add_placeholder')} aria-label={$_('tasks.add_placeholder')} maxlength="5000" />
+        <input dir="auto" bind:this={quickInput} bind:value={newText} placeholder={$_('tasks.add_placeholder')} aria-label={$_('tasks.add_placeholder')} maxlength="5000" />
         <button type="button" class="qa-chip" class:set={!!quickList}
           on:click={(e) => { listPickAnchor = e.currentTarget.getBoundingClientRect(); listPickOpen = true; }}
           title={$_('tasks.add_to_list')} aria-label={`${$_('tasks.add_to_list')}: ${quickList ? (quickList.title || $_('notes.untitled')) : inboxTitle}`}>
@@ -427,11 +428,11 @@
           <h2 class="group-title">
             {#if byList}
               <button class="group-note" on:click={() => openNote(g.note)}>
-                <span class="dot" style="background:{colorDot(g.note.color)}"></span>{groupTitle(g)}
+                <span class="dot" style="background:{colorDot(g.note.color)}"></span><span dir="auto">{groupTitle(g)}</span>
                 <span class="material-symbols-rounded">open_in_new</span>
               </button>
             {:else}
-              {groupTitle(g)}
+              <span dir="auto">{groupTitle(g)}</span>
             {/if}
             <span class="count">{g.items.length}</span>
           </h2>
@@ -439,7 +440,7 @@
             use:dragHandleZone={{ items: shown, flipDurationMs: FLIP_MS, dropTargetStyle: {}, type: `tasks-${g.key}`, dragDisabled: !byList || !canEdit(g.note || {}) }}
             on:consider={(e) => onConsider(g, e)} on:finalize={(e) => onFinalize(g, e)}>
             {#each shown as task (task.id)}
-              <li class="task" class:done={task.checked} class:editing={editUuid === task.uuid} data-task-key={task.key} tabindex="-1"
+              <li class="task" dir={textDir(editUuid === task.uuid ? draft : task.text)} class:done={task.checked} class:editing={editUuid === task.uuid} data-task-key={task.key} tabindex="-1"
                 animate:flip={{ duration: FLIP_MS }} out:fly={{ x: 24, duration: 200 }}
                 use:rowSwipe={{ enabled: touch && task.editable && editUuid !== task.uuid, onSwipe: (dir) => dir === 'right' ? toggle(task) : removeTask(task) }}
                 on:contextmenu|preventDefault={(e) => openMenu({ currentTarget: { getBoundingClientRect: () => ({ left: e.clientX, top: e.clientY, bottom: e.clientY, x: e.clientX, y: e.clientY }) } }, task)}>
@@ -457,15 +458,15 @@
                   </button>
                   <div class="task-main">
                     {#if editUuid === task.uuid}
-                      <input class="task-edit" bind:this={editInput} bind:value={draft} maxlength="5000" aria-label={$_('tasks.edit')}
+                      <input class="task-edit" dir="auto" bind:this={editInput} bind:value={draft} maxlength="5000" aria-label={$_('tasks.edit')}
                         on:keydown={(e) => onEditKey(e, task)} on:blur={() => commitEdit(task)} />
                     {:else}
-                      <button class="task-text" disabled={!task.editable} on:click={() => startEdit(task)} title={task.editable ? $_('tasks.edit') : undefined}>{task.text}</button>
+                      <button class="task-text" dir="auto" disabled={!task.editable} on:click={() => startEdit(task)} title={task.editable ? $_('tasks.edit') : undefined}>{task.text}</button>
                     {/if}
                     {#if !byList}
                       <button class="task-list-label" on:click={() => openNote(task.note)} title={$_('tasks.open_note')}>
                         <span class="dot" style="background:{colorDot(task.note.color)}"></span>
-                        <span class="task-list-name">{task.note.title || $_('notes.untitled')}</span>
+                        <span class="task-list-name" dir="auto">{task.note.title || $_('notes.untitled')}</span>
                       </button>
                     {/if}
                   </div>
@@ -487,7 +488,7 @@
           {#if byList && canEdit(g.note)}
             <form class="list-add" on:submit|preventDefault={() => addToList(g.note)}>
               <span class="material-symbols-rounded">add</span>
-              <input bind:value={listDrafts[g.note.id]} placeholder={$_('tasks.add_placeholder')} maxlength="5000"
+              <input dir="auto" bind:value={listDrafts[g.note.id]} placeholder={$_('tasks.add_placeholder')} maxlength="5000"
                 aria-label={`${$_('tasks.add_placeholder')}: ${groupTitle(g)}`} />
             </form>
           {/if}
@@ -503,17 +504,17 @@
           {#if showCompleted}
             <ul class="task-list" transition:slide={{ duration: 180 }}>
               {#each completed as task (task.key)}
-                <li class="task done" animate:flip={{ duration: FLIP_MS }}>
+                <li class="task done" dir={textDir(task.text)} animate:flip={{ duration: FLIP_MS }}>
                   <div class="swipe-body">
                     <button class="task-check on" disabled={!task.editable} on:click={() => patchTask(task, { checked: false })}
                       aria-label={$_('notes.uncheck_item')}>
                       <span class="material-symbols-rounded fill">check_circle</span>
                     </button>
                     <div class="task-main">
-                      <span class="task-text static">{task.text}</span>
+                      <span class="task-text static" dir="auto">{task.text}</span>
                       <button class="task-list-label" on:click={() => openNote(task.note)}>
                         <span class="dot" style="background:{colorDot(task.note.color)}"></span>
-                        <span class="task-list-name">{task.note.title || $_('notes.untitled')}</span>
+                        <span class="task-list-name" dir="auto">{task.note.title || $_('notes.untitled')}</span>
                       </button>
                     </div>
                   </div>
@@ -584,7 +585,7 @@
           <p class="menu-empty">{$_('tasks.no_other_lists')}</p>
         {/if}
       {:else}
-        <p class="menu-title menu-task">{menuFor.text}</p>
+        <p class="menu-title menu-task" dir="auto">{menuFor.text}</p>
         <button class="menu-row" role="menuitem" on:click={() => menuAction('edit')}>
           <span class="material-symbols-rounded">edit</span><span class="menu-label">{$_('tasks.edit')}</span><kbd>e</kbd>
         </button>
@@ -667,7 +668,10 @@
   @media (hover: hover) { .task:hover .swipe-body { border-color: var(--border-strong); transform: translateY(-1px); box-shadow: var(--shadow-sm); } }
   .task:focus-visible .swipe-body { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
   .task.editing .swipe-body { border-color: var(--accent); }
+  /* The swipe follows the finger, not the line: an Arabic task's done mark
+     is still uncovered on the left when it's swiped right. */
   .swipe-bg {
+    direction: ltr;
     position: absolute; inset: 0; display: none; align-items: center; border-radius: var(--radius-md);
     padding: 0 20px; color: #fff;
   }
@@ -689,7 +693,7 @@
   .task-check.on { color: var(--accent); }
   .task-main { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 2px 0; }
   .task-text {
-    max-width: 100%; text-align: left; font-size: 15px; line-height: 1.35; color: var(--text-1);
+    max-width: 100%; text-align: start; font-size: 15px; line-height: 1.35; color: var(--text-1);
     overflow-wrap: anywhere; transition: color 200ms ease; cursor: text; border-radius: 6px; padding: 1px 2px; margin: -1px -2px;
   }
   .task-text:disabled { cursor: default; }

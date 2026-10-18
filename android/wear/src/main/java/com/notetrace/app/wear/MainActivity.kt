@@ -70,8 +70,16 @@ class MainActivity : ComponentActivity() {
         setContent { WearApp(store) }
     }
 
+    override fun onPause() {
+        WatchUpdate.onScreen = false
+        super.onPause()
+    }
+
     override fun onResume() {
         super.onResume()
+        // An update the phone is already on, asked about now that you're looking.
+        WatchUpdate.onScreen = true
+        WatchUpdate.check(applicationContext, onScreen = true)
         // Coming back from the watch face should show current lists.
         lifecycleScope.launch { store.refresh() }
     }

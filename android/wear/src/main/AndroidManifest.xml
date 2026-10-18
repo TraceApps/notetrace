@@ -4,6 +4,13 @@
 
     <uses-feature android:name="android.hardware.type.watch" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- An update waiting for a yes, when the app isn't open to ask. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Installed from GitHub, the watch updates itself to the phone's release
+         (WatchUpdate.kt): with a tap, or without one where Android allows an
+         app to update itself. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
@@ -67,6 +74,11 @@
 
         <!-- The phone hands over the server address and a token once, and keeps
              a small snapshot of lists fresh while it is in range. -->
+        <!-- What Android made of an update the watch installed itself. -->
+        <receiver
+            android:name=".UpdateResultReceiver"
+            android:exported="false" />
+
         <service
             android:name=".PairingService"
             android:exported="true"

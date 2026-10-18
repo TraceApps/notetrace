@@ -12,6 +12,7 @@
   import TipTapEditor from '../components/notes/TipTapEditor.svelte';
   import { apiUrl, resolveAssetUrl, iconUrl } from '../lib/platform.js';
   import { noteColorStyle } from '../lib/note-colors.js';
+  import { textDir } from '../lib/text-dir.js';
 
   export let token;
 
@@ -87,7 +88,7 @@
       </div>
     {:else if note}
       <article class="pn-note" style={noteColorStyle(note.color)}>
-        {#if note.title}<h1 class="pn-title">{note.title}</h1>{/if}
+        {#if note.title}<h1 class="pn-title" dir="auto">{note.title}</h1>{/if}
 
         {#if pictures.length}
           <div class="pn-pictures" class:single={pictures.length === 1}>
@@ -103,14 +104,14 @@
         {#if note.kind === 'checklist'}
           <ul class="pn-items">
             {#each open as item}
-              <li><input type="checkbox" disabled /><span>{item.text}</span></li>
+              <li dir={textDir(item.text)}><input type="checkbox" disabled /><span>{item.text}</span></li>
             {/each}
           </ul>
           {#if done.length}
             <p class="pn-done-head">{$_('public_note.checked', { values: { count: done.length } })}</p>
             <ul class="pn-items pn-done">
               {#each done as item}
-                <li><input type="checkbox" checked disabled /><span>{item.text}</span></li>
+                <li dir={textDir(item.text)}><input type="checkbox" checked disabled /><span>{item.text}</span></li>
               {/each}
             </ul>
           {/if}

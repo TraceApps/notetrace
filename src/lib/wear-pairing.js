@@ -11,6 +11,7 @@
  */
 import { registerPlugin } from '@capacitor/core';
 import { isNative, getServerUrl, getAuthToken } from './platform.js';
+import { APP_VERSION } from './version.js';
 
 // Registered at module level: a plugin proxy returned from an async function
 // confuses Capacitor's promise handling.
@@ -38,7 +39,8 @@ export async function pairWatch() {
   if (!serverUrl || !token) return false;
   if (!(await hasWatch())) return false;
   try {
-    await WearPairing.pair({ serverUrl, token });
+    // With this phone's release: a watch on an older one catches up to it.
+    await WearPairing.pair({ serverUrl, token, appVersion: APP_VERSION });
     return true;
   } catch {
     return false;

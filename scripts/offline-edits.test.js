@@ -202,3 +202,29 @@ test('a note made offline with no picture still carries an empty list', () => {
   const note = applyOps([], [{ type: 'create', id: -6, at: 1, note: { title: 'Plain', kind: 'text' } }]).get(-6);
   assert.deepEqual(note.attachments, []);
 });
+
+test('a note lock persists through offline create, unlock, and sync push (#30)', () => {
+  const created = { type: 'create', id: -30, note: { title: 'Read me', locked: true }, at: T0 };
+  let n = applyOps([], [created]).get(-30);
+  assert.equal(n.locked, true);
+  let push = buildPush([created], new Map(), applyOps([], [created]));
+  assert.equal(push.tables.notes[0].locked, 1);
+  const unlocked = { type: 'update', id: -30, patch: { locked: false }, at: T0 + 1000 };
+  n = applyOps([], [created, unlocked]).get(-30);
+  assert.equal(n.locked, false);
+  push = buildPush([created, unlocked], new Map(), applyOps([], [created, unlocked]));
+  assert.equal(push.tables.notes[0].locked, 0);
+});
+
+test('locking offline sends only the changed lock field, preserving another device\'s content', () => {
+  const base = note(30, { body_md: 'Keep this content', locked: false });
+  const ops = [{ type: 'update', id: 30, patch: { locked: true }, at: T0 }];
+  const push = buildPush(ops, new Map([[30, base]]), applyOps([base], ops));
+  assert.equal(push.tables.notes[0].locked, 1);
+  assert.equal(push.tables.notes[0].server_id, 30);
+  assert.equal('body_md' in push.tables.notes[0], false);
+  assert.equal('title' in push.tables.notes[0], false);
+  const overlay = applyOps([{ ...base, body_md: 'Updated on another device' }], ops).get(30);
+  assert.equal(overlay.body_md, 'Updated on another device');
+  assert.equal(overlay.locked, true);
+});

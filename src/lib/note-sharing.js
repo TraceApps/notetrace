@@ -12,6 +12,8 @@ export const sharingAvailable = derived(userMgmtActive, ($active) => !!$active &
 export const roleOf = (note) => note?.share_role || 'owner';
 export const isOwner = (note) => roleOf(note) === 'owner';
 export const canEdit = (note) => roleOf(note) !== 'view';
+/** A padlock is an edit guard; permission to unlock still follows the share role. */
+export const canEditContent = (note) => canEdit(note) && !note?.locked;
 export const isShared = (note) => !!note && (roleOf(note) !== 'owner' || (note.share_count || 0) > 0);
 
 /**

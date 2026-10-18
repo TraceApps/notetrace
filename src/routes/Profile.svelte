@@ -13,6 +13,7 @@
   import { get } from 'svelte/store';
   import { currentUser, userMgmtActive, logout as logoutAuth } from '../stores/auth.js';
   import { NoteApi } from '../lib/api.js';
+  import { isOfflineError } from '../lib/offline-edits.js';
   import { apiUrl, isNative, getServerUrl, getAuthToken, resolveAssetUrl } from '../lib/platform.js';
   import { takePhoto } from '../lib/camera.js';
   import { localDateStr, DB } from '../lib/db.js';
@@ -168,10 +169,16 @@
       // with no connection is queued like everything else and goes up when
       // the connection returns (lib/offline-api.js).
       const data = await NoteApi.updateProfile({ full_name, nickname, birthday, gender, avatar_url, email });
-      if (data?.user) currentUser.set(data.user);
+      // A save kept to send later answers with only the fields sent: keep
+      // the rest of who is signed in (id, role).
+      if (data?.user) currentUser.set({ ...get(currentUser), ...data.user });
       showSuccess($_('profile.saved'));
     } catch(e) {
-      showError($_('profile.errors.save_failed'));
+      // Say what went wrong (TraceApps/nutritrace#269): this device could not
+      // keep it, there is no connection (Android), or the server said no.
+      showError(e?.storage ? e.message
+        : isOfflineError(e) ? $_('profile.errors.needs_connection')
+        : $_('profile.errors.save_failed'));
     } finally {
       saving = false;
     }

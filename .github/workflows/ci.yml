@@ -1,6 +1,6 @@
 name: Checks
 
-# The repo's other workflow (docker.yml) builds and publishes images; keeping
+# The Docker Prod and Docker Dev workflows publish images; keeping
 # checks separate means a red check never blocks an image push and a slow
 # multi-arch build never delays PR feedback.
 on:

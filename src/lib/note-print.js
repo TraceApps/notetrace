@@ -14,9 +14,12 @@ import { Markdown } from '@tiptap/markdown';
 import { TaskList, TaskItem } from '@tiptap/extension-list';
 import Highlight from '@tiptap/extension-highlight';
 import { NoteLink } from './note-link-extension.js';
+import { NoteTables } from './note-table.js';
 import { isNative, resolveAssetUrl } from './platform.js';
 import { isAudio, isImage, isFile, fileTypeLabel, formatBytes, displayName } from './file-kinds.js';
 import { formatDuration } from './voice-recorder.js';
+import { directHtml } from './tiptap-direction.js';
+import { lineDirs } from './text-dir.js';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -24,11 +27,19 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 export function markdownToHtml(md) {
   if (!String(md || '').trim()) return '';
   const editor = new Editor({
-    extensions: [StarterKit.configure({ heading: { levels: [1, 2, 3] } }), TaskList, TaskItem.configure({ nested: true }), Highlight, Markdown, NoteLink],
+    extensions: [StarterKit.configure({ heading: { levels: [1, 2, 3] } }), TaskList, TaskItem.configure({ nested: true }), Highlight, Markdown, NoteLink, ...NoteTables],
     content: md,
     contentType: 'markdown',
   });
-  try { return editor.getHTML(); } finally { editor.destroy(); }
+  let html;
+  try { html = editor.getHTML(); } finally { editor.destroy(); }
+  // Arabic and Hebrew lines print right to left, as they show in the app
+  // (TraceApps/notetrace#21).
+  if (typeof document === 'undefined') return html;
+  const tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  directHtml(tpl.content);
+  return tpl.innerHTML;
 }
 
 async function _dataUrl(url) {
@@ -58,15 +69,20 @@ const PRINT_CSS = `
   .body h2 { font-size: 14pt; margin: 12pt 0 5pt; }
   .body h3 { font-size: 12pt; margin: 10pt 0 4pt; }
   .body p { margin: 0 0 7pt; }
-  .body ul, .body ol { margin: 0 0 8pt; padding-left: 18pt; }
+  .body ul, .body ol { margin: 0 0 8pt; padding-inline-start: 18pt; }
   .body li p { margin: 0 0 2pt; }
-  .body blockquote { margin: 0 0 8pt; padding-left: 10pt; border-left: 3px solid #d0d0d6; color: #4a4a50; }
-  .body pre { background: #f4f4f6; padding: 8pt; border-radius: 6px; white-space: pre-wrap; font-size: 9.5pt; }
-  .body code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 9.5pt; }
+  .body blockquote { margin: 0 0 8pt; padding-inline-start: 10pt; border-inline-start: 3px solid #d0d0d6; color: #4a4a50; }
+  .body pre { direction: ltr; text-align: left; background: #f4f4f6; padding: 8pt; border-radius: 6px; white-space: pre-wrap; font-size: 9.5pt; }
+  .body code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 9.5pt; direction: ltr; unicode-bidi: isolate; }
   .body hr { border: 0; border-top: 1px solid #d0d0d6; margin: 12pt 0; }
+  .body table { border-collapse: collapse; margin: 0 0 8pt; }
+  .body td, .body th { border: 1px solid #c8c8ce; padding: 3pt 6pt; vertical-align: top; text-align: start; overflow-wrap: anywhere; }
+  .body th { background: #f4f4f6; font-weight: 600; }
+  .body td p, .body th p { margin: 0; }
+  .body tr { break-inside: avoid; }
   .body a { color: #3a5bd9; }
   .note-link { color: #3a5bd9; }
-  .body ul[data-type="taskList"] { list-style: none; padding-left: 2pt; }
+  .body ul[data-type="taskList"] { list-style: none; padding-inline-start: 2pt; }
   .body li[data-checked] { display: flex; gap: 6pt; align-items: baseline; }
   .body li[data-checked] > label input { margin: 0; }
   .body li[data-checked="true"] > div { text-decoration: line-through; color: #8a8a90; }
@@ -75,16 +91,16 @@ const PRINT_CSS = `
   ul.items li { display: flex; gap: 8pt; align-items: baseline; padding: 2.5pt 0; page-break-inside: avoid; }
   .box { font-size: 12pt; line-height: 1; }
   li.done .text { text-decoration: line-through; color: #8a8a90; }
-  .due { color: #6b6b72; font-size: 9pt; margin-left: 4pt; }
+  .due { color: #6b6b72; font-size: 9pt; margin-inline-start: 4pt; }
   .pictures { display: flex; flex-wrap: wrap; gap: 8pt; margin: 4pt 0 12pt; }
   .pictures img { max-width: 100%; max-height: 120mm; border-radius: 4pt; page-break-inside: avoid; }
   .pictures.many img { max-width: calc(50% - 4pt); }
   h2.section { font-size: 10pt; text-transform: uppercase; letter-spacing: 0.06em; color: #6b6b72; margin: 14pt 0 6pt; }
   .voice { margin: 0 0 10pt; page-break-inside: avoid; }
   .voice .length { color: #6b6b72; font-size: 9.5pt; }
-  .voice ul { margin: 4pt 0; padding-left: 16pt; }
-  .voice .transcript { white-space: pre-wrap; color: #3a3a40; font-size: 10pt; margin: 4pt 0 0; }
-  .files { margin: 0; padding-left: 16pt; }
+  .voice ul { margin: 4pt 0; padding-inline-start: 16pt; }
+  .voice .transcript { unicode-bidi: plaintext; white-space: pre-wrap; color: #3a3a40; font-size: 10pt; margin: 4pt 0 0; }
+  .files { margin: 0; padding-inline-start: 16pt; }
   .files li { margin: 2pt 0; }
   .files .kind { color: #6b6b72; font-size: 9.5pt; }
 `;
@@ -107,8 +123,10 @@ export async function noteToPrintHtml(note, { labels = [], t = (k) => k, locale 
   if (imgs.length) content += `<div class="pictures${imgs.length > 1 ? ' many' : ''}">${imgs.map(src => `<img src="${src}" alt="">`).join('')}</div>`;
   if (note.kind === 'checklist') {
     const items = note.items || [];
-    const row = (i) => `<li class="${i.checked ? 'done' : ''}"><span class="box">${i.checked ? '&#9745;' : '&#9744;'}</span><span class="text">${esc(i.text)}${i.due_date ? `<span class="due">${esc(i.due_date)}</span>` : ''}</span></li>`;
-    content += `<ul class="items">${items.filter(i => !i.checked).map(row).join('')}${items.filter(i => i.checked).map(row).join('')}</ul>`;
+    const ordered = [...items.filter(i => !i.checked), ...items.filter(i => i.checked)];
+    const dirs = lineDirs(ordered.map(i => i.text));
+    const row = (i, n) => `<li class="${i.checked ? 'done' : ''}"${dirs[n] ? ` dir="${dirs[n]}"` : ''}><span class="box">${i.checked ? '&#9745;' : '&#9744;'}</span><span class="text" dir="auto">${esc(i.text)}${i.due_date ? `<span class="due">${esc(i.due_date)}</span>` : ''}</span></li>`;
+    content += `<ul class="items">${ordered.map(row).join('')}</ul>`;
   } else {
     content += `<div class="body">${markdownToHtml(note.body_md)}</div>`;
   }
@@ -117,20 +135,20 @@ export async function noteToPrintHtml(note, { labels = [], t = (k) => k, locale 
     for (const v of voice) {
       const bullets = String(v.summary || '').split('\n').map(l => l.replace(/^\s*[-*•]\s*/, '').trim()).filter(Boolean);
       content += `<div class="voice"><div class="length">${esc(t('print.recording'))}${v.duration_ms ? ` · ${esc(formatDuration(v.duration_ms))}` : ''}</div>`
-        + (bullets.length ? `<ul>${bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>` : '')
-        + (v.extracted_text ? `<p class="transcript">${esc(v.extracted_text)}</p>` : '')
+        + (bullets.length ? `<ul>${bullets.map(b => `<li dir="auto">${esc(b)}</li>`).join('')}</ul>` : '')
+        + (v.extracted_text ? `<p class="transcript" dir="auto">${esc(v.extracted_text)}</p>` : '')
         + '</div>';
     }
   }
   if (files.length) {
     content += `<h2 class="section">${esc(t('print.files'))}</h2><ul class="files">`
-      + files.map(f => `<li>${esc(displayName(f))} <span class="kind">${esc(fileTypeLabel(f))}${f.size_bytes != null ? ` · ${esc(formatBytes(f.size_bytes))}` : ''}</span></li>`).join('')
+      + files.map(f => `<li dir="auto">${esc(displayName(f))} <span class="kind">${esc(fileTypeLabel(f))}${f.size_bytes != null ? ` · ${esc(formatBytes(f.size_bytes))}` : ''}</span></li>`).join('')
       + '</ul>';
   }
 
   const title = note.title || t('notes.untitled');
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(title)}</title><style>${PRINT_CSS}</style></head><body>`
-    + `${note.title ? `<h1 class="title">${esc(note.title)}</h1>` : ''}`
+    + `${note.title ? `<h1 class="title" dir="auto">${esc(note.title)}</h1>` : ''}`
     + `${meta.length ? `<p class="meta">${meta.map(m => `<span>${m}</span>`).join('')}</p>` : ''}`
     + `${content}</body></html>`;
 }

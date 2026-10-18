@@ -19,7 +19,7 @@
   import { _ } from 'svelte-i18n';
   import TraceFace from './TraceFace.svelte';
   import {
-    aiEnabled, aiEffectivelyEnabled, envLocks, aiAssistantName, aiProvider, aiApiKey, aiModel, aiBaseUrl,
+    aiEnabled, aiEffectivelyEnabled, envLocks, aiAssistantName, aiProvider, aiApiKey, aiModel, aiBaseUrl, aiTokenLimits,
     aiKeyVerified, dateFormat, smartLogEnabled, smartLogVoiceLang,
   } from '../../stores/settings.js';
   // Voice input language from Settings; 'auto' means the device locale.
@@ -370,6 +370,7 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
       const reply = await callAI({
             provider, apiKey, model, baseUrl: aiEnvLocked ? '' : baseUrl, relay: aiEnvLocked,
             messages: apiMessages,
+            tokenLimits: $aiTokenLimits,
             systemPrompt: _systemPrompt(smartLog),
             tools: TOOLS,
             onToolCall: (toolName) => { toolStatus = `Calling ${toolName.replace(/_/g, ' ')}…`; },
@@ -763,7 +764,7 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
             {#if m.role === 'assistant'}
               <div class="msg-avatar"><svelte:component this={Mascot} size={24} /></div>
             {/if}
-            <div class="bubble">
+            <div class="bubble" dir="auto">
               {#if m.preview}
                 <img class="msg-img" src={m.preview} alt="" />
               {/if}
@@ -827,6 +828,12 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
      concentric ring-pulse glow, inner glass highlight via ::before,
      red recording state with its own ring-pulse, and a greyed
      cancel-preview state. */
+  /* A note open over the page (not side by side) has Ask Trace in its own
+     bar; the button under its backdrop could only sit there dimmed and
+     unreachable, so it steps away until the note closes, as it does behind
+     the full-screen editor on a phone (TraceApps/notetrace#23). */
+  :global(body:has(> .editor-backdrop:not(.inline))) .fab,
+  :global(body:has(> .editor-backdrop:not(.inline))) .fab-record-hint { display: none; }
   .fab {
     position: fixed;
     /* --page-fab-space: a page's own round button below this one (the notes + on a phone). */

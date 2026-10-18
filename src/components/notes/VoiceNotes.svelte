@@ -244,7 +244,7 @@
                 <li>
                   <button class="vn-seg" class:current={i === cur} on:click={() => seek(a, s.start, true)}
                     aria-label={$_('voice.play_from', { values: { time: formatDuration(s.start * 1000) } })}>
-                    <span class="vn-ts">{formatDuration(s.start * 1000)}</span><span class="vn-line">{s.text}</span>
+                    <span class="vn-ts">{formatDuration(s.start * 1000)}</span><span class="vn-line" dir="auto">{s.text}</span>
                   </button>
                 </li>
               {/each}

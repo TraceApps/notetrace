@@ -38,6 +38,9 @@ export function reminderMessage(note, items) {
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/^\s{0,3}(#{1,6}|>|[-*+]\s+\[[ xX]\]|[-*+]|\d+[.)])\s+/gm, '')
+    // A table reads row by row, its cells apart; the line under its header goes.
+    .replace(/^[ \t]*\|?([ \t]*:?-+:?[ \t]*\|)+([ \t]*:?-+:?[ \t]*)?$/gm, '')
+    .replace(/^[ \t]*\|(.*)\|[ \t]*$/gm, (_, row) => row.replace(/\\\|/g, '\u0000').split('|').map(c => c.replace(/\u0000/g, '|').replace(/<br\s*\/?>/gi, ' ').trim()).filter(Boolean).join(' \u00b7 '))
     .replace(/(\*\*|__|~~|`|\*|_)/g, '')
     .replace(/\n{2,}/g, '\n')
     .trim()
