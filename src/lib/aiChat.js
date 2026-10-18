@@ -22,6 +22,19 @@ import { _ } from 'svelte-i18n';
 import { getOpenAIChatParams, openAIBase } from './openai-chat-params.js';
 import { createToolSupportMemory, sendWithToolFallback } from './tool-support.js';
 import { NOTE_TOOLS } from './trace-note-tools.js';
+import { REPLY_MAX_TOKENS, sendWithLengthFallback, stoppedShort, stoppedShortError } from './trace-reply.js';
+
+// A reply that stopped short, said in the app's language (trace-reply.js).
+function _inLanguage(e) {
+  if (!/^trace_stopped_/.test(e?.code || '')) return e;
+  try {
+    const t = get(_);
+    const said = typeof t === 'function' ? t(`trace_reply.${e.code.slice('trace_'.length)}`) : null;
+    if (said && !said.startsWith('trace_reply.')) e.message = said;
+  } catch { /* i18n not ready: the English line */ }
+  return e;
+}
+const _stoppedShort = (why) => _inLanguage(stoppedShortError(why));
 
 // ── Provider catalog (kept in NoteTrace's `id`-keyed shape so the
 //    existing SettingsTrace dropdown keeps working). ───────────────────────
@@ -229,7 +242,7 @@ export async function callAIProxy({ messages, systemPrompt }) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401) throw new Error('Not signed in — sign in again to use AI features.');
-    throw new Error(data.error || `AI proxy error ${res.status}`);
+    throw _inLanguage(Object.assign(new Error(data.error || `AI proxy error ${res.status}`), { code: data.code }));
   }
   return data.text || data.content || data.message || (data.choices?.[0]?.message?.content) || '';
 }
@@ -248,19 +261,22 @@ async function _callClaudeWithTools(apiKey, model, messages, systemPrompt, tools
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const body = {
       model: model || AI_DEFAULT_MODELS.claude,
-      max_tokens: 4096,
+      max_tokens: REPLY_MAX_TOKENS,
       system: systemPrompt,
       messages: currentMessages,
     };
     if (claudeTools.length) body.tools = claudeTools;
-    const res = await _post(cb?.relay, 'https://api.anthropic.com/v1/messages', {
+    // A model that can't write that many is asked again as before (trace-reply.js).
+    const res = await sendWithLengthFallback(body, (b) => _post(cb?.relay, 'https://api.anthropic.com/v1/messages', {
       'Content-Type': 'application/json',
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true',
-    }, body);
+    }, b));
     const data = res.data;
     if (!res.ok) throw new Error(data.error?.message || `Claude API error ${res.status}`);
+    const short = stoppedShort('claude', data);
+    if (short) throw _stoppedShort(short);
 
     const toolUses = (data.content || []).filter(b => b.type === 'tool_use');
     const textBlocks = (data.content || []).filter(b => b.type === 'text');
@@ -305,18 +321,23 @@ async function _callOpenAIWithTools(apiKey, model, messages, systemPrompt, tools
         baseUrl,
         model: selectedModel,
         hasTools: openaiTools.length > 0,
+        maxTokens: REPLY_MAX_TOKENS,
       }),
     };
     if (openaiTools.length) body.tools = openaiTools;
     const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
     if (apiKey && apiKey !== 'no-key') headers['Authorization'] = `Bearer ${apiKey}`;
-    const send = (b) => _post(cb?.relay, `${baseUrl}/v1/chat/completions`, headers, b);
+    // A server that won't take the longer reply is asked again as before.
+    const send = (b) => sendWithLengthFallback(b, (x) => _post(cb?.relay, `${baseUrl}/v1/chat/completions`, headers, x));
     // A model that can't use tools gets the request again without them.
     // Through the relay the server may already have done that (it says so
     // with trace_tools_unsupported).
     const { ok, status, data, toolsDropped, toolsRouted } = await sendWithToolFallback(body, send, { memory: toolSupport, baseUrl, model: selectedModel });
     if (!ok) throw new Error(data.error?.message || `AI API error ${status}`);
     if (toolsDropped || data.trace_tools_unsupported) onToolsUnsupported?.({ routed: toolsRouted || !!data.trace_tools_routed });
+    // Cut off, a rewrite would be half a note and a tool call half its arguments.
+    const short = stoppedShort('openai', data);
+    if (short) throw _stoppedShort(short);
 
     const choice = data.choices[0];
     const msg = choice.message;
@@ -386,6 +407,8 @@ async function _callGeminiWithTools(apiKey, model, messages, systemPrompt, tools
     const res = await _post(cb?.relay, url, { 'Content-Type': 'application/json' }, body);
     const data = res.data;
     if (!res.ok) throw new Error(data.error?.message || `Gemini API error ${res.status}`);
+    const short = stoppedShort('gemini', data);
+    if (short) throw _stoppedShort(short);
     const candidate = data.candidates?.[0];
     const parts = candidate?.content?.parts || [];
     const functionCalls = parts.filter(p => p.functionCall);
