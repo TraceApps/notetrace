@@ -9,6 +9,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
+- **Streaming for custom Trace providers.** OpenAI-compatible providers such as Strata stream chat replies as they arrive. Editor actions and connection tests also consume streams; server-configured providers forward progress with keep-alives through the proxy and relay. Active streams can run beyond two minutes, while 120 seconds without upstream data still ends a stalled request. Incomplete streams, truncated output and malformed tool calls fail before incomplete edits or tool arguments are used.
+
 - **Custom Trace token limits** ([#23](https://github.com/TraceApps/notetrace/issues/23)). Set maximum output tokens (default 16,384) separately from the loaded context window in Settings > Trace. These settings sync with your account and apply to chat, editor actions, connection tests and the server proxy/relay. Truncated and reasoning-only replies now explain what to change instead of appearing empty; incomplete rewrites are not offered for applying.
 
 - **Expand and Custom Instruction in Ask Trace** ([#23](https://github.com/TraceApps/notetrace/issues/23), requested by @harikiran-lab). Expand turns short notes into full sentences without adding facts. Custom Instruction does what you type ("Translate to Spanish", "Make it a table", "Write it as an email"); its result can replace the note or go below it. As with the others, you see the result first, and the old text stays in version history.
@@ -359,4 +361,3 @@ Second dev pre-release of the 1.0.0 major. Adds the Wear OS app: your notes, che
 - No new dependencies in the web app or server. `npm audit --omit=dev` reports 0 vulnerabilities for both. The watch app adds its own Android libraries (OkHttp, Wear Compose, Tiles, Wear Complications and Play services Wearable). It stores its server address and token in the watch's private app storage, never logs the token, and deletes both when you sign out on the phone.
 
 **Watch testers:** the watch app has had one wrist on it so far. If something feels slow or awkward, or a phrase you say doesn't set the time you meant, open an issue with the watch model and, for a spoken time, what you said.
-

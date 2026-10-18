@@ -178,6 +178,10 @@ Open `http://localhost:3004` and a first-run wizard walks you through creating a
 
 Env values take priority over Settings-UI values and lock the field for all users. The full annotated list is in [.env.example](.env.example).
 
+Custom OpenAI-compatible Trace providers use streaming for chat, editor actions and connection tests. Chat shows incoming answer text; editor actions wait for the complete response before offering a rewrite. Partial tool calls and interrupted streams are never applied. Providers that return JSON despite the streaming request still work.
+
+For long generations behind a reverse proxy, allow `text/event-stream` responses and disable response buffering (for nginx, `proxy_buffering off;`). NoteTrace's custom-provider relay and editor proxy send a keep-alive every 15 seconds, cancel inference when the browser disconnects, and allow generation to continue while upstream bytes arrive. The upstream inactivity timeout is 120 seconds, including the wait for response headers. Direct browser requests also need the provider's CORS headers, and the provider must begin sending data or keep-alives before any intervening proxy's timeout.
+
 ---
 
 ## Data persistence

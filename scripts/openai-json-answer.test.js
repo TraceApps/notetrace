@@ -1,18 +1,17 @@
-// Every OpenAI-compatible request asks for one JSON answer, never a stream:
-// some gateways stream when `stream` is missing, and the reply then can't be
-// read (TraceApps/nutritrace#258). These paths don't go through
-// getOpenAIChatParams, so they are checked here.
+// Requests explicitly choose their response format (nutritrace#258).
+// Custom chat providers opt into SSE; extraction and legacy relay callers
+// continue to request JSON.
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 
 const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
-test('the server relay forces stream: false after its field allowlist', () => {
+test('the server relay permits streaming only for custom providers that opt in', () => {
   const ai = read('../server/routes/ai.js');
   const relay = ai.slice(ai.indexOf('export function relayRequest'), ai.indexOf("router.post('/relay'"));
-  assert.ok(relay.indexOf('out.stream = false;') > relay.indexOf('for (const k of RELAY_FIELDS[kind])'));
-  assert.match(relay, /'Accept': 'application\/json'/);
+  assert.ok(relay.indexOf('out.stream = custom && body.stream === true;') > relay.indexOf('for (const k of RELAY_FIELDS[kind])'));
+  assert.match(relay, /out.stream \? 'text\/event-stream, application\/json' : 'application\/json'/);
 });
 
 test("the app's own requests ask for JSON", () => {

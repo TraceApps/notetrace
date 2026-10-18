@@ -23,6 +23,7 @@ import { getOpenAIChatParams, openAIBase } from './openai-chat-params.js';
 import { createToolSupportMemory, sendWithToolFallback } from './tool-support.js';
 import { NOTE_TOOLS } from './trace-note-tools.js';
 import { normalizeTokenLimits, applyTokenLimits, openAIAnswer } from './ai-token-limits.js';
+import { fetchAIResponse, readAIResponse } from './ai-stream.js';
 
 function localizeTokenError(error) {
   if (error?.code?.startsWith('ai_tokens_')) {
@@ -125,13 +126,13 @@ export const TOOLS = NOTE_TOOLS;
  */
 // onToolsUnsupported runs when the model can't use tools and answered
 // without them (TraceApps/nutritrace#259).
-export async function callAI({ provider, apiKey, model, messages, systemPrompt, tools, onToolCall, onToolResult, onToolsUnsupported, baseUrl, relay = false, tokenLimits }) {
+export async function callAI({ provider, apiKey, model, messages, systemPrompt, tools, onToolCall, onToolResult, onToolsUnsupported, onText, baseUrl, relay = false, tokenLimits }) {
   // 'custom' is the legacy NoteTrace name for the same OpenAI-compatible
   // path that NutriTrace calls 'oai-compat'. Both are accepted.
   if (!relay && !apiKey && provider !== 'custom' && provider !== 'oai-compat') {
     throw new Error('No API key configured. Add one in Settings → Trace Assistant.');
   }
-  const cb = { onToolCall, onToolResult, onToolsUnsupported, relay };
+  const cb = { onToolCall, onToolResult, onToolsUnsupported, onText, relay };
   if (relay) {
     apiKey = apiKey || 'relay';
     baseUrl = baseUrl || 'relay';
@@ -196,8 +197,9 @@ export async function fetchProvider(url, init) {
 }
 
 /** POST a provider request, directly or through the server relay. */
-async function _post(relay, url, headers, body, tokenLimits) {
+async function _post(relay, url, headers, body, tokenLimits, onText) {
   if (!relay) {
+    if (body.stream) return fetchAIResponse(fetchProvider, url, { method: 'POST', headers, body: JSON.stringify(body) }, { onText });
     const res = await fetchProvider(url, { method: 'POST', headers, body: JSON.stringify(body) });
     return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
   }
@@ -210,10 +212,12 @@ async function _post(relay, url, headers, body, tokenLimits) {
     const csrf = typeof localStorage !== 'undefined' ? localStorage.getItem('note:csrf') : null;
     if (csrf) h['X-CSRF-Token'] = csrf;
   }
-  const res = await fetch(apiUrl('/api/ai/relay'), { method: 'POST', credentials: 'include', headers: h, body: JSON.stringify({ body, ...(tokenLimits ? { tokenLimits } : {}) }) });
-  const data = await res.json().catch(() => ({}));
-  if (res.status === 401) return { ok: false, status: 401, data: { error: { message: 'Not signed in. Sign in again to use Trace.' } } };
-  return { ok: res.ok, status: res.status, data };
+  const init = { method: 'POST', credentials: 'include', headers: h, body: JSON.stringify({ body, ...(tokenLimits ? { tokenLimits } : {}) }) };
+  const result = body.stream
+    ? await fetchAIResponse(fetch, apiUrl('/api/ai/relay'), init, { onText })
+    : await readAIResponse(await fetch(apiUrl('/api/ai/relay'), init));
+  if (result.status === 401) return { ok: false, status: 401, data: { error: { message: 'Not signed in. Sign in again to use Trace.' } } };
+  return result;
 }
 
 /** Server-proxy fallback for env-locked installs. Text-only — tools
@@ -235,12 +239,12 @@ export async function callAIProxy({ messages, systemPrompt, tokenLimits }) {
     method: 'POST',
     credentials: 'include',
     headers,
-    body: JSON.stringify({ messages, systemPrompt, tokenLimits }),
+    body: JSON.stringify({ messages, systemPrompt, tokenLimits, stream: true }),
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    if (res.status === 401) throw new Error('Not signed in — sign in again to use AI features.');
-    throw localizeTokenError(Object.assign(new Error(data.error || `AI proxy error ${res.status}`), { code: data.code }));
+  const { ok, status, data } = await readAIResponse(res);
+  if (!ok) {
+    if (status === 401) throw new Error('Not signed in — sign in again to use AI features.');
+    throw localizeTokenError(Object.assign(new Error(data.error?.message || data.error || `AI proxy error ${status}`), { code: data.error?.code || data.code }));
   }
   return data.text || data.content || data.message || (data.choices?.[0]?.message?.content) || '';
 }
@@ -321,8 +325,15 @@ async function _callOpenAIWithTools(apiKey, model, messages, systemPrompt, tools
     };
     if (openaiTools.length) body.tools = openaiTools;
     const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
+    if (cb?.tokenLimits) {
+      body.stream = true;
+      headers.Accept = 'text/event-stream, application/json';
+    }
     if (apiKey && apiKey !== 'no-key') headers['Authorization'] = `Bearer ${apiKey}`;
-    const send = (b) => _post(cb?.relay, `${baseUrl}/v1/chat/completions`, headers, cb?.tokenLimits ? applyTokenLimits(b, cb.tokenLimits) : b, cb?.tokenLimits);
+    const send = (b) => {
+      cb?.onText?.('', true);
+      return _post(cb?.relay, `${baseUrl}/v1/chat/completions`, headers, cb?.tokenLimits ? applyTokenLimits(b, cb.tokenLimits) : b, cb?.tokenLimits, cb?.onText);
+    };
     // A model that can't use tools gets the request again without them.
     // Through the relay the server may already have done that (it says so
     // with trace_tools_unsupported).
@@ -334,10 +345,17 @@ async function _callOpenAIWithTools(apiKey, model, messages, systemPrompt, tools
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
       return msg.content || '';
     }
-    currentMessages.push(msg);
-    for (const tc of msg.tool_calls) {
-      if (onToolCall) onToolCall(tc.function.name, JSON.parse(tc.function.arguments || '{}'));
+    // Validate the whole group before any write tool can execute.
+    const calls = msg.tool_calls.map(tc => {
+      if (!tc.id || !tc.function?.name) throw new Error('The AI returned an incomplete tool call. Please retry.');
       const args = JSON.parse(tc.function.arguments || '{}');
+      if (!args || typeof args !== 'object' || Array.isArray(args)) throw new Error('The AI returned invalid tool arguments. Please retry.');
+      return { tc, args };
+    });
+    cb?.onText?.('', true);
+    currentMessages.push(msg);
+    for (const { tc, args } of calls) {
+      if (onToolCall) onToolCall(tc.function.name, args);
       const result = await _executeTool(tc.function.name, args);
       if (onToolResult) onToolResult(tc.function.name, result);
       currentMessages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
