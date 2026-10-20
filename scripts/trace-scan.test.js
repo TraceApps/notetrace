@@ -243,7 +243,7 @@ test('MCP offers read_notes as a read tool and takes its ids as numbers', () => 
 // until `stopAfter` rounds), then answers. `rejectChoice`: an OpenAI-
 // compatible server that refuses tool_choice; `ignoreChoice`: one that
 // ignores it and asks for a tool anyway, with no text.
-let stopAfter = Infinity, rejectChoice = false, rejectStatus = 400, ignoreChoice = false;
+let stopAfter = Infinity, rejectChoice = false, rejectStatus = 400, ignoreChoice = false, perRound = 1, argPad = '';
 const seen = [];
 const toolRounds = (b, path) => (path.startsWith('/claude')
   ? (b.messages || []).filter((m) => Array.isArray(m.content) && m.content.some((c) => c.type === 'tool_result')).length
@@ -261,17 +261,17 @@ const endpoint = http.createServer((req, res) => {
     if (req.url.startsWith('/claude')) {
       out = b.tool_choice?.type === 'none' || n >= stopAfter
         ? { content: [{ type: 'text', text: `answer after ${n}` }], stop_reason: 'end_turn' }
-        : { content: [{ type: 'tool_use', id: `t${n}`, name: 'search_notes', input: { query: 'license', offset: n * 25 } }], stop_reason: 'tool_use' };
+        : { content: Array.from({ length: perRound }, (_, k) => ({ type: 'tool_use', id: `t${n}_${k}`, name: 'search_notes', input: { query: 'license', offset: n * 25, ...(argPad ? { pad: argPad } : {}) } })), stop_reason: 'tool_use' };
     } else if (req.url.startsWith('/gemini')) {
       out = b.toolConfig?.functionCallingConfig?.mode === 'NONE' || n >= stopAfter
         ? { candidates: [{ content: { parts: [{ text: `answer after ${n}` }] }, finishReason: 'STOP' }] }
-        : { candidates: [{ content: { parts: [{ functionCall: { name: 'search_notes', args: { query: 'license' } } }] }, finishReason: 'STOP' }] };
+        : { candidates: [{ content: { parts: Array.from({ length: perRound }, () => ({ functionCall: { name: 'search_notes', args: { query: 'license', ...(argPad ? { pad: argPad } : {}) } } })) }, finishReason: 'STOP' }] };
     } else {
       if (rejectChoice && b.tool_choice) return res.writeHead(rejectStatus, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: { message: "Unsupported value: 'tool_choice' none" } }));
       const answer = (b.tool_choice === 'none' && !ignoreChoice) || n >= stopAfter;
       out = { choices: [{ index: 0, finish_reason: answer ? 'stop' : 'tool_calls', message: answer
         ? { role: 'assistant', content: `answer after ${n}` }
-        : { role: 'assistant', content: null, tool_calls: [{ id: `c${n}`, type: 'function', function: { name: 'search_notes', arguments: '{"query":"license"}' } }] } }] };
+        : { role: 'assistant', content: null, tool_calls: Array.from({ length: perRound }, (_, k) => ({ id: `c${n}_${k}`, type: 'function', function: { name: 'search_notes', arguments: JSON.stringify({ query: 'license', ...(argPad ? { pad: argPad } : {}) }) } })) } }] };
     }
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(out));
   });
@@ -290,7 +290,7 @@ const client = await import('../src/lib/aiChat.js');
 let calls = 0, toolResult = { count: 0, notes: [] };
 client.setToolHandler(async () => { calls++; return toolResult; });
 const TOOLS = [NOTE_TOOLS.find((t) => t.name === 'search_notes')];
-const fresh = (o = {}) => { seen.length = 0; calls = 0; stopAfter = o.stopAfter ?? Infinity; rejectChoice = !!o.rejectChoice; rejectStatus = o.rejectStatus ?? 400; ignoreChoice = !!o.ignoreChoice; toolResult = o.toolResult ?? { count: 0, notes: [] }; };
+const fresh = (o = {}) => { seen.length = 0; calls = 0; stopAfter = o.stopAfter ?? Infinity; rejectChoice = !!o.rejectChoice; rejectStatus = o.rejectStatus ?? 400; ignoreChoice = !!o.ignoreChoice; toolResult = o.toolResult ?? { count: 0, notes: [] }; perRound = o.perRound ?? 1; argPad = o.argPad ?? ''; };
 const ask = (provider) => client.callAI({
   provider, apiKey: 'k', model: provider === 'oai-compat' ? 'local' : undefined, baseUrl: provider === 'oai-compat' ? ENDPOINT : undefined,
   messages: [{ role: 'user', content: 'Find every license key in my notes.' }], systemPrompt: 'You are Trace.', tools: TOOLS,
@@ -371,6 +371,28 @@ test('a conversation that gets too big wraps up early the same way', async () =>
     assert.equal(first.tool_choice ?? first.toolConfig, undefined, provider);
     // Under what the relay takes (1 MB).
     assert.ok(Buffer.byteLength(JSON.stringify(last)) < 1_000_000);
+  }
+  // Many calls at once can't pass it by much: once one round's answers are
+  // over, the rest of that round's calls aren't run, and say why.
+  for (const provider of ['oai-compat', 'claude', 'gemini']) {
+    fresh({ perRound: 4, toolResult: { notes: [{ text: 'x'.repeat(300000) }] } });
+    await ask(provider);
+    assert.equal(calls, 1, `${provider}: one ran, three didn't`);
+    assert.equal(seen.length, 2, provider);
+    const last = seen[1].body;
+    const body = JSON.stringify(last);
+    assert.equal(body.split(client.TOOL_SKIPPED).length - 1, 3, `${provider}: each call left unrun still has its answer`);
+    if (provider === 'gemini') assert.deepEqual(last.toolConfig, { functionCallingConfig: { mode: 'NONE' } });
+    else assert.ok(last.tool_choice, provider);
+    assert.ok(Buffer.byteLength(body) < 1_000_000, `${provider}: under what the relay takes`);
+  }
+  // What the model itself sent (a long note it wrote) doesn't use up a
+  // round's room: only the answers do, so calls it already paid for still run.
+  for (const provider of ['oai-compat', 'claude', 'gemini']) {
+    fresh({ perRound: 4, argPad: 'w'.repeat(100000), stopAfter: 1 });
+    await ask(provider);
+    assert.equal(calls, 4, `${provider}: every call ran`);
+    assert.ok(!JSON.stringify(seen.at(-1).body).includes(client.TOOL_SKIPPED), provider);
   }
   // A photo the user attached doesn't count: only what the tools add does.
   for (const provider of ['oai-compat', 'claude', 'gemini']) {

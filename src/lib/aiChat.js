@@ -273,6 +273,16 @@ export const HISTORY_MAX_BYTES = 300000;
 const _bytes = (x) => new TextEncoder().encode(JSON.stringify(x)).length;
 // The last request: out of rounds, or the tools have added as much as they should.
 const _lastRound = (round, history, start) => round === TOOL_ROUNDS || (round > 0 && _bytes(history) - start > HISTORY_MAX_BYTES);
+// Said for a tool call left unrun because one round's answers already passed
+// HISTORY_MAX_BYTES: a model that asks for many at once can't pass it by much.
+export const TOOL_SKIPPED = "Not run: this answer has already gathered as much as it can hold. Answer from what you have, and say what's left.";
+const _room = (history, start) => ({ left: HISTORY_MAX_BYTES - (_bytes(history) - start) });
+async function _runTool(name, args, room) {
+  if (room.left <= 0) return { error: TOOL_SKIPPED };
+  const result = await _executeTool(name, args);
+  room.left -= _bytes(JSON.stringify(result)); // as it's sent: a JSON string inside the request
+  return result;
+}
 
 async function _callClaudeWithTools(apiKey, model, messages, systemPrompt, tools, cb) {
   const { onToolCall, onToolResult } = cb || {};
@@ -315,11 +325,15 @@ async function _callClaudeWithTools(apiKey, model, messages, systemPrompt, tools
     if (toolUses.length === 0 || data.stop_reason !== 'tool_use') {
       return textBlocks.map(b => b.text).join('\n') || '';
     }
+    // Measured before the model's own message: only what the tools answer
+    // counts, so calls whose arguments are already sent (a recipe it wrote)
+    // aren't skipped for nothing.
+    const room = _room(currentMessages, startBytes);
     currentMessages.push({ role: 'assistant', content: data.content });
     const toolResults = [];
     for (const tu of toolUses) {
       if (onToolCall) onToolCall(tu.name, tu.input);
-      const result = await _executeTool(tu.name, tu.input);
+      const result = await _runTool(tu.name, tu.input, room);
       if (onToolResult) onToolResult(tu.name, result);
       toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(result) });
     }
@@ -389,11 +403,12 @@ async function _callOpenAIWithTools(apiKey, model, messages, systemPrompt, tools
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
       return msg.content || '';
     }
+    const room = _room(currentMessages, startBytes); // before the model's message (see Claude above)
     currentMessages.push(msg);
     for (const tc of msg.tool_calls) {
       if (onToolCall) onToolCall(tc.function.name, JSON.parse(tc.function.arguments || '{}'));
       const args = JSON.parse(tc.function.arguments || '{}');
-      const result = await _executeTool(tc.function.name, args);
+      const result = await _runTool(tc.function.name, args, room);
       if (onToolResult) onToolResult(tc.function.name, result);
       currentMessages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
     }
@@ -465,11 +480,12 @@ async function _callGeminiWithTools(apiKey, model, messages, systemPrompt, tools
     if (functionCalls.length === 0) {
       return textParts.map(p => p.text).join('\n') || '';
     }
+    const room = _room(contents, startBytes); // before the model's message (see Claude above)
     contents.push({ role: 'model', parts });
     const responseParts = [];
     for (const fc of functionCalls) {
       if (onToolCall) onToolCall(fc.functionCall.name, fc.functionCall.args || {});
-      const result = await _executeTool(fc.functionCall.name, fc.functionCall.args || {});
+      const result = await _runTool(fc.functionCall.name, fc.functionCall.args || {}, room);
       if (onToolResult) onToolResult(fc.functionCall.name, result);
       responseParts.push({ functionResponse: { name: fc.functionCall.name, response: result } });
     }
