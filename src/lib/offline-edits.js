@@ -168,9 +168,11 @@ export function listView(notes, { view = 'notes', label = null, q = '', kind = n
   if (kind === 'text' || kind === 'checklist') out = out.filter(n => n.kind === kind);
   if (label != null) out = out.filter(n => (n.labels || []).includes(Number(label)));
   if (q) out = out.filter(n => matchesQuery(n, q));
-  const edited = (a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || ''));
+  // Ties go by id, newest first, as on the server.
+  const byId = (a, b) => (Number(b.id) || 0) - (Number(a.id) || 0);
+  const edited = (a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')) || byId(a, b);
   if (view === 'notes') out.sort((a, b) => (Number(!!b.pinned) - Number(!!a.pinned)) || edited(a, b));
-  else if (view === 'reminders') out.sort((a, b) => String(a.reminder_at).localeCompare(String(b.reminder_at)));
+  else if (view === 'reminders') out.sort((a, b) => String(a.reminder_at).localeCompare(String(b.reminder_at)) || byId(a, b));
   else out.sort(edited);
   return out;
 }

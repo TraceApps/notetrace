@@ -2,7 +2,7 @@
  * MCP note tools. The catalog and logic are shared with Trace
  * (lib/note-tools.js); this file adapts lib/notes.js to the api shape the
  * tools expect and registers each tool in its tier:
- *   read:    search_notes, get_note, list_labels, list_reminders, list_tasks
+ *   read:    search_notes, get_note, read_notes, list_labels, list_reminders, list_tasks
  *   write:   create_note, update_note, append_to_note, add_checklist_items,
  *            check_checklist_item, set_due_date, set_reminder, set_labels
  *   destroy: move_to_trash
@@ -17,7 +17,7 @@ import * as Notes from '../../notes.js';
 import { NOTE_TOOLS, executeNoteTool } from '../../note-tools.js';
 import { toolResult, toolError } from '../_util.js';
 
-export const READ = ['search_notes', 'get_note', 'list_labels', 'list_reminders', 'list_tasks'];
+export const READ = ['search_notes', 'get_note', 'read_notes', 'list_labels', 'list_reminders', 'list_tasks'];
 export const WRITE = ['create_note', 'update_note', 'append_to_note', 'add_checklist_items', 'check_checklist_item', 'set_due_date', 'set_reminder', 'set_labels'];
 export const DESTROY = ['move_to_trash'];
 
@@ -50,7 +50,7 @@ function _zod(prop) {
   if (prop.enum) t = z.enum(prop.enum);
   else if (prop.type === 'integer') t = z.number().int();
   else if (prop.type === 'boolean') t = z.boolean();
-  else if (prop.type === 'array') t = z.array(z.string().max(5000)).max(500);
+  else if (prop.type === 'array') t = z.array(prop.items?.type === 'integer' ? z.number().int() : z.string().max(5000)).max(500);
   else t = z.string().max(100000);
   return prop.description ? t.describe(prop.description) : t;
 }

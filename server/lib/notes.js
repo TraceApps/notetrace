@@ -251,9 +251,11 @@ export function listNotes(u, { view = 'notes', labelId = null, q = '', kind = nu
     where.push('notes_fts MATCH ?');
     args.push(match);
   }
-  const order = view === 'notes' ? `${pinned} DESC, n.updated_at DESC`
-    : view === 'reminders' ? 'n.reminder_at ASC'
-    : 'n.updated_at DESC';
+  // Ties go by id, so the same list always comes in the same order (Trace
+  // pages through it, TraceApps/notetrace#34; imported notes share a time).
+  const order = view === 'notes' ? `${pinned} DESC, n.updated_at DESC, n.id DESC`
+    : view === 'reminders' ? 'n.reminder_at ASC, n.id DESC'
+    : 'n.updated_at DESC, n.id DESC';
   return _hydrate(_selectNotes(u, { join, where, args, joinArgs, order }), u);
 }
 

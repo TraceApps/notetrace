@@ -323,9 +323,10 @@ export const NotesNative = {
       args.push(Number(label));
     }
     const search = _searchClause(q);
-    const order = view === 'notes' ? 'n.pinned DESC, n.updated_at DESC'
-      : view === 'reminders' ? 'n.reminder_at ASC'
-      : 'n.updated_at DESC';
+    // Ties go by id, so the same list always comes in the same order (server/lib/notes.js).
+    const order = view === 'notes' ? 'n.pinned DESC, n.updated_at DESC, n.id DESC'
+      : view === 'reminders' ? 'n.reminder_at ASC, n.id DESC'
+      : 'n.updated_at DESC, n.id DESC';
     const _list = (s) => _q(
       `SELECT n.* FROM notes n WHERE ${where.join(' AND ')}${s.sql} ORDER BY ${order}`,
       [...args, ...s.args]);

@@ -12,22 +12,52 @@
  */
 import { REPEATS, toUtcString, localTimeZone, nextOccurrence, zonedToUtc } from './reminders.js';
 import { isTask, cleanTaskRepeat } from './task-rules.js';
+import { foldText } from './search-text.js';
 
 const BODY_LIMIT = 4000;
 const RESULT_LIMIT = 25;
+// Going through many notes (TraceApps/notetrace#34): search pages through
+// every match, and read_notes reads a batch in full in one call, so a scan
+// of the whole collection takes a few rounds, not one per note.
+const SEARCH_PAGE_MAX = 50;
+const READ_MAX_NOTES = 25;
+// One read_notes answer, measured as the JSON the model gets (text, items,
+// image text, transcripts and all). Twelve rounds of these still fit a
+// 128k-token model and the server's relay.
+const READ_BUDGET = 16000;
+const READ_NOTE_MAX = 8000;  // characters of one note's text
+const SNIPPET_MAX = 240;     // one match passage
+
+/** s.slice(start, end) without cutting an emoji (or any surrogate pair) in half. */
+export function sliceSafe(s, start, end = s.length) {
+  const low = (i) => i > 0 && i < s.length && /[\uDC00-\uDFFF]/.test(s[i]) && /[\uD800-\uDBFF]/.test(s[i - 1]);
+  if (low(start)) start--;
+  if (low(end)) end--;
+  return s.slice(start, end);
+}
 
 export const NOTE_TOOLS = [
   {
     name: 'search_notes',
-    description: "Find the user's notes. Full-text search over titles, text, and checklist items, optionally within a label or view. Returns id, title, kind, a text preview or open checklist items, labels, pinned, archived, and reminder. Use this before get_note or any change when you need to find a note by what it says.",
+    description: `Find the user's notes. Full-text search over titles, text, and checklist items, optionally within a label or view. Returns count (every match), a page of notes (id, title, kind, a text preview or open checklist items, labels, pinned, archived, reminder) and, with a query, matches: the passages where the words appear. next_offset is where the next page starts (null when this page is the last, complete: true). Without a query it lists every note, in the order the notes list shows them, page by page. To go through all of them, page with offset until complete, and read the ones you need with read_notes. Use this before get_note or any change when you need to find a note by what it says.`,
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Words to search for. Omit to list the most recently edited notes.' },
+        query: { type: 'string', description: 'Words to search for. Omit to list every note.' },
         label: { type: 'string', description: 'Only notes with this label name.' },
         view: { type: 'string', enum: ['notes', 'archive', 'trash', 'reminders'], description: "Which notes to look in. Defaults to 'notes' (not archived, not trashed)." },
-        limit: { type: 'integer', description: `Maximum results, up to ${RESULT_LIMIT}. Default 10.` },
+        limit: { type: 'integer', description: `Notes per page, up to ${SEARCH_PAGE_MAX}. Default 10.` },
+        offset: { type: 'integer', description: 'Where the page starts: 0 first, then the next_offset of the page before.' },
       },
+    },
+  },
+  {
+    name: 'read_notes',
+    description: `Read several notes in full in one call, up to ${READ_MAX_NOTES} ids: for each, what get_note gives. Answers are kept to a size limit: notes past it come back in not_read, to read with another call, a very long note's text ends in "…(truncated)", a note too big to read along with others says too_long (read that one with get_note), and failed lists notes that couldn't be read just now, with why. Use this to go through many notes, for example every note search_notes found.`,
+    parameters: {
+      type: 'object',
+      properties: { ids: { type: 'array', items: { type: 'integer' }, description: 'Note ids, from search_notes.' } },
+      required: ['ids'],
     },
   },
   {
@@ -208,13 +238,80 @@ function _summary(note, labelName) {
   };
 }
 
-function _full(note, labelName) {
+/**
+ * Where a note says what was searched for: up to `max` short passages around
+ * the query's words, accents and case aside, split into words the way the
+ * search splits them. Looks in the title, the text or items, and the text of
+ * images and voice notes, which the search covers too.
+ */
+const _foldCache = new Map();
+const _foldChar = (ch) => {
+  let f = _foldCache.get(ch);
+  if (f === undefined) {
+    f = foldText(ch).replace(/ς/g, 'σ'); // a word-final sigma folds like any other
+    if (_foldCache.size < 5000) _foldCache.set(ch, f);
+  }
+  return f;
+};
+export function matchSnippets(note, query, max = 3, around = 60) {
+  const tokens = [...new Set((foldText(query).replace(/ς/g, 'σ').match(/[\p{L}\p{N}]+/gu) || []))];
+  if (!tokens.length || !note) return [];
+  const items = note.kind === 'checklist' ? (note.items || []).map(i => i.text).join('\n') : note.body_md;
+  const extra = (note.attachments || []).map(a => a.extracted_text).filter(Boolean);
+  // Long notes: the first 200,000 characters, which is where a passage is shown from anyway.
+  const text = sliceSafe([note.title, items, ...extra].filter(Boolean).join('\n'), 0, 200000);
+  // Folded one character at a time, remembering where each came from: folding
+  // can change a word's length (ß, æ), and the passage is cut from the original.
+  let folded;
+  let start = null, end = null;
+  if (/^[\x00-\x7f]*$/.test(text)) folded = text.toLowerCase();
+  else {
+    folded = '';
+    start = []; end = [];
+    for (let i = 0; i < text.length;) {
+      const ch = String.fromCodePoint(text.codePointAt(i));
+      const f = _foldChar(ch);
+      for (let k = 0; k < f.length; k++) { start.push(i); end.push(i + ch.length); }
+      folded += f;
+      i += ch.length;
+    }
+  }
+  const at = (k) => (start ? start[k] : k);
+  const to = (k) => (end ? end[k] : k + 1);
+  // A few hits per word, so a common one can't bury the rest.
+  const hits = [];
+  tokens.forEach((t, w) => {
+    let n = 0;
+    for (let p = folded.indexOf(t); p >= 0 && n < 10; p = folded.indexOf(t, p + t.length), n++) hits.push([at(p), to(p + t.length - 1), w]);
+  });
+  hits.sort((x, y) => x[0] - y[0]);
+  const windows = [];
+  for (const [s, e, w] of hits) {
+    const ws = Math.max(0, s - around), we = Math.min(text.length, e + around);
+    const last = windows[windows.length - 1];
+    if (last && e <= last[1]) { last[2].add(w); continue; } // already in the passage before
+    // Close hits share a passage, up to SNIPPET_MAX long; past that, the next
+    // passage starts where the last one ended.
+    if (last && ws <= last[1] && we - last[0] <= SNIPPET_MAX) { last[1] = we; last[2].add(w); }
+    else windows.push([last ? Math.max(ws, Math.min(s, last[1])) : ws, we, new Set([w])]);
+  }
+  // The passages shown cover every word found before a word gets a second one.
+  const shown = new Set(), covered = new Set();
+  for (const win of windows) {
+    if (shown.size < max && [...win[2]].some(w => !covered.has(w))) { shown.add(win); win[2].forEach(w => covered.add(w)); }
+  }
+  for (const win of windows) if (shown.size < max) shown.add(win);
+  return windows.filter(win => shown.has(win))
+    .map(([s, e]) => `${s > 0 ? '…' : ''}${sliceSafe(text, s, e).replace(/\s+/g, ' ').trim()}${e < text.length ? '…' : ''}`);
+}
+
+function _full(note, labelName, bodyLimit = BODY_LIMIT) {
   const body = String(note.body_md || '');
   return {
     id: note.id,
     title: note.title,
     kind: note.kind,
-    text: note.kind === 'text' ? (body.length > BODY_LIMIT ? `${body.slice(0, BODY_LIMIT)}\n…(truncated)` : body) : undefined,
+    text: note.kind === 'text' ? (body.length > bodyLimit ? `${sliceSafe(body, 0, bodyLimit)}\n…(truncated)` : body) : undefined,
     items: note.kind === 'checklist' ? (note.items || []).map(i => ({ text: i.text, checked: !!i.checked, ...(i.due_date ? { due: i.due_date } : {}), ...(i.due_repeat ? { repeat: i.due_repeat } : {}) })) : undefined,
     labels: (note.labels || []).map(id => labelName.get(id)).filter(Boolean),
     color: note.color || null,
@@ -328,11 +425,52 @@ export async function executeNoteTool(name, args = {}, api, opts = {}) {
       }
       const view = ['notes', 'archive', 'trash', 'reminders'].includes(a.view) ? a.view : 'notes';
       const notes = await api.getNotes({ view, label, q: a.query || '' });
-      const limit = Math.min(RESULT_LIMIT, Math.max(1, Number(a.limit) || 10));
-      return { count: notes.length, notes: notes.slice(0, limit).map(n => _summary(n, labelName)) };
+      const limit = Math.min(SEARCH_PAGE_MAX, Math.max(1, Math.floor(Number(a.limit)) || 10));
+      const offset = Math.max(0, Math.floor(Number(a.offset)) || 0);
+      const page = notes.slice(offset, offset + limit);
+      const next = offset + page.length < notes.length ? offset + page.length : null;
+      return {
+        count: notes.length, offset, returned: page.length, next_offset: next, complete: next == null,
+        // Said in words too: a model that skims the numbers still sees there's more.
+        ...(next != null ? { more: `This is notes ${offset + 1} to ${offset + page.length} of ${notes.length}: call search_notes again with offset ${next} for the rest.` } : {}),
+        notes: page.map(n => ({ ..._summary(n, labelName), ...(a.query ? { matches: matchSnippets(n, a.query) } : {}) })),
+      };
     }
     case 'get_note':
       return _full(await need(a.id), await _labelNames(api));
+    case 'read_notes': {
+      const ids = [...new Set((Array.isArray(a.ids) ? a.ids : []).map(Number).filter(Number.isFinite))];
+      if (!ids.length) return { error: 'ids is required: note ids, from search_notes.' };
+      const labelName = await _labelNames(api);
+      const notes = [], notRead = [], notFound = [], failed = [];
+      let budget = READ_BUDGET;
+      for (const id of ids.slice(0, READ_MAX_NOTES)) {
+        if (notRead.length) { notRead.push(id); continue; }
+        // A note that's gone (or an id that never was) is just not found, never
+        // the whole batch. Any other failure (offline and not on this device,
+        // the server down) says so: the note may well be there.
+        let note;
+        try { note = await api.getNote(id); } catch (e) {
+          if (e?.status === 404) note = null;
+          else { failed.push({ id, error: String(e?.message || e) }); continue; }
+        }
+        if (!note) { notFound.push(id); continue; }
+        const full = _full(note, labelName, READ_NOTE_MAX);
+        const size = JSON.stringify(full).length;
+        if (size <= budget) { notes.push(full); budget -= size; continue; }
+        // Doesn't fit what's left: the next call reads it. One that's too big
+        // for any call on its own (long transcripts, a huge checklist) says so.
+        if (notes.length) notRead.push(id);
+        else notes.push({ id: full.id, title: full.title, kind: full.kind, too_long: 'Too long to read along with others: read it with get_note.' });
+      }
+      notRead.push(...ids.slice(READ_MAX_NOTES));
+      return {
+        notes,
+        ...(notRead.length ? { not_read: notRead, more: 'Over what one call holds: read these with another read_notes call.' } : {}),
+        ...(notFound.length ? { not_found: notFound } : {}),
+        ...(failed.length ? { failed } : {}),
+      };
+    }
     case 'list_labels':
       return { labels: (await api.getLabels()).map(l => ({ name: l.name, notes: l.note_count ?? null })) };
     case 'list_reminders': {

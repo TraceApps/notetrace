@@ -33,8 +33,8 @@ const call = async (tok, name, args) => {
 
 const toolsFull = (await rpc(full, 'tools/list')).result.tools.map(t => t.name).sort();
 const toolsRead = (await rpc(readOnly, 'tools/list')).result.tools.map(t => t.name).sort();
-ok(toolsFull.length === 14 && toolsFull.includes('move_to_trash') && toolsFull.includes('list_tasks'), `full token sees all 14 tools (${toolsFull.length})`);
-ok(toolsRead.join() === 'get_note,list_labels,list_reminders,list_tasks,search_notes', `read token sees only read tools (${toolsRead.join()})`);
+ok(toolsFull.length === 15 && toolsFull.includes('move_to_trash') && toolsFull.includes('read_notes'), `full token sees all 15 tools (${toolsFull.length})`);
+ok(toolsRead.join() === 'get_note,list_labels,list_reminders,list_tasks,read_notes,search_notes', `read token sees only read tools (${toolsRead.join()})`);
 
 const created = await call(full, 'create_note', { title: 'Hardware store', kind: 'checklist', items: ['Wood glue', 'Sandpaper'], labels: ['Errands'] });
 ok(!created.isError && created.data.note.items.length === 2 && created.data.note.labels[0] === 'Errands', 'create_note makes a labeled checklist');

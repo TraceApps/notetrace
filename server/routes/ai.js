@@ -14,6 +14,9 @@ import os from 'node:os';
 
 const router = Router();
 const aiChatLimit = makeRateLimiter({ max: 30, windowMs: 60_000, label: 'ai' });
+// The relay carries every round of one answer, and one answer can take up to
+// 13 (12 rounds of tools and the last): the same answers a minute as before.
+const aiRelayLimit = makeRateLimiter({ max: 60, windowMs: 60_000, label: 'ai-relay' });
 
 const uid = req => userMgmtActive() ? req.user.id : null;
 const MAX_HISTORY = 200; // rows kept per user
@@ -213,7 +216,7 @@ export function relayRequest(cfg, body) {
 // (TraceApps/nutritrace#259).
 const relayToolSupport = createToolSupportMemory();
 
-router.post('/relay', requireAuth, aiChatLimit, wrap(async (req, res) => {
+router.post('/relay', requireAuth, aiRelayLimit, wrap(async (req, res) => {
   const body = req.body?.body;
   if (!body || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: { message: 'body object required' } });
   const cfg = _serverCfg();

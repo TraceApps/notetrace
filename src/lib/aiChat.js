@@ -10,7 +10,8 @@
  *   1. Send messages + tool definitions to the model
  *   2. If model responds with tool_use, execute via the registered
  *      handler and feed results back
- *   3. Repeat up to MAX_ROUNDS, then return text
+ *   3. Repeat up to TOOL_ROUNDS; when they run out, one last request
+ *      with the tools off asks for an answer from what was found
  *
  * The tool catalog is defined alongside the executor in this file
  * (see TOOLS below). Trace.svelte owns the executor implementation
@@ -35,6 +36,16 @@ function _inLanguage(e) {
   return e;
 }
 const _stoppedShort = (why) => _inLanguage(stoppedShortError(why));
+
+// The last round's answer, or, when a model gave none at all, why there's none.
+function _finalAnswer(text) {
+  if (String(text || '').trim()) return text;
+  try {
+    const said = get(_)('trace_reply.out_of_rounds');
+    if (said && !said.startsWith('trace_reply.')) return said;
+  } catch { /* i18n not ready: the English line */ }
+  return 'That took more steps than one answer allows, and nothing came back. Ask for less at once, such as one label or a narrower search.';
+}
 
 // ── Provider catalog (kept in NoteTrace's `id`-keyed shape so the
 //    existing SettingsTrace dropdown keeps working). ───────────────────────
@@ -248,6 +259,21 @@ export async function callAIProxy({ messages, systemPrompt }) {
 }
 
 // ── Anthropic Claude (with tool use) ────────────────────────────────────────
+// Rounds of tool calls in one answer. Going through many notes (search a
+// page, read a batch, the next page...) needs more than a handful
+// (TraceApps/notetrace#34); a model that loops forever still stops.
+export const TOOL_ROUNDS = 12;
+// Said to the model when the rounds run out: the answer comes from what it has.
+export const OUT_OF_ROUNDS = "You can't call more tools for this request. Answer now from what you found. If you couldn't go through everything you needed to, say so plainly: what you covered and what's left, so the user can ask for the rest or narrow it down.";
+// What the tool calls and their answers may add to the conversation, in
+// bytes, before Trace wraps up early the same way: under the server relay's
+// 1 MB, and in tokens about what a 128k-token model can hold, Japanese or
+// Chinese included. A photo the user attached is already there and doesn't count.
+export const HISTORY_MAX_BYTES = 300000;
+const _bytes = (x) => new TextEncoder().encode(JSON.stringify(x)).length;
+// The last request: out of rounds, or the tools have added as much as they should.
+const _lastRound = (round, history, start) => round === TOOL_ROUNDS || (round > 0 && _bytes(history) - start > HISTORY_MAX_BYTES);
+
 async function _callClaudeWithTools(apiKey, model, messages, systemPrompt, tools, cb) {
   const { onToolCall, onToolResult } = cb || {};
   const claudeTools = (tools || []).map(t => ({
@@ -256,16 +282,21 @@ async function _callClaudeWithTools(apiKey, model, messages, systemPrompt, tools
     input_schema: t.parameters,
   }));
   let currentMessages = [...messages];
-  const MAX_ROUNDS = 5;
+  const startBytes = _bytes(currentMessages);
 
-  for (let round = 0; round < MAX_ROUNDS; round++) {
+  for (let round = 0; round <= TOOL_ROUNDS; round++) {
+    const last = _lastRound(round, currentMessages, startBytes);
     const body = {
       model: model || AI_DEFAULT_MODELS.claude,
       max_tokens: REPLY_MAX_TOKENS,
-      system: systemPrompt,
+      // Out of rounds: told to answer in the system prompt, so the
+      // conversation itself stays in the order the provider expects.
+      system: last ? `${systemPrompt}\n\n${OUT_OF_ROUNDS}` : systemPrompt,
       messages: currentMessages,
     };
     if (claudeTools.length) body.tools = claudeTools;
+    // The tools stay declared (the history has tool calls in it), but can't be called.
+    if (last && claudeTools.length) body.tool_choice = { type: 'none' };
     // A model that can't write that many is asked again as before (trace-reply.js).
     const res = await sendWithLengthFallback(body, (b) => _post(cb?.relay, 'https://api.anthropic.com/v1/messages', {
       'Content-Type': 'application/json',
@@ -280,6 +311,7 @@ async function _callClaudeWithTools(apiKey, model, messages, systemPrompt, tools
 
     const toolUses = (data.content || []).filter(b => b.type === 'tool_use');
     const textBlocks = (data.content || []).filter(b => b.type === 'text');
+    if (last) return _finalAnswer(textBlocks.map(b => b.text).join('\n'));
     if (toolUses.length === 0 || data.stop_reason !== 'tool_use') {
       return textBlocks.map(b => b.text).join('\n') || '';
     }
@@ -293,7 +325,7 @@ async function _callClaudeWithTools(apiKey, model, messages, systemPrompt, tools
     }
     currentMessages.push({ role: 'user', content: toolResults });
   }
-  throw new Error('Too many tool call rounds');
+  return _finalAnswer(''); // not reached: the last round always answers
 }
 
 // ── OpenAI / OpenAI-compatible ─────────────────────────────────────────────
@@ -310,13 +342,16 @@ async function _callOpenAIWithTools(apiKey, model, messages, systemPrompt, tools
     { role: 'system', content: systemPrompt },
     ...messages,
   ];
-  const MAX_ROUNDS = 5;
 
-  for (let round = 0; round < MAX_ROUNDS; round++) {
+  const startBytes = _bytes(currentMessages);
+
+  for (let round = 0; round <= TOOL_ROUNDS; round++) {
+    const last = _lastRound(round, currentMessages, startBytes);
     const selectedModel = model || AI_DEFAULT_MODELS.openai;
     const body = {
       model: selectedModel,
-      messages: currentMessages,
+      // Out of rounds: told to answer in the system prompt (see Claude above).
+      messages: last ? [{ role: 'system', content: `${systemPrompt}\n\n${OUT_OF_ROUNDS}` }, ...currentMessages.slice(1)] : currentMessages,
       ...getOpenAIChatParams({
         baseUrl,
         model: selectedModel,
@@ -325,6 +360,7 @@ async function _callOpenAIWithTools(apiKey, model, messages, systemPrompt, tools
       }),
     };
     if (openaiTools.length) body.tools = openaiTools;
+    if (last && openaiTools.length) body.tool_choice = 'none';
     const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
     if (apiKey && apiKey !== 'no-key') headers['Authorization'] = `Bearer ${apiKey}`;
     // A server that won't take the longer reply is asked again as before.
@@ -332,7 +368,13 @@ async function _callOpenAIWithTools(apiKey, model, messages, systemPrompt, tools
     // A model that can't use tools gets the request again without them.
     // Through the relay the server may already have done that (it says so
     // with trace_tools_unsupported).
-    const { ok, status, data, toolsDropped, toolsRouted } = await sendWithToolFallback(body, send, { memory: toolSupport, baseUrl, model: selectedModel });
+    let sent = await sendWithToolFallback(body, send, { memory: toolSupport, baseUrl, model: selectedModel });
+    // A server that refuses tool_choice "none" is asked once more without it.
+    if (last && !sent.ok && (sent.status === 400 || sent.status === 422) && body.tool_choice) {
+      delete body.tool_choice;
+      sent = await sendWithToolFallback(body, send, { memory: toolSupport, baseUrl, model: selectedModel });
+    }
+    const { ok, status, data, toolsDropped, toolsRouted } = sent;
     if (!ok) throw new Error(data.error?.message || `AI API error ${status}`);
     if (toolsDropped || data.trace_tools_unsupported) onToolsUnsupported?.({ routed: toolsRouted || !!data.trace_tools_routed });
     // Cut off, a rewrite would be half a note and a tool call half its arguments.
@@ -341,6 +383,9 @@ async function _callOpenAIWithTools(apiKey, model, messages, systemPrompt, tools
 
     const choice = data.choices[0];
     const msg = choice.message;
+    // A server that ignores tool_choice may still ask for a tool on the last
+    // round: its text, if any, is the answer.
+    if (last) return _finalAnswer(msg.content);
     if (!msg.tool_calls || msg.tool_calls.length === 0) {
       return msg.content || '';
     }
@@ -353,7 +398,7 @@ async function _callOpenAIWithTools(apiKey, model, messages, systemPrompt, tools
       currentMessages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
     }
   }
-  throw new Error('Too many tool call rounds');
+  return _finalAnswer(''); // not reached: the last round always answers
 }
 
 // ── Google Gemini ──────────────────────────────────────────────────────────
@@ -396,14 +441,17 @@ async function _callGeminiWithTools(apiKey, model, messages, systemPrompt, tools
     parts.push({ text: typeof msg.content === 'string' ? msg.content : (msg.content || '') });
     return { role: msg.role === 'assistant' ? 'model' : 'user', parts };
   });
+  const startBytes = _bytes(contents);
 
-  const MAX_ROUNDS = 5;
-  for (let round = 0; round < MAX_ROUNDS; round++) {
+  for (let round = 0; round <= TOOL_ROUNDS; round++) {
+    const last = _lastRound(round, contents, startBytes);
     const body = {
-      systemInstruction: { parts: [{ text: systemPrompt }] },
+      // Out of rounds: told to answer in the system prompt (see Claude above).
+      systemInstruction: { parts: [{ text: last ? `${systemPrompt}\n\n${OUT_OF_ROUNDS}` : systemPrompt }] },
       contents,
     };
     if (geminiTools) body.tools = geminiTools;
+    if (last && geminiTools) body.toolConfig = { functionCallingConfig: { mode: 'NONE' } };
     const res = await _post(cb?.relay, url, { 'Content-Type': 'application/json' }, body);
     const data = res.data;
     if (!res.ok) throw new Error(data.error?.message || `Gemini API error ${res.status}`);
@@ -413,6 +461,7 @@ async function _callGeminiWithTools(apiKey, model, messages, systemPrompt, tools
     const parts = candidate?.content?.parts || [];
     const functionCalls = parts.filter(p => p.functionCall);
     const textParts = parts.filter(p => p.text);
+    if (last) return _finalAnswer(textParts.map(p => p.text).join('\n'));
     if (functionCalls.length === 0) {
       return textParts.map(p => p.text).join('\n') || '';
     }
@@ -426,7 +475,7 @@ async function _callGeminiWithTools(apiKey, model, messages, systemPrompt, tools
     }
     contents.push({ role: 'user', parts: responseParts });
   }
-  throw new Error('Too many tool call rounds');
+  return _finalAnswer(''); // not reached: the last round always answers
 }
 
 // ── Tool execution ──────────────────────────────────────────────────────────
