@@ -58,6 +58,8 @@ router.get('/', wrap((req, res) => {
       kind: n.kind,
       updated_at: n.updated_at,
       pinned: !!n.pinned,
+      // Read Only (TraceApps/notetrace#30): the watch ticks its items but adds none.
+      read_only: !!n.read_only,
       reminder_at: n.reminder_at || null,
       reminder_rrule: n.reminder_rrule || null,
       // Enough of a text note to read on a wrist, with the Markdown marks

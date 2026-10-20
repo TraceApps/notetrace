@@ -85,6 +85,8 @@ test('a note is Read Only when made so, and only then', async (t) => {
   assert.equal((await web('alice', 'PATCH', `/api/notes/${n.id}`, { read_only: true })).read_only, true);
   const back = await web('alice', 'GET', `/api/notes/${n.id}`);
   assert.equal(back.read_only, true);
+  // The watch's slim list says so too: it ticks a Read Only list's items but adds none.
+  assert.equal((await web('alice', 'GET', '/api/notes?slim=1&watch=1')).find((x) => x.id === n.id).read_only, true);
   // Its content can still change through the API: Read Only guards against
   // accidents in the app, and an edit made offline before it is never lost.
   assert.equal((await web('alice', 'PATCH', `/api/notes/${n.id}`, { body_md: 'password: changed' })).body_md, 'password: changed');
@@ -291,4 +293,25 @@ test('the note opens for reading: content guarded, ticking and color kept, Edit 
   assert.match(tasks, /if \(target\.read_only\) \{ showError\(\$_\('tasks\.list_read_only'/);
   const en = JSON.parse(read('../src/i18n/en.json')).notes;
   for (const k of ['read_only', 'read_only_edit', 'read_only_editing', 'read_only_done', 'read_only_on', 'read_only_off']) assert.ok(en[k], k);
+});
+
+test('the watch ticks a Read Only list\'s items but adds none, and remembers it offline', () => {
+  const wear = (f) => read(`../android/wear/src/main/java/com/notetrace/app/wear/${f}`);
+  // Both the lists kept on the watch and the ones it opens from Reminders.
+  assert.equal((wear('NoteApi.kt').match(/readOnly = n\.optBoolean\("read_only"\)/g) || []).length, 2);
+  const store = wear('WearStore.kt');
+  assert.match(store, /\.put\("read_only", it\.readOnly\)/);
+  assert.match(store, /readOnly = o\.optBoolean\("read_only"\)/);
+  assert.match(store, /fun addSpokenItem[\s\S]{0,200}noteOf\(noteId\)\?\.readOnly == true\) \{\s*flash\("Read Only"\)\s*return/);
+  assert.match(store, /checklists\.firstOrNull \{ it\.id == noteId \} \?: _state\.value\.reminders\.firstOrNull \{ it\.id == noteId \}/);
+  assert.equal((store.match(/\.put\("read_only", it\.readOnly\)/g) || []).length, 2);
+  const screen = wear('MainActivity.kt');
+  assert.match(screen, /val note = state\.checklists\.firstOrNull \{ it\.id == noteId \} \?: state\.reminders\.firstOrNull \{ it\.id == noteId \}/);
+  assert.match(screen, /if \(note\?\.readOnly == true\) \{[\s\S]{0,240}Message\(title = "Read Only"[\s\S]{0,120}\} else \{\s*item \{ SpeakButton\("Add an item", speak\) \}/);
+  // A list opened from Reminders that isn't kept on the watch opens with its items.
+  assert.match(wear('NoteApi.kt'), /if \(n\.optString\("kind"\) == "checklist"\) items\[n\.getLong\("id"\)\] = itemsOf\(n\)/);
+  assert.match(store, /val \(upcoming, remindItems\) = remindJob\.await\(\)[\s\S]{0,400}items = remindItems \+ items,/);
+  // Ticking and Uncheck All stay.
+  assert.match(screen, /store\.setItemChecked\(noteId, item\.uuid, true\)/);
+  assert.match(screen, /store\.uncheckAll\(noteId\)/);
 });

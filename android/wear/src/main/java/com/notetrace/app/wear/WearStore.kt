@@ -69,12 +69,13 @@ class WearStore(private val ctx: Context) {
                 val remindJob = async { NoteApi.reminders(cfg) }
                 val (lists, items) = listsJob.await()
                 val shop = shopJob.await()
-                val upcoming = remindJob.await()
+                val (upcoming, remindItems) = remindJob.await()
                 _state.value = _state.value.copy(
                     loading = false, offline = false, error = null,
                     checklists = lists, shopping = shop, reminders = upcoming,
-                    // The slim list carries the items, so opening one is instant.
-                    items = items,
+                    // The slim lists carry the items, so opening one is instant,
+                    // also a list opened from Reminders that isn't kept on the watch.
+                    items = remindItems + items,
                 )
             }
             save()
@@ -173,10 +174,18 @@ class WearStore(private val ctx: Context) {
         if (_state.value.flash != null) _state.value = _state.value.copy(flash = null)
     }
 
-    /** Said while looking at a checklist: a new item on it. */
+    /** A note the watch knows: one kept on it, or one opened from Reminders. */
+    fun noteOf(noteId: Long): NoteApi.Note? =
+        _state.value.checklists.firstOrNull { it.id == noteId } ?: _state.value.reminders.firstOrNull { it.id == noteId }
+
+    /** Said while looking at a checklist: a new item on it. Not on a Read Only list. */
     suspend fun addSpokenItem(noteId: Long, text: String) {
         val clean = text.trim()
         if (clean.isBlank()) return
+        if (noteOf(noteId)?.readOnly == true) {
+            flash("Read Only")
+            return
+        }
         flash("Added")
         Pairing.queue(ctx, Pairing.Op.newItem(noteId, clean))
         _state.value = _state.value.copy(pending = Pairing.outbox(ctx).size)
@@ -264,13 +273,14 @@ class WearStore(private val ctx: Context) {
                 s.checklists.forEach {
                     put(JSONObject().put("id", it.id).put("title", it.title).put("kind", it.kind)
                         .put("excerpt", it.excerpt).put("open", it.open).put("done", it.done)
-                        .put("pinned", it.pinned))
+                        .put("pinned", it.pinned).put("read_only", it.readOnly))
                 }
             })
             .put("reminders", JSONArray().apply {
                 s.reminders.forEach {
                     put(JSONObject().put("id", it.id).put("title", it.title).put("kind", it.kind)
-                        .put("excerpt", it.excerpt).put("reminder_at", it.reminderAt).put("repeats", it.repeats))
+                        .put("excerpt", it.excerpt).put("reminder_at", it.reminderAt).put("repeats", it.repeats)
+                        .put("read_only", it.readOnly))
                 }
             })
             .put("shopping", JSONArray().apply {
@@ -299,6 +309,7 @@ class WearStore(private val ctx: Context) {
             o.optLong("id"), o.optString("title"), o.optString("kind").ifBlank { "text" },
             o.optString("excerpt"), o.optInt("open"), o.optInt("done"),
             o.optString("reminder_at"), o.optBoolean("repeats"), o.optBoolean("pinned"),
+            readOnly = o.optBoolean("read_only"),
         )
     }
 

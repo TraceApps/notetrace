@@ -104,7 +104,8 @@ fun WearApp(store: WearStore) {
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    flash + (if (state.offline || state.pending > 0) ", waiting for a connection" else ""),
+                    // A refusal isn't waiting for anything.
+                    flash + (if ((state.offline || state.pending > 0) && flash != "Read Only") ", waiting for a connection" else ""),
                     textAlign = TextAlign.Center,
                     style = MaterialTheme.typography.titleMedium,
                 )
@@ -275,14 +276,20 @@ private fun ChecklistScreen(store: WearStore, noteId: Long) {
     val state by store.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val listState = rememberScalingLazyListState()
-    val note = state.checklists.firstOrNull { it.id == noteId }
+    val note = state.checklists.firstOrNull { it.id == noteId } ?: state.reminders.firstOrNull { it.id == noteId }
     val items = state.items[noteId].orEmpty()
     val speak = rememberSpeech("Say the item") { said -> scope.launch { store.addSpokenItem(noteId, said) } }
 
     ScreenScaffold(scrollState = listState) {
         CrownColumn(listState) {
             item { ListHeader { Text(note?.title ?: "Checklist", maxLines = 2, overflow = TextOverflow.Ellipsis) } }
-            item { SpeakButton("Add an item", speak) }
+            if (note?.readOnly == true) {
+                // Read Only, set on the phone: ticking is using the list, adding
+                // to it is changing it (TraceApps/notetrace#30).
+                item { Message(title = "Read Only", body = "Turn it off on your phone to add items.") }
+            } else {
+                item { SpeakButton("Add an item", speak) }
+            }
             if (items.isEmpty()) {
                 item { Message(title = if (state.loading) "Loading" else "Empty list", body = "") }
             }

@@ -33,6 +33,8 @@ object NoteApi {
         val reminderAt: String = "",
         val repeats: Boolean = false,
         val pinned: Boolean = false,
+        /** Read Only (set on the phone): its items can be ticked, not added to. */
+        val readOnly: Boolean = false,
     ) {
         val isChecklist: Boolean get() = kind == "checklist"
     }
@@ -52,11 +54,7 @@ object NoteApi {
         for (i in 0 until arr.length()) {
             val n = arr.getJSONObject(i)
             val id = n.getLong("id")
-            val raw = n.optJSONArray("items") ?: JSONArray()
-            val list = (0 until raw.length()).map { j ->
-                val it = raw.getJSONObject(j)
-                Item(it.optString("uuid"), it.optString("text"), it.optBoolean("checked"))
-            }
+            val list = itemsOf(n)
             items[id] = list
             val excerpt = n.optString("excerpt")
             val title = n.optString("title").ifBlank {
@@ -73,6 +71,7 @@ object NoteApi {
                 reminderAt = n.optString("reminder_at").takeIf { it.isNotBlank() && it != "null" }.orEmpty(),
                 repeats = n.optString("reminder_rrule").let { it.isNotBlank() && it != "null" },
                 pinned = n.optBoolean("pinned"),
+                readOnly = n.optBoolean("read_only"),
             )
         }
         // Pinned first, as on the phone: on a watch, the top of the list is
@@ -126,12 +125,27 @@ object NoteApi {
         send(cfg, "PATCH", "/api/notes/$noteId/items/$uuid", JSONObject().put("checked", checked))
     }
 
-    /** Notes with a reminder, soonest first. */
-    suspend fun reminders(cfg: Pairing.Config): List<Note> {
+    /** A slim note's checklist items. */
+    private fun itemsOf(n: JSONObject): List<Item> {
+        val raw = n.optJSONArray("items") ?: JSONArray()
+        return (0 until raw.length()).map { j ->
+            val it = raw.getJSONObject(j)
+            Item(it.optString("uuid"), it.optString("text"), it.optBoolean("checked"))
+        }
+    }
+
+    /**
+     * Notes with a reminder, soonest first, and their checklists' items: a list
+     * opened from Reminders may not be one kept on the watch, and would
+     * otherwise open empty.
+     */
+    suspend fun reminders(cfg: Pairing.Config): Pair<List<Note>, Map<Long, List<Item>>> {
         val arr = asArray(get(cfg, "/api/notes?view=reminders&slim=1"), "notes")
-        return (0 until arr.length()).mapNotNull { i ->
+        val items = mutableMapOf<Long, List<Item>>()
+        val notes = (0 until arr.length()).mapNotNull { i ->
             val n = arr.getJSONObject(i)
             val at = n.optString("reminder_at").takeIf { it.isNotBlank() && it != "null" } ?: return@mapNotNull null
+            if (n.optString("kind") == "checklist") items[n.getLong("id")] = itemsOf(n)
             val excerpt = n.optString("excerpt")
             Note(
                 id = n.getLong("id"),
@@ -144,8 +158,11 @@ object NoteApi {
                 done = 0,
                 reminderAt = at,
                 repeats = n.optString("reminder_rrule").let { it.isNotBlank() && it != "null" },
+                // A list opened from Reminders may not be one kept on the watch.
+                readOnly = n.optBoolean("read_only"),
             )
         }
+        return notes to items
     }
 
     /** The CookTrace shopping list, as the phone shows it. Empty when CookTrace isn't linked. */
