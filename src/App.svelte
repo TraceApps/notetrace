@@ -198,6 +198,7 @@
   // Wizard, auth pages) until the user navigates to them. Cuts the
   // start-page bundle by roughly 30%.
   import { wrap } from 'svelte-spa-router/wrap';
+  import { ssoConnectResult } from './lib/server-signin.js';
   const Settings       = wrap({ asyncComponent: () => import('./routes/Settings.svelte') });
   const Wizard         = wrap({ asyncComponent: () => import('./routes/Wizard.svelte') });
   const Profile        = wrap({ asyncComponent: () => import('./routes/Profile.svelte') });
@@ -498,10 +499,23 @@
               let idTokenHint = params.get('id_token_hint');
               let providerId  = params.get('provider_id');
               const code = params.get('code');
-              if (code && !errMsg) {
+              // Signed in from Settings > Server Connection, with the phone
+              // still in local mode: the token goes back to that screen, which
+              // moves the phone's notes over as a password sign-in does (#36).
+              // That sign-in takes only the single-use code it asked for, never
+              // a bare token another app could hand over (lib/server-signin.js).
+              const { pendingSsoConnect, forgetSsoConnect, ssoConnectResult, ssoCallbackAction } = await import('./lib/server-signin.js');
+              const { redeemHandoff, challengeSent } = await import('./lib/oidc-app-handoff.js');
+              const connecting = getNativeMode() === 'local' ? pendingSsoConnect() : null;
+              const action = ssoCallbackAction({ code, token, error: errMsg, connecting, challengeSent: challengeSent() });
+              if (connecting && action.do !== 'none') forgetSsoConnect();
+              if (action.do === 'refuse') {
+                import('./stores/toast.js').then(({ showError }) => showError(getStore(_)('server_signin.token_refused')));
+                return;
+              }
+              if (action.do === 'redeem') {
                 try {
-                  const { redeemHandoff } = await import('./lib/oidc-app-handoff.js');
-                  const data = await redeemHandoff(code);
+                  const data = await redeemHandoff(code, action.server);
                   token = data.token;
                   idTokenHint = data.id_token_hint || null;
                   providerId = data.provider_id != null ? String(data.provider_id) : null;
@@ -510,7 +524,12 @@
                   return;
                 }
               }
-              if (errMsg) {
+              if (connecting && token && !errMsg) {
+                ssoConnectResult.set({ url: connecting.url, token, idTokenHint, providerId });
+                // Once the first screen is chosen (a cold start from this link
+                // routes there itself, after the setup check below).
+                if (_setupRouted) await (await import('svelte-spa-router')).push('/settings/serverconn');
+              } else if (errMsg) {
                 import('./stores/toast.js').then(({ showError }) => showError(decodeURIComponent(errMsg)));
               } else if (linked) {
                 import('./stores/toast.js').then(({ showSuccess }) => showSuccess('Linked'));
@@ -580,6 +599,9 @@
       window.location.hash = '#/wizard';
     }
     _setupRouted = true;
+    // Opened by a Settings SSO sign-in's link (above): Server Connection
+    // finishes it, whatever first screen was chosen meanwhile.
+    if (isNative && getStore(ssoConnectResult)) push('/settings/serverconn');
     // Back in view during setup: the first account may have been made in
     // another tab or on another device meanwhile (see lib/setup-gate.js).
     if (!isNative) {

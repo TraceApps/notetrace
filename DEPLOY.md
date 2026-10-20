@@ -107,6 +107,13 @@ Caddy / Nginx / Traefik on 443.
 If hosting at a subpath (e.g. `https://example.com/notetrace/`), set
 `BASE_URL=/notetrace` in the environment.
 
+Behind a sign-in proxy (an Authentik or Authelia outpost, VoidAuth, Cloudflare
+Access), let `/api/*` through to NoteTrace without it. The Android and
+Wear apps can't sign in to the proxy; NoteTrace signs people in itself,
+with SSO when OIDC is set up (its callback is under `/api/auth/oidc/`).
+If the proxy answers the app instead, the app says that something other
+than NoteTrace answered with a web page.
+
 ## Updating
 
 ```bash

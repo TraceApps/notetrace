@@ -27,6 +27,10 @@
   import { portal } from '../../lib/portal.js';
   import { relativeTime } from '../../lib/relative-time.js';
   import { logout } from '../../stores/auth.js';
+  import {
+    checkHealth, passwordSignIn, accountFor, ssoSignInUrl, createSignInOptions,
+    rememberSsoConnect, forgetSsoConnect, ssoConnectResult, keepSsoLogoutHint,
+  } from '../../lib/server-signin.js';
 
   // Local form state.
   let mode = isNative ? (getNativeMode() || 'local') : 'web';
@@ -37,6 +41,16 @@
   let showPw = false;
   let busy = false;
   let lastSyncDisplay = '';
+
+  // The server's sign-in options, read as soon as its address is in
+  // (#36): SSO buttons, and the password fields only when it takes one.
+  // Typing clears them; a half-typed host isn't an error (lib/server-signin.js).
+  //   optionsState: '' (no address yet) | 'checking' | 'ok' | 'failed'
+  const signInOptions = createSignInOptions();
+  onDestroy(() => signInOptions.stop());
+  let providers = [], passwordLoginEnabled = true, optionsState = '', optionsError = '', optionsFor = '';
+  $: ({ state: optionsState, providers, passwordLoginEnabled, error: optionsError, url: optionsFor } = $signInOptions);
+  let _pendingLogoutHint = null;   // SSO: lets Log Out end the IdP session too
 
   // Merge dialog state — mirrors NT's flow.
   //   null            — no dialog
@@ -68,54 +82,102 @@
     : '';
 
   // ── Connect flow ─────────────────────────────────────────────────────
+  const _cleanUrl = () => serverUrl.trim().replace(/\/$/, '');
+
+  // The server is there, set up, and is NoteTrace (not a sign-in proxy's
+  // page). False when it said it needs setting up (already said).
+  async function _serverReady(url) {
+    const { CapacitorHttp } = await import('@capacitor/core');
+    const health = await CapacitorHttp.get({ url: `${url}/api/health` });
+    if (healthNeedsSetup(health)) { showError($_('native_setup_ct.toast.server_needs_setup')); return false; }
+    checkHealth(health); // a sign-in proxy's web page isn't the server (#36)
+    return true;
+  }
+
   async function connect() {
     if (!serverUrl.trim()) { showError($_('settings_server_conn.toast.enter_url')); return; }
     if (!username.trim() || !password.trim()) { showError($_('settings_server_conn.toast.enter_credentials')); return; }
-    const url = serverUrl.trim().replace(/\/$/, '');
+    const url = _cleanUrl();
     busy = true;
     try {
-      const { CapacitorHttp } = await import('@capacitor/core');
-      const health = await CapacitorHttp.get({ url: `${url}/api/health` });
-      if (healthNeedsSetup(health)) { showError($_('native_setup_ct.toast.server_needs_setup')); return; }
-      if (health.status < 200 || health.status >= 300) throw new Error('Server not reachable');
-
-      const login = await CapacitorHttp.post({
-        url: `${url}/api/auth/login`,
-        headers: { 'Content-Type': 'application/json' },
-        data: { username: username.trim(), password },
-      });
-      const body = typeof login.data === 'string' ? JSON.parse(login.data) : login.data;
-      if (login.status < 200 || login.status >= 300) throw new Error(body?.error || 'Login failed');
-
-      _pendingServerUrl = url;
-      _pendingUser = body.user || null;
-      // The phone's data came from this very account (Disconnect, then
-      // Connect again): what it already has isn't sent again.
-      try {
-        const { cameFromThisAccount } = await import('../../lib/local-account.js');
-        _sameAccount = await cameFromThisAccount(url, _pendingUser);
-      } catch { _sameAccount = false; }
-      // "Is This the Same Server?" closed without an answer: nothing goes
-      // up and nothing changes; connecting again asks again.
-      if (_sameAccount == null) { await cancelMerge(); return; }
-      if (body.token) setAuthToken(body.token);
-      await forgetServerCookies(url);
-
-      // Count local data so the merge dialog can show what's about to
-      // move. On a fresh install this is all zeros and we skip the
-      // dialog entirely.
-      const { countLocalData } = await import('../../lib/migrate.js');
-      localCounts = await countLocalData();
-
-      if (localCounts.total > 0) {
-        mergeStep = 'ask-settings';
-      } else {
-        _finalizeConnect();
-      }
+      if (!(await _serverReady(url))) return;
+      const body = await passwordSignIn(url, username.trim(), password);
+      _pendingLogoutHint = null;
+      forgetSsoConnect(); // an SSO sign-in left open in the browser is over
+      await _afterSignIn(url, body.token, body.user || null);
     } catch (e) {
       showError(explainConnectError(e, url));
     } finally {
       busy = false;
+    }
+  }
+
+  // SSO: the sign-in page opens in the browser; the deep link brings the
+  // token back here (App.svelte, lib/server-signin.js), and the phone's
+  // notes move over as they do after a password sign-in.
+  async function connectWithSso(providerId) {
+    // One sign-in at a time: a second tap would open another browser and
+    // replace the code's secret, so the first one's hand-off would fail.
+    if (busy) return;
+    const url = _cleanUrl();
+    busy = true;
+    try {
+      if (!(await _serverReady(url))) return;
+      rememberSsoConnect(url);
+      const { Browser } = await import('@capacitor/browser');
+      await Browser.open({ url: await ssoSignInUrl(url, providerId), presentationStyle: 'popover' });
+    } catch (e) {
+      forgetSsoConnect();
+      showError(explainConnectError(e, url));
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function _finishSso({ url, token, idTokenHint, providerId }) {
+    busy = true;
+    try {
+      const user = await accountFor(url, token);
+      _pendingLogoutHint = idTokenHint && providerId ? { providerId, idTokenHint } : null;
+      await _afterSignIn(url, token, user);
+    } catch (e) {
+      showError(explainConnectError(e, url));
+    } finally {
+      busy = false;
+    }
+  }
+  onDestroy(ssoConnectResult.subscribe((r) => {
+    if (!r) return;
+    ssoConnectResult.set(null);
+    _finishSso(r);
+  }));
+
+  // Signed in, by password or SSO: move the phone's data over the same way.
+  async function _afterSignIn(url, token, user) {
+    _pendingServerUrl = url;
+    _pendingUser = user;
+    // The phone's data came from this very account (Disconnect, then
+    // Connect again): what it already has isn't sent again.
+    try {
+      const { cameFromThisAccount } = await import('../../lib/local-account.js');
+      _sameAccount = await cameFromThisAccount(url, _pendingUser);
+    } catch { _sameAccount = false; }
+    // "Is This the Same Server?" closed without an answer: nothing goes
+    // up and nothing changes; connecting again asks again.
+    if (_sameAccount == null) { await cancelMerge(); return; }
+    if (token) setAuthToken(token);
+    await forgetServerCookies(url);
+
+    // Count local data so the merge dialog can show what's about to
+    // move. On a fresh install this is all zeros and we skip the
+    // dialog entirely.
+    const { countLocalData } = await import('../../lib/migrate.js');
+    localCounts = await countLocalData();
+
+    if (localCounts.total > 0) {
+      mergeStep = 'ask-settings';
+    } else {
+      _finalizeConnect();
     }
   }
 
@@ -196,6 +258,10 @@
         localStorage.setItem('wl:userId', String(_pendingUser.id));
       } catch { /* storage unavailable */ }
     }
+    // Signed in by SSO: Log Out can end the IdP session too (as App.svelte
+    // keeps it for a sign-in from the setup screen). By password: no hint,
+    // so one from an earlier SSO never goes to this server.
+    keepSsoLogoutHint(_pendingLogoutHint);
     setServerUrl(_pendingServerUrl);
     setNativeMode('server');
     mode = 'server';
@@ -212,6 +278,7 @@
     const pending = _pendingServerUrl;
     mergeStep = null;
     _pendingServerUrl = '';
+    _pendingLogoutHint = null;
     localCounts = null;
     migrationSummary = null;
     setAuthToken(null);
@@ -281,6 +348,7 @@
     } catch { await forgetServerCookies(); }
     setServerUrl(null);
     setAuthToken(null);
+    keepSsoLogoutHint(null); // this server's SSO session isn't the next one's
     setNativeMode('local');
     showSuccess($_('settings_server_conn.toast.disconnected_reloading'));
     setTimeout(() => window.location.reload(), 300);
@@ -341,8 +409,40 @@
           <input class="input" type="url"
             placeholder="https://notetrace.example.com"
             bind:value={serverUrl}
+            on:input={() => signInOptions.typed(serverUrl)}
+            on:blur={() => signInOptions.left(serverUrl)}
             autocapitalize="off" autocorrect="off" />
         </label>
+
+        <!-- The server's sign-in options (#36): SSO first, and a failure to
+             read them said with Retry, never a quietly password-only form. -->
+        {#if optionsState === 'checking'}
+          <div class="options-note">{$_('server_signin.checking')}</div>
+        {:else if optionsState === 'failed'}
+          <div class="options-note failed" role="alert">
+            <span>{optionsError}</span>
+            <button class="btn btn-secondary small" type="button" on:click={() => signInOptions.retry()} disabled={busy}>{$_('server_signin.retry')}</button>
+          </div>
+        {/if}
+        {#if providers.length}
+          <div class="sso-list">
+            {#each providers as p (p.id)}
+              <button class="btn btn-secondary sso-btn" type="button" on:click={() => connectWithSso(p.id)} disabled={busy}>
+                {#if p.logo_url}
+                  <img src={/^https?:/i.test(p.logo_url) ? p.logo_url : optionsFor + p.logo_url} alt="" class="sso-logo" on:error={(e) => e.currentTarget.style.display = 'none'} />
+                {:else}
+                  <span class="material-symbols-rounded">login</span>
+                {/if}
+                <span>{$_('login.sso_sign_in_with', { values: { provider: p.display_name || p.name || 'SSO' } })}</span>
+              </button>
+            {/each}
+          </div>
+          {#if passwordLoginEnabled}
+            <div class="sso-divider"><span>{$_('login.sso_or')}</span></div>
+          {/if}
+        {/if}
+
+        {#if passwordLoginEnabled}
         <label class="form-group">
           <span class="form-label">{$_('settings_server_conn.username')}</span>
           <input class="input" type="text"
@@ -368,6 +468,7 @@
             {busy ? 'Connecting…' : 'Connect to Server'}
           </button>
         </div>
+        {/if}
       </div>
     {/if}
   </div>
@@ -511,6 +612,18 @@
   .pw-toggle .material-symbols-rounded { font-size: 18px; }
   .pw-wrap .input { padding-right: 40px; }
   .form-actions { display: flex; justify-content: flex-end; }
+  .options-note { font-size: 13px; color: var(--text-3); }
+  .options-note.failed {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+    padding: 10px 12px; border-radius: 8px; color: var(--text-2);
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+  }
+  .sso-list { display: flex; flex-direction: column; gap: 8px; }
+  .sso-btn { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; }
+  .sso-btn .material-symbols-rounded { font-size: 18px; }
+  .sso-logo { width: 18px; height: 18px; object-fit: contain; }
+  .sso-divider { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-3); }
+  .sso-divider::before, .sso-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
   /* ── Merge dialog ──────────────────────────────────────────────── */
   .merge-overlay {

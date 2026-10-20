@@ -112,5 +112,5 @@ test('the connect screens tell a fresh server from one that is down', () => {
   assert.equal(healthNeedsSetup({ status: 200, data: { ok: true } }), false);
   assert.equal(healthNeedsSetup({ status: 502, data: '<html>Bad Gateway</html>' }), false);
   assert.equal(healthNeedsSetup(undefined), false);
-  for (const f of CONNECT_FILES) assert.match(read(f), /if \(healthNeedsSetup\([^\n]*\)\) \{ showError\(\$_\('[a-z_.]+'\)\); return; \}/, f);
+  for (const f of CONNECT_FILES) assert.match(read(f), /if \(healthNeedsSetup\([^\n]*\)\) \{ showError\(\$_\('[a-z_.]+'\)\); return(?: false)?; \}/, f);
 });

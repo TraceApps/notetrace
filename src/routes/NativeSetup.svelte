@@ -3,6 +3,7 @@
   import { setNativeMode, setServerUrl, setAuthToken, forgetServerCookies, resolveAssetUrl, iconUrl, explainConnectError, healthNeedsSetup } from '../lib/platform.js';
   import { showError, showSuccess } from '../stores/toast.js';
   import { DB } from '../lib/db.js';
+  import { checkHealth, discoverSignIn, passwordSignIn, ssoSignInUrl } from '../lib/server-signin.js';
 
   // State machine:
   //   'choose'      → pick local vs server
@@ -21,6 +22,7 @@
   let validatedUrl = '';        // set after successful step-1 validation
   let providers = [];            // OIDC providers array from /api/auth/status
   let passwordLoginEnabled = true;
+  let optionsError = '';         // why the sign-in options couldn't be read (shown with Retry)
   let username = '';
   let password = '';
   let showPw = false;
@@ -52,33 +54,35 @@
       const { CapacitorHttp } = await import('@capacitor/core');
       const healthRes = await CapacitorHttp.get({ url: `${url}/api/health` });
       if (healthNeedsSetup(healthRes)) { showError($_('native_setup_ct.toast.server_needs_setup')); return; }
-      if (healthRes.status < 200 || healthRes.status >= 300) {
-        throw new Error('Server not reachable');
-      }
-      // Discover auth methods. /api/auth/status returns { oidc: { providers, enable_email_password_login } }.
-      // If the endpoint fails or returns nothing OIDC-shaped, fall back to
-      // password-only rendering (safe default; matches pre-fix behaviour).
-      let discoveredProviders = [];
-      let discoveredPasswordEnabled = true;
-      try {
-        const statusRes = await CapacitorHttp.get({ url: `${url}/api/auth/status` });
-        if (statusRes.status >= 200 && statusRes.status < 300) {
-          const data = typeof statusRes.data === 'string' ? JSON.parse(statusRes.data) : statusRes.data;
-          if (data?.oidc) {
-            discoveredProviders = Array.isArray(data.oidc.providers) ? data.oidc.providers : [];
-            discoveredPasswordEnabled = data.oidc.enable_email_password_login !== false;
-          }
-        }
-      } catch { /* leave defaults — safe fallback */ }
+      checkHealth(healthRes); // a sign-in proxy's web page isn't the server (#36)
       validatedUrl = url;
-      providers = discoveredProviders;
-      passwordLoginEnabled = discoveredPasswordEnabled;
+      await loadSignInOptions();
       step = 'server-auth';
     } catch (e) {
       showError(explainConnectError(e, url));
     } finally {
       connecting = false;
     }
+  }
+
+  // Which ways the server offers to sign in (/api/auth/status). When they
+  // can't be read, the sign-in step says so with Retry, and keeps the
+  // password form: the server may well take one (#36).
+  async function loadSignInOptions() {
+    try {
+      ({ providers, passwordLoginEnabled } = await discoverSignIn(validatedUrl));
+      optionsError = '';
+    } catch (e) {
+      providers = [];
+      passwordLoginEnabled = true;
+      console.warn('[setup] sign-in options:', e?.status || e?.message);
+      optionsError = e?.webPage ? e.message : $_('server_signin.options_failed');
+    }
+  }
+
+  async function retrySignInOptions() {
+    connecting = true;
+    try { await loadSignInOptions(); } finally { connecting = false; }
   }
 
   // Step 2 (password branch): traditional username+password sign-in. Unchanged
@@ -88,14 +92,7 @@
     if (!username.trim() || !password.trim()) { showError($_('native_setup_ct.toast.enter_credentials')); return; }
     connecting = true;
     try {
-      const { CapacitorHttp } = await import('@capacitor/core');
-      const loginRes = await CapacitorHttp.post({
-        url: `${validatedUrl}/api/auth/login`,
-        headers: { 'Content-Type': 'application/json' },
-        data: { username: username.trim(), password },
-      });
-      const loginData = typeof loginRes.data === 'string' ? JSON.parse(loginRes.data) : loginRes.data;
-      if (loginRes.status < 200 || loginRes.status >= 300) throw new Error(loginData.error || 'Login failed');
+      const loginData = await passwordSignIn(validatedUrl, username.trim(), password);
 
       setServerUrl(validatedUrl);
       setAuthToken(loginData.token);
@@ -120,23 +117,24 @@
   // token" state and next launch lands on Login.svelte which correctly
   // renders the OIDC button now that getServerUrl() is populated.
   async function loginWithOidc(providerId) {
-    await forgetServerCookies(validatedUrl);
-    setServerUrl(validatedUrl);
-    setNativeMode('server');
-    DB.setSetting('setupComplete', true);
+    // One sign-in at a time: a second tap would open another browser and
+    // replace the code's secret, so the first one's hand-off would fail.
+    if (connecting) return;
+    connecting = true;
     try {
-      const ret = encodeURIComponent('#/');
+      await forgetServerCookies(validatedUrl);
+      setServerUrl(validatedUrl);
+      setNativeMode('server');
+      DB.setSetting('setupComplete', true);
       const { Browser } = await import('@capacitor/browser');
-      const { appChallengeParam } = await import('../lib/oidc-app-handoff.js');
-      await Browser.open({
-        url: `${validatedUrl}/api/auth/oidc/login/${providerId}?mobile=1&return=${ret}${await appChallengeParam()}`,
-        presentationStyle: 'popover',
-      });
+      await Browser.open({ url: await ssoSignInUrl(validatedUrl, providerId), presentationStyle: 'popover' });
       // Deep-link callback (notetrace://oidc-callback?token=…) handled by
       // App.svelte's appUrlOpen listener — it sets the token, calls
       // loadAuthState, redirects to '#/', and the main app renders.
     } catch (e) {
       showError($_('native_setup_ct.toast.cant_open_signin'));
+    } finally {
+      connecting = false;
     }
   }
 
@@ -146,6 +144,7 @@
     validatedUrl = '';
     providers = [];
     passwordLoginEnabled = true;
+    optionsError = '';
     username = '';
     password = '';
   }
@@ -155,6 +154,7 @@
     validatedUrl = '';
     providers = [];
     passwordLoginEnabled = true;
+    optionsError = '';
     username = '';
     password = '';
   }
@@ -224,6 +224,18 @@
           <span class="material-symbols-rounded server-icon">cloud_done</span>
           <span class="server-url">{validatedUrl}</span>
         </p>
+
+        <!-- The sign-in options couldn't be read: said, with Retry, instead
+             of quietly showing a password form that may not be the way in (#36). -->
+        {#if optionsError}
+          <div class="no-auth-warning" role="alert">
+            <span class="material-symbols-rounded">warning</span>
+            <div class="options-error">
+              <div>{optionsError}</div>
+              <button class="btn btn-secondary options-retry" on:click={retrySignInOptions} disabled={connecting}>{$_('server_signin.retry')}</button>
+            </div>
+          </div>
+        {/if}
 
         <!-- OIDC providers first — for OIDC-only servers this is the only
              option; for mixed servers it's the recommended flow anyway. -->
@@ -477,6 +489,8 @@
     line-height: 1.5;
     color: var(--text-2);
   }
+  .options-error { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+  .options-retry { height: 32px; padding: 0 14px; font-size: 13px; }
   .no-auth-warning .material-symbols-rounded {
     font-size: 20px;
     color: #f59e0b;
