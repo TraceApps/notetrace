@@ -737,7 +737,7 @@
   // editor or dialog is open, where the shortcut would pull focus away.
   async function _searchShortcut(e) {
     if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'k') return;
-    if (document.querySelector('.editor-backdrop, [role="dialog"][aria-modal="true"]')) return;
+    if (document.querySelector('.editor-backdrop, dialog[open], [role="dialog"][aria-modal="true"]')) return;
     e.preventDefault();
     const onNotes = $location === '/' || /^\/(notes|shared|archive|trash|reminders|label\/)/.test($location);
     if (!onNotes) { await push('/'); await new Promise(r => setTimeout(r, 60)); }

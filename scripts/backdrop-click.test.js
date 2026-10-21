@@ -75,7 +75,7 @@ test('it follows the latest close action and lets go when removed', () => {
 
 test('the note editor and every popup close only on a deliberate backdrop click', () => {
   const editor = read('../src/components/notes/NoteEditor.svelte');
-  assert.match(editor, /class="editor-backdrop" class:inline use:backdropClick=\{\(\) => \{ if \(!inline\) close\(\); \}\}/);
+  assert.match(editor, /class="editor-backdrop" class:inline[^\n]*use:backdropClick=\{\(\) => \{ if \(!inline\) close\(\); \}\}/);
   assert.doesNotMatch(editor, /class="editor-backdrop"[^\n]*on:click/);
   const pop = read('../src/components/notes/Popover.svelte');
   assert.match(pop, /class="pop-backdrop" class:narrow use:backdropClick=\{closeOutside\} use:closeOnBack=\{close\}/);

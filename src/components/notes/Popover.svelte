@@ -10,6 +10,7 @@
   import { fade, fly } from 'svelte/transition';
   import { portal } from '../../lib/portal.js';
   import { dialogFocus } from '../../lib/dialog-focus.js';
+  import { overlayLayer, isTopOverlay } from '../../lib/overlay-layer.js';
   import { backdropClick } from '../../lib/backdrop-click.js';
 
   export let open = false;
@@ -28,6 +29,7 @@
 
   const dispatch = createEventDispatcher();
   let panel;
+  let backdrop;
   let style = '';
   let narrow = false;
 
@@ -104,7 +106,7 @@
   }
   $: observeSize(panel);
 
-  function onKey(e) { if (open && e.key === 'Escape') { e.stopPropagation(); close(); } }
+  function onKey(e) { if (open && e.key === 'Escape' && isTopOverlay(backdrop)) { e.stopPropagation(); close(); } }
   // A keyboard opening or closing moves the popover with it.
   let _vvFrame = 0;
   function onViewport() {
@@ -127,7 +129,7 @@
 </script>
 
 {#if open}
-  <div use:portal class="pop-backdrop" class:narrow use:backdropClick={closeOutside} use:closeOnBack={close} transition:fade={{ duration: 120 }}>
+  <div use:portal class="pop-backdrop" class:narrow use:backdropClick={closeOutside} use:closeOnBack={close} use:overlayLayer bind:this={backdrop} transition:fade={{ duration: 120 }}>
     <div class="pop-panel" class:sheet={narrow} bind:this={panel} {style}
       role="dialog" aria-modal="true" aria-label={label || undefined} tabindex="-1" use:dialogFocus
       in:fly={{ y: narrow ? 40 : 6, duration: 160 }}>

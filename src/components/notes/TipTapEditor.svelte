@@ -39,6 +39,7 @@
   /** Checkboxes in the text can be ticked while it can't be edited (a Read Only note), not on a public page. */
   export let checkable = false;
   export let showToolbar = true;
+  export let showLockedToolbar = false;
   /** Titles offered after typing [[ (other notes the user can see). */
   export let linkTitles = [];
   /** Note-level slash commands the parent handles: 'checklist' | 'image' | 'file' | 'voice' | 'reminder'. */
@@ -292,7 +293,7 @@
   /** The formatting tools, for a toolbar outside this component (the phone editor bar). */
   export function formatTools() { return tools.map(({ key, icon, label, inTable, notInTable }) => ({ key, icon, label, inTable, notInTable })); }
   export function format(key) { const t = tools.find(x => x.key === key); if (t) useTool(t); }
-  function useTool(t) { if (t.action) t.action(); else run(t.fn); }
+  function useTool(t) { if (!editable) return; if (t.action) t.action(); else run(t.fn); }
 
   function run(fn) {
     if (!editor) return;
@@ -387,10 +388,10 @@
   }
 </script>
 
-{#if showToolbar && editable}
+{#if showToolbar && (editable || showLockedToolbar)}
   <div class="fmt-bar" bind:this={fmtBarEl} role="toolbar" aria-label={$_('notes.formatting')}>
     {#each tools.filter(t => !t.phone && toolShown(t, active.table)) as t (t.key)}
-      <button type="button" class="fmt-btn" class:on={active[t.key]}
+      <button type="button" class="fmt-btn" class:on={active[t.key]} disabled={!editable}
         title={$_(t.label)} aria-label={$_(t.label)} aria-pressed={!!active[t.key]}
         on:mousedown|preventDefault
         on:click={() => useTool(t)}>
@@ -445,6 +446,7 @@
   }
   .fmt-btn .material-symbols-rounded { font-size: 20px; }
   .fmt-btn:hover { background: color-mix(in srgb, var(--text-1) 8%, transparent); color: var(--text-1); }
+  .fmt-btn:disabled { opacity: 0.45; cursor: not-allowed; }
   .fmt-btn.on { background: var(--accent-dim); color: var(--accent); }
 
   .sel-bubble {

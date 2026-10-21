@@ -6,6 +6,7 @@
   import { _ } from 'svelte-i18n';
   import { portal } from '../../lib/portal.js';
   import { dialogFocus } from '../../lib/dialog-focus.js';
+  import { overlayLayer } from '../../lib/overlay-layer.js';
 
   export let open   = false;
   export let title  = '';
@@ -35,6 +36,7 @@
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <!-- svelte-ignore a11y-no-static-element-interactions -->
   <div use:portal class="sheet-backdrop" on:click={onBackdropClick} use:closeOnBack={close}
+    use:overlayLayer
     in:fade={{ duration: 200 }} out:fade={{ duration: 160 }}>
     <div
       class="sheet-panel"

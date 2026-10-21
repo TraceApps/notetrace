@@ -124,6 +124,7 @@ input[type="number"]::-webkit-inner-spin-button {
 
 /* Shared page header — sticky, consistent padding and title style */
 .page-header {
+  border-radius: var(--radius-lg);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -179,8 +180,8 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 .page-header.banner-gradient h1 {
   background: none;
-  -webkit-text-fill-color: #fff;
-  color: #fff;
+  -webkit-text-fill-color: var(--accent-text);
+  color: var(--accent-text);
 }
 
 /* Animated variant — same geometry + base look as Gradient. The
@@ -210,8 +211,8 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 .page-header.banner-animated h1 {
   background: none;
-  -webkit-text-fill-color: #fff;
-  color: #fff;
+  -webkit-text-fill-color: var(--accent-text);
+  color: var(--accent-text);
 }
 .page-header.banner-animated > * {
   position: relative;
@@ -294,7 +295,7 @@ html.banner-animation-aurora .page-header.banner-animated::after {
 .page-header.banner-gradient .btn-icon,
 .page-header.banner-animated .btn-icon {
   background: rgba(255, 255, 255, 0.14);
-  color: #fff;
+  color: var(--accent-text);
 }
 .page-header.banner-gradient .btn-icon:hover,
 .page-header.banner-animated .btn-icon:hover {
@@ -302,7 +303,7 @@ html.banner-animation-aurora .page-header.banner-animated::after {
 }
 .page-header.banner-gradient .btn-icon .material-symbols-rounded,
 .page-header.banner-animated .btn-icon .material-symbols-rounded {
-  color: #fff;
+  color: var(--accent-text);
 }
 
 /* Page shell — used by all route pages.

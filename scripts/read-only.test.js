@@ -269,7 +269,10 @@ test('the note opens for reading: content guarded, ticking and color kept, Edit 
   // Turned on, what's typed is saved first.
   assert.match(ed, /if \(next\) await flushAll\(\);\s*readOnlyNote = next;/);
   assert.match(ed, /checkable=\{!baseLocked\}/);
-  assert.equal((ed.match(/\{#if !baseLocked( && !tightBar)?\}\s*<button class="(icon-btn|sheet-item)"[^\n]*openColor/g) || []).length, 4, 'color stays on every bar');
+  assert.equal((ed.match(/\{#if !baseLocked\}\s*<button class="icon-btn"[^\n]*openColor/g) || []).length, 2, 'color stays on the compact and full editor bars');
+  assert.match(ed, /!baseLocked \? \[\{ key: 'color',[^\n]*run: openColor/, 'the responsive reader keeps color available on Read Only notes');
+  assert.match(ed, /\{#each readerVisible as action \(action\.key\)\}/);
+  assert.match(ed, /\{#each readerOverflow as action \(action\.key\)\}/);
   assert.match(ed, /role="menuitemcheckbox" aria-checked=\{readOnlyNote\} on:click=\{\(\) => \{ moreOpen = false; toggleReadOnly\(\); \}\}/);
   const cl = read('../src/components/notes/ChecklistEditor.svelte');
   assert.match(cl, /function toggle\(item\) \{\s*if \(!checkable\) return;/);

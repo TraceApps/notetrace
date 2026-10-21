@@ -173,7 +173,7 @@
   .shopping-page .header-actions { display: flex; align-items: center; gap: 4px; margin-left: auto; }
   .shopping-page .header-btn { border-radius: 12px; color: var(--text-2); display: flex; align-items: center; justify-content: center; }
   .shopping-page .header-btn:hover { background: color-mix(in srgb, var(--text-1) 10%, transparent); color: var(--text-1); }
-  .page-header.banner-gradient .header-btn, .page-header.banner-animated .header-btn { color: rgba(255, 255, 255, 0.92); }
+  .page-header.banner-gradient .header-btn, .page-header.banner-animated .header-btn { color: var(--accent-text); }
   .spin { animation: spin 0.9s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
