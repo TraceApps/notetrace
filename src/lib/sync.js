@@ -573,7 +573,7 @@ async function pullChanges({ token = getAuthToken(), signal = null, gen = accoun
   // keys=1: rows this phone made come back with the key they were sent
   // with, so one whose push answer was lost is matched to its row here.
   // ro=1: this app knows Read Only, so notes come with read_only (older apps don't ask).
-  const res = await fetch(apiUrl(`/api/sync/pull?since=${encodeURIComponent(since)}&keys=1&ro=1`), {
+  const res = await fetch(apiUrl(`/api/sync/pull?since=${encodeURIComponent(since)}&keys=1&ro=1&capture=1`), {
     method: 'GET',
     headers: _headers(token),
     signal: _deadline(signal),

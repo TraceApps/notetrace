@@ -23,12 +23,14 @@ const TOKEN_BYTES = 32;  // 256-bit secret
  * is a bug the wiring test catches on load.
  */
 export const SCOPE_DESCRIPTIONS = {
+  'capture:write': 'Capture: add Markdown notes and tasks from linked apps. Requires CAPTURE_ENABLED=1. Does not grant access to existing notes.',
   'mcp:read':    'MCP: read notes, checklists, and reminders.',
   'mcp:write':   'MCP: create and edit notes, add and check off checklist items, set reminders and labels. Requires MCP_WRITE_ENABLED=1 on the server.',
   'mcp:destroy': 'MCP: move notes to the trash. Requires MCP_DESTROY_ENABLED=1 AND every call to include confirm=true.',
 };
 
 export const KNOWN_SCOPES = new Set([
+  'capture:write',
   // mcp:read unlocks the Model Context Protocol read tools, exposed
   // under /api/mcp when MCP_ENABLED=1. Lets a user's own agent inspect
   // their notes through the MCP standard interface.

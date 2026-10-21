@@ -107,6 +107,7 @@ async function _hydrate(rows) {
     labels: labelMap.get(r.id) || [],
     items: itemMap.get(r.id) || [],
     attachments: fileMap.get(r.id) || [],
+    source_json: r.source_json || null,
     share_role: r.share_role || 'owner',
     share_owner: r.share_owner || null,
     share_count: Number(r.share_count) || 0,
@@ -653,6 +654,7 @@ export const NotesNative = {
          raw.pinned && !raw.archived && !raw.trashed ? 1 : 0, raw.archived ? 1 : 0, kind === 'checklist' && raw.in_tasks ? 1 : 0, raw.read_only ? 1 : 0, raw.trashed ? ts : null,
          reminderAt, reminderAt && REPEATS.includes(raw.reminder_rrule) ? raw.reminder_rrule : null,
          reminderAt ? (raw.reminder_tz || null) : null, created, updated]);
+      if (typeof raw.source_json === 'string') await _run('UPDATE notes SET source_json = ? WHERE id = ?', [raw.source_json.slice(0, 120000), id]);
       for (let i = 0; i < items.length; i++) {
         await _upsertItem(id, { text: items[i].text, checked: !!items[i].checked, position: i + 1 }, updated);
       }

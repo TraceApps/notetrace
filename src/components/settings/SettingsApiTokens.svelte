@@ -2,7 +2,7 @@
   /**
    * SettingsApiTokens.svelte
    *
-   * Admin-only Settings section for personal access token management.
+   * Personal access tokens. Ordinary users can manage capture-only tokens.
    * Currently the sole consumer is the MCP endpoint (/api/mcp). Lists
    * existing tokens, lets the admin create new ones (with name + scope
    * checkboxes + optional expiry), and revoke them.
@@ -20,6 +20,8 @@
   import { showSuccess, showError } from '../../stores/toast.js';
   import { confirmDialog } from '../../stores/confirmDialog.js';
   import Spinner from '../ui/Spinner.svelte';
+  import { currentUser } from '../../stores/auth.js';
+  $: tokenPath = $currentUser?.role === 'admin' ? '/api/admin/api-tokens' : '/api/capture-tokens';
 
   export async function loadData() { return load(); }
 
@@ -33,7 +35,7 @@
   // Create-form state
   let showCreateForm = false;
   let newName = '';
-  let newScopes = new Set(['mcp:read']);
+  let newScopes = new Set(['capture:write']);
   let newExpiresDays = '';   // '' = never
 
   // The just-created raw token, shown to the user once
@@ -55,7 +57,7 @@
   async function load() {
     loading = true;
     try {
-      const r = await fetch(apiUrl('/api/admin/api-tokens'), {
+      const r = await fetch(apiUrl(tokenPath), {
         credentials: 'include', headers: _csrfHeaders(),
       });
       if (!r.ok) throw new Error($_('settings_api_tokens_ct.toast.load_failed'));
@@ -92,7 +94,7 @@
         expiresAt = new Date(Date.now() + days * 24 * 3600 * 1000).toISOString().slice(0, 19).replace('T', ' ');
       }
 
-      const r = await fetch(apiUrl('/api/admin/api-tokens'), {
+      const r = await fetch(apiUrl(tokenPath), {
         method: 'POST', credentials: 'include',
         headers: _csrfHeaders(),
         body: JSON.stringify({
@@ -108,7 +110,7 @@
       justCreatedName = data.token.name;
       showCreateForm = false;
       newName = '';
-      newScopes = new Set(['mcp:read']);
+      newScopes = new Set(['capture:write']);
       newExpiresDays = '';
       await load();
     } catch (e) {
@@ -126,7 +128,7 @@
       dangerous: true,
     })) return;
     try {
-      const r = await fetch(apiUrl(`/api/admin/api-tokens/${t.id}`), {
+      const r = await fetch(apiUrl(`${tokenPath}/${t.id}`), {
         method: 'DELETE', credentials: 'include', headers: _csrfHeaders(),
       });
       if (!r.ok) {
@@ -169,11 +171,14 @@
 </script>
 
 <div class="section-body">
+  <p class="sub-label">{$_('capture.token_help')}</p>
+  {#if $currentUser?.role === 'admin'}
   <p class="sub-label" style="padding:0 0 6px">
     {$_('settings_api_tokens_ct.intro_before')} <em>{$_('settings_api_tokens_ct.intro_dev')}</em>){$_('settings_api_tokens_ct.intro_middle')}
     <code>/api/mcp</code>. {$_('settings_api_tokens_ct.intro_see')}
     <a href="https://traceapps.github.io/docs/notetrace/mcp/" target="_blank" rel="noopener">docs/notetrace/mcp.md</a>.
   </p>
+  {/if}
 
   {#if justCreatedRaw}
     <div class="just-created" transition:slide={{ duration: 160 }}>

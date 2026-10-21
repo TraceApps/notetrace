@@ -14,6 +14,7 @@ import { get } from 'svelte/store';
 import { push } from 'svelte-spa-router';
 import { NoteApi } from './api.js';
 import { dueOccurrence, toUtcString } from './reminders.js';
+import { captureReminderActive } from '../../server/lib/capture-state.js';
 import { reminderNotificationText } from './note-preview.js';
 import { notifLocalEnabled } from '../stores/settings.js';
 import { notesChanged } from '../stores/notes.js';
@@ -110,6 +111,7 @@ async function _tick() {
   if (!_loadedAt || Date.now() - _loadedAt > REFRESH_MS) await _load();
   const now = new Date();
   for (const note of _notes) {
+    if (!captureReminderActive(note)) continue;
     const occ = dueOccurrence(note, now, WINDOW_MS);
     if (!occ) continue;
     if (!_claim(`${note.id}@${toUtcString(occ)}`, now.getTime())) continue;

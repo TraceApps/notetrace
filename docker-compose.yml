@@ -21,6 +21,7 @@ services:
       - UPLOADS_PATH=/data/uploads
       # Required if using user management — set a long random secret
       - JWT_SECRET=${JWT_SECRET}
+      - CAPTURE_ENABLED=${CAPTURE_ENABLED:-0}
       # Or mount a Swarm/Docker secret and set JWT_SECRET_FILE=/run/secrets/<name>
       # Optional — at-rest encryption key for OIDC client secrets and
       # webhook secrets. Defaults to a key derived from

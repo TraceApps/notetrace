@@ -1926,5 +1926,10 @@
       "view_notes":       "View Release Notes",
       "channel_note":     "To switch server channels, change your docker-compose.yml image tag (:latest, :dev) and re-run docker-compose pull && docker-compose up -d."
     }
+  },
+  "capture": {
+    "source": "Open source email in MailFlow",
+    "context": "Email context (Markdown)",
+    "token_help": "To connect MailFlow, create a capture:write token. It can add notes and tasks without reading existing notes. The server administrator must enable capture first."
   }
 }

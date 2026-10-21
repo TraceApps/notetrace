@@ -8,7 +8,7 @@ const SAFE_METHODS  = new Set(['GET', 'HEAD', 'OPTIONS']);
 const SKIP_PREFIXES = ['/api/auth/'];
 const SKIP_SUFFIXES = ['/callback'];
 // Signed in by its own API token (middleware/bearer-auth.js), never the cookie.
-const BEARER_ONLY = ['/api/mcp'];
+const BEARER_ONLY = ['/api/mcp', '/api/capture'];
 
 /**
  * CSRF protection for cookie-based (PWA) sessions.

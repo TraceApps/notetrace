@@ -166,6 +166,7 @@ function _hydrate(rows, u) {
       kind: r.kind,
       color: r.color,
       read_only: !!r.read_only,
+      source_json: r.source_json || null,
       pinned: !!(member ? r.m_pinned : r.pinned),
       in_tasks: !!(member ? r.m_in_tasks : r.in_tasks),
       archived: !!(member ? r.m_archived : r.archived),
@@ -416,7 +417,7 @@ function _today(u, claimed) {
   }
 }
 
-export const createNote = db.transaction((u, data = {}) => {
+export const createNote = db.transaction((u, data = {}, options = {}) => {
   const ts = now();
   const kind = NOTE_KINDS.has(data.kind) ? data.kind : 'text';
   const info = db.prepare(
@@ -427,13 +428,14 @@ export const createNote = db.transaction((u, data = {}) => {
         kind, _cleanColor(data.color), data.pinned ? 1 : 0, data.archived ? 1 : 0, data.in_tasks ? 1 : 0, data.read_only ? 1 : 0,
         _cleanReminderAt(data.reminder_at), _cleanRepeat(data.reminder_rrule), _cleanTz(data.reminder_tz), ts, ts);
   const id = Number(info.lastInsertRowid);
+  if (options.sourceJson) db.prepare('UPDATE notes SET source_json = ? WHERE id = ?').run(options.sourceJson, id);
   if (kind === 'checklist' && Array.isArray(data.items)) {
     data.items.forEach((it, i) => _upsertItem(u, id, { ...it, position: it.position ?? i + 1 }, ts));
   }
   if (Array.isArray(data.labels)) _setLabels(u, id, data.labels, ts);
   _addAttachments(u, id, data.attachments, ts);
   const note = getNote(u, id);
-  _emit(u, 'note.created', { note_id: id, title: note.title, kind: note.kind });
+  if (!options.silent) _emit(u, 'note.created', { note_id: id, title: note.title, kind: note.kind });
   return note;
 });
 
@@ -1090,6 +1092,7 @@ export const importNotes = db.transaction((u, list = []) => {
           reminderAt, reminderAt ? _cleanRepeat(raw.reminder_rrule) : null, reminderAt ? _cleanTz(raw.reminder_tz) : null,
           created, updated);
     const id = Number(info.lastInsertRowid);
+    if (typeof raw.source_json === 'string') db.prepare('UPDATE notes SET source_json = ? WHERE id = ?').run(raw.source_json.slice(0, 120000), id);
     items.forEach((it, i) => _upsertItem(u, id, { text: it.text, checked: !!it.checked, position: i + 1, checked_at: null }, updated));
 
     const ids = [];

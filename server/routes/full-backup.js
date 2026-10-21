@@ -210,6 +210,8 @@ function dumpDatabase() {
     // restore doesn't quietly break whatever calls this server.
     api_tokens:            _selectIfExists('api_tokens'),
     webhooks:              _selectIfExists('webhooks'),
+    capture_requests:      _selectIfExists('capture_requests'),
+    capture_entries:       _selectIfExists('capture_entries'),
   };
 }
 
@@ -306,6 +308,8 @@ function restoreFromZip(zip) {
     _restoreTable('invite_tokens',         data.invite_tokens);
     _restoreTable('api_tokens',            data.api_tokens);
     _restoreTable('webhooks',              data.webhooks);
+    _restoreTable('capture_requests',      data.capture_requests);
+    _restoreTable('capture_entries',       data.capture_entries);
 
     // OIDC — restore only when target tables exist.
     try {

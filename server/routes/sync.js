@@ -68,6 +68,7 @@ import { snapshotVersion, tsMs, noteAccess, restampNote, revokedNoteIds, cleanAt
 import { dispatchWebhookEvent } from '../lib/webhooks.js';
 import { isServerOnlyKey } from '../lib/server-only-keys.js';
 import { cleanCreateKey, findByCreateKey, setCreateKey } from '../lib/create-keys.js';
+import { captureSource } from '../lib/capture-state.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -356,6 +357,9 @@ router.post('/push', wrap((req, res) => {
             ...(spec.softDelete ? [translated.deleted_at ?? null] : [])
           );
           const serverId = Number(info.lastInsertRowid);
+          if (name === 'notes' && typeof row.source_json === 'string' && row.source_json.length <= 120000 && captureSource(row)) {
+            db.prepare('UPDATE notes SET source_json = ? WHERE id = ?').run(row.source_json, serverId);
+          }
           setCreateKey(name, serverId, createKey);
           results[name].push({ client_id: row.client_id, server_id: serverId });
           idMaps[name][row.client_id] = serverId;
@@ -420,7 +424,7 @@ router.get('/pull', wrap((req, res) => {
     // the relationship silently disappears on the first sync after
     // it was attached (SQLite orders NULLs first in ASC by default,
     // so top-level parents naturally lead).
-    if (name === 'notes') { out.notes = _pullNotes(u, since, withKeys, withOptional); continue; }
+    if (name === 'notes') { out.notes = _pullNotes(u, since, withKeys, withOptional, req.query.capture === '1'); continue; }
     if ((name === 'checklist_items' || name === 'note_attachments') && u != null) {
       // Their own uuid matches them on the phone; a shared note's items
       // never carry anyone's install key to another account.
@@ -556,18 +560,18 @@ function _translateParents(row, spec, idMaps, u, editAt = NaN, childEdit = new M
 
 // Notes as a member's device sees them: the member's own pin and archive,
 // no reminder (reminders belong to the owner), plus the share fields.
-function _pullNotes(u, since, withKeys = false, withOptional = false) {
+function _pullNotes(u, since, withKeys = false, withOptional = false, withSource = false) {
   const key = withKeys ? ', client_key' : '';
   const cols = TABLES.notes.cols.filter(c => withOptional || !TABLES.notes.optional.includes(c));
   if (u == null) {
     return db.prepare(
-      `SELECT id, ${cols.join(', ')}, created_at, updated_at, deleted_at${key},
+      `SELECT id, ${cols.join(', ')}${withSource ? ', source_json' : ''}, created_at, updated_at, deleted_at${key},
               'owner' AS share_role, NULL AS share_owner, 0 AS share_count
          FROM notes WHERE user_id IS NULL AND synced_at >= ?`
     ).all(since);
   }
   return db.prepare(
-    `SELECT n.id, n.title, n.body_md, n.kind, n.color,${withOptional ? ' n.read_only,' : ''}
+    `SELECT n.id, n.title, n.body_md, n.kind, n.color,${withSource ? ' n.source_json,' : ''}${withOptional ? ' n.read_only,' : ''}
             CASE WHEN m.id IS NULL THEN n.pinned ELSE m.pinned END AS pinned,
             CASE WHEN m.id IS NULL THEN n.archived ELSE m.archived END AS archived,
             CASE WHEN m.id IS NULL THEN n.in_tasks ELSE m.in_tasks END AS in_tasks,

@@ -50,6 +50,7 @@ const SCHEMA = `
     reminder_at    TEXT,
     reminder_rrule TEXT,
     reminder_tz    TEXT,
+    source_json    TEXT,
     share_role     TEXT DEFAULT 'owner',
     share_owner    TEXT,
     share_count    INTEGER DEFAULT 0,
@@ -259,6 +260,10 @@ async function _migrateShareColumns() {
     if (!have.has('share_role')) await db.run(`ALTER TABLE notes ADD COLUMN share_role TEXT DEFAULT 'owner'`);
     if (!have.has('share_owner')) await db.run(`ALTER TABLE notes ADD COLUMN share_owner TEXT`);
     if (!have.has('share_count')) await db.run(`ALTER TABLE notes ADD COLUMN share_count INTEGER DEFAULT 0`);
+    if (have.size && !have.has('source_json')) {
+      await db.run(`ALTER TABLE notes ADD COLUMN source_json TEXT`);
+      await db.run(`DELETE FROM sync_meta WHERE key = 'last_pull_at'`, []);
+    }
     if (have.size && !have.has('in_tasks')) {
       await db.run(`ALTER TABLE notes ADD COLUMN in_tasks INTEGER NOT NULL DEFAULT 0`);
       await db.run(`UPDATE notes SET in_tasks = 1 WHERE kind = 'checklist' AND lower(trim(title)) = 'tasks'`);
@@ -552,6 +557,9 @@ export async function dbSetReadOnlyFromPull(payload) {
   if (!isNative) return;
   const db = await getDb();
   for (const row of payload?.tables?.notes || []) {
+    if (row && 'source_json' in row && row.id != null) {
+      await db.run(`UPDATE notes SET source_json = ? WHERE server_id = ?`, [row.source_json || null, row.id]);
+    }
     if (row && 'read_only' in row && row.id != null) {
       await db.run(`UPDATE notes SET read_only = ? WHERE server_id = ?`, [row.read_only ? 1 : 0, row.id]);
     }

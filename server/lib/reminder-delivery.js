@@ -14,6 +14,7 @@
  * notifications, so this covers the web app and every other channel.
  */
 import db from '../db.js';
+import { captureReminderActive } from './capture-state.js';
 import { logger } from '../logger.js';
 import { dueOccurrence, toUtcString, LATE_WINDOW_MS } from './reminders.js';
 import { pushNotify } from './push-notify.js';
@@ -64,11 +65,13 @@ function _claim(userId, noteId, occKey) {
 
 export async function deliverDueReminders(now = new Date()) {
   const notes = db.prepare(
-    `SELECT id, user_id, title, body_md, kind, reminder_at, reminder_rrule, reminder_tz
+    `SELECT id, user_id, title, body_md, kind, source_json, reminder_at, reminder_rrule, reminder_tz
        FROM notes WHERE reminder_at IS NOT NULL AND deleted_at IS NULL AND trashed_at IS NULL`
   ).all();
   let sent = 0;
   for (const note of notes) {
+    const captureItems = note.source_json ? db.prepare('SELECT checked, deleted_at FROM checklist_items WHERE note_id = ?').all(note.id) : [];
+    if (!captureReminderActive({ ...note, items: captureItems })) continue;
     const occ = dueOccurrence(note, now);
     if (!occ) continue;
     const occKey = toUtcString(occ);

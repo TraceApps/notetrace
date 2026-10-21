@@ -32,6 +32,8 @@ import updatesRoutes      from './routes/updates.js';
 import apiTokensRoutes    from './routes/api-tokens.js';
 import webhooksRoutes     from './routes/webhooks.js';
 import mcpRoutes          from './routes/mcp.js';
+import captureRoutes from './routes/capture.js';
+import captureTokensRoutes from './routes/capture-tokens.js';
 import integrationsRoutes from './routes/integrations.js';
 import linkPreviewRoutes from './routes/link-preview.js';
 import publicNoteRoutes from './routes/public-note.js';
@@ -235,6 +237,8 @@ router.use('/api/notify',       notifyRoutes);
 router.use('/api/admin/api-tokens', apiTokensRoutes);
 router.use('/api/admin/webhooks', webhooksRoutes);
 router.use('/api/mcp',          mcpRoutes);
+router.use('/api/capture', captureRoutes);
+router.use('/api/capture-tokens', captureTokensRoutes);
 router.use('/api/integrations', integrationsRoutes);
 router.use('/api/link-preview', linkPreviewRoutes);
 

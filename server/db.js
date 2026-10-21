@@ -311,6 +311,19 @@ db.exec(`
 
 // ── Migrations ─────────────────────────────────────────────────────────────
 // Idempotent: each block adds a column only if it doesn't already exist.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS capture_requests (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    request_id TEXT NOT NULL, digest TEXT NOT NULL, result TEXT NOT NULL,
+    PRIMARY KEY (user_id, request_id)
+  );
+  CREATE TABLE IF NOT EXISTS capture_entries (
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    source_id TEXT NOT NULL, entry_key TEXT NOT NULL, note_id INTEGER NOT NULL,
+    PRIMARY KEY (user_id, source_id, entry_key)
+  );
+`);
+
 function columnExists(table, col) {
   return db.prepare(`PRAGMA table_info(${table})`).all().some(r => r.name === col);
 }
@@ -342,6 +355,7 @@ if (!columnExists('checklist_items', 'checked_at')) db.exec(`ALTER TABLE checkli
 if (!columnExists('labels', 'icon')) db.exec(`ALTER TABLE labels ADD COLUMN icon TEXT`);
 // Show in Tasks: the owner's choice on notes, a member's own on note_members.
 // A checklist named Tasks (the Tasks view's own list) starts out shown.
+if (!columnExists('notes', 'source_json')) db.exec(`ALTER TABLE notes ADD COLUMN source_json TEXT`);
 if (!columnExists('notes', 'in_tasks')) {
   db.exec(`ALTER TABLE notes ADD COLUMN in_tasks INTEGER NOT NULL DEFAULT 0`);
   db.exec(`UPDATE notes SET in_tasks = 1 WHERE kind = 'checklist' AND lower(trim(title)) = 'tasks'`);

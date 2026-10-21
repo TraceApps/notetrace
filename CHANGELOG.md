@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Optional capture API for Markdown notes and native tasks from MailFlow, with per-user capture-only tokens, reviewed reminders, source-email links, and transactional duplicate protection. Disabled by default; enable with `CAPTURE_ENABLED=1` in account mode. AI and MCP are not required.
+- Preserve capture source metadata through sync, backups, and Markdown export, and stop reminder delivery for completed imported tasks after devices synchronize.
+
 ### Security
 
 - **Pages on lookalike addresses can no longer read or change your account.** The server let any web page whose address contained its own name call it with your sign-in and read the answer: `notes.example.com.attacker.example`, `xnotes.example.com`, any subdomain of it, the same name on another port, or on a home network `:30041` for a server on `:3004`. Such a page under your own domain or on your server's machine could read and change your account while you were signed in; a page anywhere else got nothing, unless the server runs without accounts (single-user mode), where it could read what your browser can reach. Someone would need a page on such an address and you to open it. Only the Android app's own addresses and `PUBLIC_URL` are allowed now, compared exactly; the Android app works as before.

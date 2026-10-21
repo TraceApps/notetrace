@@ -551,6 +551,11 @@
     {/if}
   {/if}
 
+  {#if !isNativeLocal && $userMgmtActive && $currentUser?.role !== 'admin'}
+    <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'apitokens')} class:active={currentSection === 'apitokens'} aria-current={currentSection === 'apitokens' ? 'page' : undefined} on:click={() => toggleSection('apitokens')}>
+      <span class="material-symbols-rounded si">key</span><span>{$_('settings.apitokens.section')}</span>
+    </button>
+  {/if}
   <!-- App-level pages. Their own group so they don't read as part of Admin. -->
   <p class="settings-group-label">NoteTrace</p>
   <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'support')} class:active={currentSection === 'support'} aria-current={currentSection === 'support' ? 'page' : undefined} on:click={() => toggleSection('support')}>

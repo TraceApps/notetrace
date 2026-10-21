@@ -13,6 +13,7 @@
  * there.
  */
 import { registerPlugin } from '@capacitor/core';
+import { captureReminderActive } from '../../server/lib/capture-state.js';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { isNative } from './platform.js';
 import { NoteApi } from './api.js';
@@ -78,7 +79,7 @@ async function _reschedule() {
   const notes = await NoteApi.getNotes({ view: 'reminders' });
   const fallback = _config.labels.reminder || 'Reminder';
   const reminders = notes
-    .filter(n => n.reminder_at)
+    .filter(n => n.reminder_at && captureReminderActive(n))
     .map(n => {
       const { title, body } = reminderNotificationText(n, fallback);
       return { id: n.id, title, body, at: n.reminder_at, rrule: n.reminder_rrule || null, tz: n.reminder_tz || null };

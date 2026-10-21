@@ -11,6 +11,7 @@
    * wait for its create call instead of racing it.
    */
   import LabelGlyph from './LabelGlyph.svelte';
+  import CaptureSource from './CaptureSource.svelte';
   import { onMount, onDestroy, createEventDispatcher, tick } from 'svelte';
   import { fade, fly } from 'svelte/transition';
   import { disableAnimations, tasksAllChecklists } from '../../stores/settings.js';
@@ -1314,6 +1315,7 @@
           {/if}
         {/key}
 
+        <CaptureSource {note} />
         {#if chips.length || reminderAt || shared}
           <div class="editor-chips">
             {#if shared}

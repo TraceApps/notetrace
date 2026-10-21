@@ -234,6 +234,7 @@ export function parseMarkdownNote(path, text, { tagsToLabels = true } = {}) {
     pinned: data.pinned === true,
     in_tasks: kind === 'checklist' && data.in_tasks === true,
     read_only: data.read_only === true,
+    source_json: typeof data.source_json === 'string' ? data.source_json : null,
     archived: data.archived === true || /(^|\/)archive\//i.test(path || ''),
     trashed: false,
     labels: [...labels],
@@ -267,6 +268,7 @@ export function noteToMarkdown(note, labelNames = [], imagePaths = []) {
   put('pinned', !!note.pinned);
   if (note.kind === 'checklist') put('in_tasks', !!note.in_tasks);
   put('read_only', !!note.read_only);
+  if (note.source_json) put('source_json', note.source_json);
   put('archived', !!note.archived);
   if (note.reminder_at) {
     put('reminder', sqlToIso(note.reminder_at));
