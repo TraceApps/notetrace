@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
+import { textSizeCss } from './scripts/text-size-css.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -32,6 +33,7 @@ export default defineConfig({
   // lets the same image run at `/`, `/notetrace/`, or any other prefix
   // without a rebuild.
   base: './',
+  css: { postcss: { plugins: [textSizeCss()] } },
   server: {
     proxy: {
       '/api':     'http://localhost:3004',

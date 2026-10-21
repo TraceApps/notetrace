@@ -33,6 +33,11 @@
   import OfflineStatus from './components/OfflineStatus.svelte';
   import { describeConnectionIssue } from './lib/connection-message.js';
 
+  import { fontTheme, fontSize } from './stores/settings.js';
+  import { applyFontTheme, applyTextSize } from './lib/font-themes.js';
+  $: applyFontTheme($fontTheme);
+  $: applyTextSize($fontSize);
+
   // Sync state — mirrored from the real sync store (dynamically imported).
   // Includes the smart-banner fields (connectionIssue, showErrorBanner) so
   // the banner + red cloud badge below stay reactive to the classifier.
@@ -317,7 +322,7 @@
   $: if (typeof document !== 'undefined') {
     document.documentElement.classList.toggle('no-animations', !!$disableAnimations);
     document.documentElement.classList.toggle('density-compact', $cardDensity === 'compact');
-    // Apply exactly one `banner-animation-<style>` class on documentElement
+    // Apply exactly one `banner-animation-*` class on documentElement
     // so the CSS animation rules in base.css can target a single decorative
     // style without conflicting selectors. Only active when bannerStyle is
     // 'animated'; gradient + off get no animation class regardless.

@@ -130,7 +130,8 @@
 
 /* --- Spacing & Shape --- */
 :root {
-  /* Note titles use an editorial serif; all UI chrome stays Inter. */
+  /* Original typography; Appearance can override both families together. */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-note-title: 'Newsreader', Georgia, 'Times New Roman', serif;
 
   --radius-xs:   4px;

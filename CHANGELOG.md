@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Appearance typography selection with 34 display/body/code font pairings, 28 original choices, a live preview with loading/retry feedback, and a saved 12–22px text-size slider. All fonts and redistribution licenses are bundled locally.
+
 ---
 
 ## [1.2.0-dev01] - 2026-10-20 (pre-release)
