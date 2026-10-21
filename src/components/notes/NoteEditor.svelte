@@ -18,6 +18,7 @@
   import { _ } from 'svelte-i18n';
   import { portal } from '../../lib/portal.js';
   import { dialogFocus } from '../../lib/dialog-focus.js';
+  import { backdropClick } from '../../lib/backdrop-click.js';
   import { NoteApi } from '../../lib/api.js';
   import { labelsById, signalNotesChanged, signalCountsChanged, refreshLabels } from '../../stores/notes.js';
   import { noteColorStyle, colorDot } from '../../lib/note-colors.js';
@@ -116,6 +117,9 @@
   let saving = false;
   let showHistory = false;
   let colorOpen = false, labelsOpen = false, reminderOpen = false, shareOpen = false, traceOpen = false, recordOpen = false, cookOpen = false;
+  // Ask Trace while it works or has an answer waiting: a click outside doesn't close it (#35).
+  let traceActions, traceHolding = false;
+  $: if (!traceOpen) traceHolding = false;
   let colorAnchor = null, labelsAnchor = null, reminderAnchor = null, shareAnchor = null, traceAnchor = null, recordAnchor = null, cookAnchor = null;
   let narrow = typeof window !== 'undefined' && window.innerWidth < 600;
 
@@ -1155,7 +1159,7 @@
 <!-- The host stays in place while the backdrop moves to <body>. Without a fixed
      first node, closing the editor left its other top-level nodes behind. -->
 <div class="editor-host">
-<div use:portal={!inline} class="editor-backdrop" class:inline on:click|self={() => { if (!inline) close(); }} transition:fade|global={{ duration: $disableAnimations || inline ? 0 : 160 }}>
+<div use:portal={!inline} class="editor-backdrop" class:inline use:backdropClick={() => { if (!inline) close(); }} transition:fade|global={{ duration: $disableAnimations || inline ? 0 : 160 }}>
   <div class="editor-panel" class:inline class:narrow class:compact-bar={compactBar} bind:clientWidth={panelW} class:kb-open={narrow && kb > 0} class:drag-over={dragOver} style="{noteColorStyle(color)} --kb:{narrow ? kb : 0}px"
     on:paste={onPaste} on:dragover={onDragOver} on:dragleave={() => dragOver = false} on:drop={onDrop}
     role={inline ? 'region' : 'dialog'} aria-modal={inline ? undefined : 'true'} aria-label={title || $_('notes.untitled')}
@@ -1642,9 +1646,10 @@
     <VoiceRecorder canAddFile={!contentLocked} on:done={onRecorded} on:cancel={onRecordCancel} on:file={openAudioPicker} />
   {/if}
 </Popover>
-<Popover bind:open={traceOpen} anchor={traceAnchor} label={$_('trace_actions.title')}>
+<Popover bind:open={traceOpen} anchor={traceAnchor} label={$_('trace_actions.title')}
+  closeOnOutside={!traceHolding} beforeClose={() => traceActions?.requestClose() ?? true}>
   {#if traceOpen}
-    <TraceActions {title} {body}
+    <TraceActions bind:this={traceActions} bind:holding={traceHolding} {title} {body}
       on:replace={(e) => applyTraceText(e.detail.markdown)}
       on:prepend={(e) => applyTraceText(`${e.detail.markdown}\n\n${body}`)}
       on:append={(e) => applyTraceText(body.trim() ? `${body.replace(/\s+$/, '')}\n\n${e.detail.markdown}` : e.detail.markdown)}

@@ -141,13 +141,14 @@ export const TOOLS = NOTE_TOOLS;
  */
 // onToolsUnsupported runs when the model can't use tools and answered
 // without them (TraceApps/nutritrace#259).
-export async function callAI({ provider, apiKey, model, messages, systemPrompt, tools, onToolCall, onToolResult, onToolsUnsupported, baseUrl, relay = false }) {
+export async function callAI({ provider, apiKey, model, messages, systemPrompt, tools, onToolCall, onToolResult, onToolsUnsupported, baseUrl, relay = false, signal }) {
   // 'custom' is the legacy NoteTrace name for the same OpenAI-compatible
   // path that NutriTrace calls 'oai-compat'. Both are accepted.
   if (!relay && !apiKey && provider !== 'custom' && provider !== 'oai-compat') {
     throw new Error('No API key configured. Add one in Settings → Trace Assistant.');
   }
-  const cb = { onToolCall, onToolResult, onToolsUnsupported, relay };
+  // signal: an AbortSignal that stops the request (TraceApps/notetrace#35).
+  const cb = { onToolCall, onToolResult, onToolsUnsupported, relay, signal };
   if (relay) {
     apiKey = apiKey || 'relay';
     baseUrl = baseUrl || 'relay';
@@ -209,9 +210,9 @@ export async function fetchProvider(url, init) {
 }
 
 /** POST a provider request, directly or through the server relay. */
-async function _post(relay, url, headers, body) {
+async function _post(relay, url, headers, body, signal) {
   if (!relay) {
-    const res = await fetchProvider(url, { method: 'POST', headers, body: JSON.stringify(body) });
+    const res = await fetchProvider(url, { method: 'POST', headers, body: JSON.stringify(body), signal });
     return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
   }
   const { apiUrl, isNative, getServerUrl, getAuthToken } = await import('./platform.js');
@@ -223,7 +224,7 @@ async function _post(relay, url, headers, body) {
     const csrf = typeof localStorage !== 'undefined' ? localStorage.getItem('note:csrf') : null;
     if (csrf) h['X-CSRF-Token'] = csrf;
   }
-  const res = await fetch(apiUrl('/api/ai/relay'), { method: 'POST', credentials: 'include', headers: h, body: JSON.stringify({ body }) });
+  const res = await fetch(apiUrl('/api/ai/relay'), { method: 'POST', credentials: 'include', headers: h, body: JSON.stringify({ body }), signal });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401) return { ok: false, status: 401, data: { error: { message: 'Not signed in. Sign in again to use Trace.' } } };
   return { ok: res.ok, status: res.status, data };
@@ -231,7 +232,7 @@ async function _post(relay, url, headers, body) {
 
 /** Server-proxy fallback for env-locked installs. Text-only — tools
  *  aren't relayed because the server can't execute client-side. */
-export async function callAIProxy({ messages, systemPrompt }) {
+export async function callAIProxy({ messages, systemPrompt, signal }) {
   const { apiUrl, isNative, getServerUrl, getAuthToken } = await import('./platform.js');
   const headers = { 'Content-Type': 'application/json' };
   if (isNative && getServerUrl()) {
@@ -249,6 +250,7 @@ export async function callAIProxy({ messages, systemPrompt }) {
     credentials: 'include',
     headers,
     body: JSON.stringify({ messages, systemPrompt }),
+    signal,
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -313,7 +315,7 @@ async function _callClaudeWithTools(apiKey, model, messages, systemPrompt, tools
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true',
-    }, b));
+    }, b, cb?.signal));
     const data = res.data;
     if (!res.ok) throw new Error(data.error?.message || `Claude API error ${res.status}`);
     const short = stoppedShort('claude', data);
@@ -378,7 +380,7 @@ async function _callOpenAIWithTools(apiKey, model, messages, systemPrompt, tools
     const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
     if (apiKey && apiKey !== 'no-key') headers['Authorization'] = `Bearer ${apiKey}`;
     // A server that won't take the longer reply is asked again as before.
-    const send = (b) => sendWithLengthFallback(b, (x) => _post(cb?.relay, `${baseUrl}/v1/chat/completions`, headers, x));
+    const send = (b) => sendWithLengthFallback(b, (x) => _post(cb?.relay, `${baseUrl}/v1/chat/completions`, headers, x, cb?.signal));
     // A model that can't use tools gets the request again without them.
     // Through the relay the server may already have done that (it says so
     // with trace_tools_unsupported).
@@ -467,7 +469,7 @@ async function _callGeminiWithTools(apiKey, model, messages, systemPrompt, tools
     };
     if (geminiTools) body.tools = geminiTools;
     if (last && geminiTools) body.toolConfig = { functionCallingConfig: { mode: 'NONE' } };
-    const res = await _post(cb?.relay, url, { 'Content-Type': 'application/json' }, body);
+    const res = await _post(cb?.relay, url, { 'Content-Type': 'application/json' }, body, cb?.signal);
     const data = res.data;
     if (!res.ok) throw new Error(data.error?.message || `Gemini API error ${res.status}`);
     const short = stoppedShort('gemini', data);

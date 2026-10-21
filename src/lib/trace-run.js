@@ -17,9 +17,10 @@ export const traceReady = derived(
   ([$on, $verified, $locks]) => !!$on && (!!$locks.ai || !!$verified),
 );
 
-export async function askTrace({ systemPrompt, prompt }) {
+// `signal` stops the request (Cancel in Ask Trace, TraceApps/notetrace#35).
+export async function askTrace({ systemPrompt, prompt, signal }) {
   const messages = [{ role: 'user', content: prompt }];
-  if (get(envLocks).ai) return callAIProxy({ messages, systemPrompt });
+  if (get(envLocks).ai) return callAIProxy({ messages, systemPrompt, signal });
   const provider = get(aiProvider);
   return callAI({
     provider,
@@ -29,6 +30,7 @@ export async function askTrace({ systemPrompt, prompt }) {
     messages,
     systemPrompt,
     tools: [],
+    signal,
   });
 }
 

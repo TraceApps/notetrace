@@ -10,19 +10,33 @@
   import { fade, fly } from 'svelte/transition';
   import { portal } from '../../lib/portal.js';
   import { dialogFocus } from '../../lib/dialog-focus.js';
+  import { backdropClick } from '../../lib/backdrop-click.js';
 
   export let open = false;
   /** DOMRect of the trigger, or {x, y} for a press point. */
   export let anchor = null;
   /** Its name for screen readers, like the button that opened it. */
   export let label = '';
+  /**
+   * Whether a click outside closes it. Contents with work in them (Ask Trace
+   * while it answers, or an answer not used yet) turn this off, so a stray
+   * click can't throw that away (TraceApps/notetrace#35).
+   */
+  export let closeOnOutside = true;
+  /** Asked before Escape or back closes it: false keeps it open. */
+  export let beforeClose = null;
 
   const dispatch = createEventDispatcher();
   let panel;
   let style = '';
   let narrow = false;
 
-  function close() { open = false; dispatch('close'); }
+  function close() {
+    if (beforeClose && beforeClose() === false) return;
+    open = false;
+    dispatch('close');
+  }
+  function closeOutside() { if (closeOnOutside) close(); }
 
   // The part of the screen a keyboard leaves free. Contents size to it through
   // --pop-avail (the label list shrinks and scrolls rather than hiding).
@@ -113,9 +127,7 @@
 </script>
 
 {#if open}
-  <!-- svelte-ignore a11y-click-events-have-key-events -->
-  <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <div use:portal class="pop-backdrop" class:narrow on:click|self={close} use:closeOnBack={close} transition:fade={{ duration: 120 }}>
+  <div use:portal class="pop-backdrop" class:narrow use:backdropClick={closeOutside} use:closeOnBack={close} transition:fade={{ duration: 120 }}>
     <div class="pop-panel" class:sheet={narrow} bind:this={panel} {style}
       role="dialog" aria-modal="true" aria-label={label || undefined} tabindex="-1" use:dialogFocus
       in:fly={{ y: narrow ? 40 : 6, duration: 160 }}>

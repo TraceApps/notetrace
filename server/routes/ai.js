@@ -216,7 +216,25 @@ export function relayRequest(cfg, body) {
 // (TraceApps/nutritrace#259).
 const relayToolSupport = createToolSupportMemory();
 
+/**
+ * A signal that fires when the app stops waiting for this answer (Cancel in
+ * Ask Trace, a closed page), so the request to the provider is closed too
+ * (TraceApps/notetrace#35); with `ms`, also after that long. Made before
+ * anything else in the handler, so an app that leaves early is caught.
+ */
+export function _whileWaited(res, ms) {
+  const gone = new AbortController();
+  res.on('close', () => { if (!res.writableFinished) gone.abort(); });
+  if (!ms) return gone.signal;
+  const late = AbortSignal.timeout(ms);
+  if (typeof AbortSignal.any === 'function') return AbortSignal.any([gone.signal, late]);
+  late.addEventListener('abort', () => gone.abort(late.reason), { once: true });
+  return gone.signal;
+}
+const _gone = (res) => res.destroyed || res.writableFinished;
+
 router.post('/relay', requireAuth, aiRelayLimit, wrap(async (req, res) => {
+  const signal = _whileWaited(res, 300_000);
   const body = req.body?.body;
   if (!body || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: { message: 'body object required' } });
   const cfg = _serverCfg();
@@ -225,7 +243,7 @@ router.post('/relay', requireAuth, aiRelayLimit, wrap(async (req, res) => {
   if (local && (!cfg.baseUrl || !cfg.model)) return res.status(503).json({ error: { message: 'AI_PROVIDER=oai-compat requires AI_BASE_URL and AI_MODEL in environment.' } });
   const r = relayRequest(cfg, body);
   const send = async (b) => {
-    const upstream = await fetch(r.url, { method: 'POST', headers: r.headers, body: JSON.stringify(b), signal: AbortSignal.timeout(300_000) });
+    const upstream = await fetch(r.url, { method: 'POST', headers: r.headers, body: JSON.stringify(b), signal });
     const data = await upstream.json().catch(() => ({ error: { message: `AI provider error ${upstream.status}` } }));
     return { ok: upstream.ok, status: upstream.status, data };
   };
@@ -239,6 +257,7 @@ router.post('/relay', requireAuth, aiRelayLimit, wrap(async (req, res) => {
       ? await sendWithToolFallback(r.body, send, { memory: relayToolSupport, baseUrl: r.url, model: r.body.model })
       : await send(r.body);
   } catch (e) {
+    if (_gone(res)) return; // the app stopped waiting: nobody to answer
     return res.status(502).json({ error: { message: e?.name === 'TimeoutError' ? 'The AI provider didn\'t answer in time.' : 'Couldn\'t reach the AI provider.' } });
   }
   if (out.toolsDropped && out.data && typeof out.data === 'object' && !Array.isArray(out.data)) {
@@ -261,6 +280,7 @@ router.post('/read-image', requireAuth, aiChatLimit, wrap(async (req, res) => {
 }));
 
 router.post('/chat', requireAuth, aiChatLimit, wrap(async (req, res) => {
+  const signal = _whileWaited(res);
   const { messages: rawMessages, systemPrompt } = req.body;
   if (!Array.isArray(rawMessages)) return res.status(400).json({ error: 'messages array required' });
   const messages = rawMessages.map(_normaliseImagePartsToOpenAI);
@@ -291,13 +311,14 @@ router.post('/chat', requireAuth, aiChatLimit, wrap(async (req, res) => {
   let text;
   try {
     switch (provider) {
-      case 'claude':     text = await _callClaude(apiKey, model, messages, systemPrompt); break;
-      case 'openai':     text = await _callOpenAI(apiKey, model, messages, systemPrompt, 'https://api.openai.com'); break;
-      case 'gemini':     text = await _callGemini(apiKey, model, messages, systemPrompt); break;
-      case 'oai-compat': text = await _callOpenAI(apiKey || 'no-key', model, messages, systemPrompt, baseUrl.replace(/\/+$/, '')); break;
+      case 'claude':     text = await _callClaude(apiKey, model, messages, systemPrompt, signal); break;
+      case 'openai':     text = await _callOpenAI(apiKey, model, messages, systemPrompt, 'https://api.openai.com', signal); break;
+      case 'gemini':     text = await _callGemini(apiKey, model, messages, systemPrompt, signal); break;
+      case 'oai-compat': text = await _callOpenAI(apiKey || 'no-key', model, messages, systemPrompt, baseUrl.replace(/\/+$/, ''), signal); break;
       default: return res.status(400).json({ error: `Unknown provider: ${provider}` });
     }
   } catch (e) {
+    if (_gone(res)) return; // the app stopped waiting: nobody to answer
     // A reply that stopped short: said, with a code the app says in its
     // language (422, not 5xx: a proxy may put its own page in place of those).
     if (/^trace_stopped_/.test(e?.code || '')) return res.status(422).json({ error: e.message, code: e.code });
@@ -312,7 +333,7 @@ export const _models = { AI_DEFAULT_MODELS, AI_MODEL_RENAMES, GEMINI_RETIRED, ge
 
 // ── Provider implementations (server-side) ────────────────────────────────────
 
-async function _callClaude(apiKey, model, messages, systemPrompt) {
+async function _callClaude(apiKey, model, messages, systemPrompt, signal) {
   // The app's limit (it was 1,024 here, which cut a long rewrite off); a
   // model that can't write that many is asked again as before (lib/trace-reply.js).
   const body = { model, max_tokens: REPLY_MAX_TOKENS, system: systemPrompt, messages };
@@ -325,6 +346,7 @@ async function _callClaude(apiKey, model, messages, systemPrompt) {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify(b),
+      signal,
     });
     return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
   });
@@ -337,7 +359,7 @@ async function _callClaude(apiKey, model, messages, systemPrompt) {
 // The app's limit (it was 1,024 here, which cut a long rewrite off); a
 // server or model that won't take that many is asked again as before
 // (lib/trace-reply.js).
-async function _callOpenAI(apiKey, model, messages, systemPrompt, baseUrl = 'https://api.openai.com') {
+async function _callOpenAI(apiKey, model, messages, systemPrompt, baseUrl = 'https://api.openai.com', signal) {
   const body = {
     model,
     messages: [{ role: 'system', content: systemPrompt }, ...messages],
@@ -352,6 +374,7 @@ async function _callOpenAI(apiKey, model, messages, systemPrompt, baseUrl = 'htt
         'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify(b),
+      signal,
     });
     return { ok: res.ok, status: res.status, data: await res.json().catch(() => ({})) };
   });
@@ -361,7 +384,7 @@ async function _callOpenAI(apiKey, model, messages, systemPrompt, baseUrl = 'htt
   return data.choices[0].message.content;
 }
 
-async function _callGemini(apiKey, model, messages, systemPrompt) {
+async function _callGemini(apiKey, model, messages, systemPrompt, signal) {
   const m = geminiModelFor(model);
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
   const contents = messages.map(msg => ({
@@ -375,6 +398,7 @@ async function _callGemini(apiKey, model, messages, systemPrompt) {
       systemInstruction: { parts: [{ text: systemPrompt }] },
       contents,
     }),
+    signal,
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error?.message || `Gemini API error ${res.status}`);

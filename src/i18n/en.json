@@ -647,7 +647,12 @@
     "use_this":       "Use This",
     "use_checklist":  "Make Checklist",
     "add_to_top":     "Add to Top",
-    "history_hint":   "The current text stays in version history."
+    "history_hint":   "The current text stays in version history.",
+    "discard_question": "Discard Trace's answer?",
+    "keep":           "Keep",
+    "discard":        "Discard",
+    "changed_question": "This note changed while Trace was working. Using the answer in its place drops what changed.",
+    "replace_anyway": "Replace Anyway"
   },
   "trace_extract": {
     "auto_transcribe":           "Transcribe Voice Notes",

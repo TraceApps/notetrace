@@ -5,13 +5,20 @@
    * Shows Trace's result first; nothing changes until the user applies it,
    * and applying keeps the previous text in version history.
    */
-  import { createEventDispatcher, tick } from 'svelte';
+  import { createEventDispatcher, onDestroy, tick } from 'svelte';
   import { _ } from 'svelte-i18n';
   import { askTrace, TRACE_ACTIONS, cleanTraceReply, checklistLines } from '../../lib/trace-run.js';
   import { markdownToPreview } from '../../lib/note-preview.js';
+  import { closeStep, createAsk } from '../../lib/trace-close.js';
 
   export let title = '';
   export let body = '';
+  /**
+   * True while Trace is working or an answer hasn't been used yet: the popup
+   * then ignores a click outside, which used to close it and lose the answer
+   * (TraceApps/notetrace#35).
+   */
+  export let holding = false;
 
   const dispatch = createEventDispatcher();
   let action = null;     // 'tidy' | 'expand' | 'summarize' | 'checklist' | 'custom'
@@ -22,28 +29,86 @@
   let instruction = '';
   let asking = false;
   let instructionEl;
+  // The request running now: stopping it stops the request.
+  const asker = createAsk(askTrace);
+  // Asked before an answer not used yet is thrown away.
+  let confirmDiscard = false;
+  // The note's text when Trace was asked: if it changed since, using the
+  // answer in its place asks first, so newer text isn't dropped.
+  let askedBody = '';
+  let confirmChanged = false;
+  // The answer's main button, the question's Keep and the changed-note
+  // question's first button: focus moves to what's on screen (a removed
+  // button left it on the page, where a screen reader says nothing).
+  let mainBtn, keepBtn, changedBtn;
+
+  $: waiting = !busy && !error && !!action && !!result;
+  $: holding = busy || waiting;
 
   async function run(kind) {
     if (kind === 'custom' && !instruction.trim()) return;
     action = kind;
     asking = false;
+    confirmDiscard = confirmChanged = false;
     busy = true;
     result = '';
     error = '';
-    try {
-      const a = TRACE_ACTIONS[kind];
-      result = cleanTraceReply(await askTrace({ systemPrompt: a.system, prompt: a.prompt(title, body, instruction) }));
+    askedBody = body;
+    const a = TRACE_ACTIONS[kind];
+    const out = await asker.run({ systemPrompt: a.system, prompt: a.prompt(title, body, instruction) });
+    // Cancelled, or a newer request took its place: nothing to say.
+    if (out.cancelled) return;
+    busy = false;
+    if (out.error) error = out.error?.message || $_('trace_actions.failed');
+    else {
+      result = cleanTraceReply(out.reply);
       if (!result) error = $_('trace_actions.empty');
-    } catch (e) {
-      error = e?.message || $_('trace_actions.failed');
-    } finally {
-      busy = false;
     }
+    focusSoon(() => mainBtn);
   }
+
+  /** Stop what Trace is working on. */
+  function stop() {
+    asker.stop();
+    busy = false;
+  }
+
+  async function focusSoon(get) {
+    await tick();
+    get()?.focus();
+  }
+  $: if (confirmDiscard) focusSoon(() => keepBtn);
+  $: if (confirmChanged) focusSoon(() => changedBtn);
+
+  /**
+   * Asked by the popup before Escape or back closes it: what's running is
+   * cancelled; an answer not used yet is only dropped once you say so, and
+   * Escape or back on that question keeps it.
+   */
+  export function requestClose() {
+    const step = closeStep({ busy, waiting, asking: confirmDiscard || confirmChanged });
+    if (step === 'stop') stop();
+    else if (step === 'keep') keep();
+    else if (step === 'ask') confirmDiscard = true;
+    return step === 'stop' || step === 'close';
+  }
+
+  /** Back from a question to the answer, with focus on its main button. */
+  function keep() {
+    confirmDiscard = confirmChanged = false;
+    focusSoon(() => mainBtn);
+  }
+
+  // Closed any other way (the note closed, a note change): stop asking.
+  onDestroy(() => asker.stop());
 
   $: items = action === 'checklist' ? checklistLines(result) : [];
 
-  function apply(mode) {
+  function apply(mode, anyway = false) {
+    // The note changed while Trace worked (text added from elsewhere):
+    // replacing it would drop that, so ask first.
+    const replaces = action === 'checklist' || mode === 'replace';
+    if (replaces && !anyway && body !== askedBody) { confirmChanged = true; return; }
     if (action === 'checklist') dispatch('checklist', { items });
     else if (action === 'summarize') dispatch(mode === 'replace' ? 'replace' : 'prepend', { markdown: result });
     else if (mode === 'append') dispatch('append', { markdown: result });
@@ -100,11 +165,14 @@
     {#if action === 'custom'}<p class="ta-asked" dir="auto">{instruction.trim()}</p>{/if}
     {#if busy}
       <p class="ta-status" aria-live="polite"><span class="material-symbols-rounded spin">progress_activity</span>{$_('trace_actions.working')}</p>
+      <div class="ta-buttons">
+        <button class="btn btn-secondary" on:click={() => { stop(); dispatch('close'); }}>{$_('common.cancel')}</button>
+      </div>
     {:else if error}
       <p class="ta-error" role="alert">{error}</p>
       <div class="ta-buttons">
         <button class="btn btn-secondary" on:click={() => { if (action === 'custom') asking = true; action = null; }}>{$_('common.back')}</button>
-        <button class="btn btn-primary" on:click={() => run(action)}>{$_('trace_actions.try_again')}</button>
+        <button class="btn btn-primary" bind:this={mainBtn} on:click={() => run(action)}>{$_('trace_actions.try_again')}</button>
       </div>
     {:else}
       <div class="ta-result">
@@ -114,27 +182,48 @@
           <p>{markdownToPreview(result, 4000)}</p>
         {/if}
       </div>
-      <div class="ta-buttons">
-        {#if action === 'custom'}
-          <!-- Back to the instruction, kept, to change it. -->
-          <button class="btn btn-secondary" on:click={() => { asking = true; action = null; tick().then(() => instructionEl?.focus()); }}>{$_('common.back')}</button>
-        {:else}
-          <button class="btn btn-secondary" on:click={() => dispatch('close')}>{$_('common.cancel')}</button>
-        {/if}
-        <button class="btn btn-secondary" on:click={() => run(action)}>{$_('trace_actions.try_again')}</button>
-        {#if action === 'summarize'}
-          <button class="btn btn-primary" on:click={() => apply('prepend')}>{$_('trace_actions.add_to_top')}</button>
-        {:else if action === 'custom'}
-          <!-- An email or a reply made from the note goes under it; a changed note replaces it. -->
-          <button class="btn btn-secondary" on:click={() => apply('append')}>{$_('trace_actions.add_below')}</button>
-          <button class="btn btn-primary" on:click={() => apply('replace')}>{$_('trace_actions.use_this')}</button>
-        {:else}
-          <button class="btn btn-primary" on:click={() => apply('replace')} disabled={action === 'checklist' && !items.length}>
-            {action === 'checklist' ? $_('trace_actions.use_checklist') : $_('trace_actions.use_this')}
-          </button>
-        {/if}
-      </div>
-      <p class="ta-hint">{$_('trace_actions.history_hint')}</p>
+      {#if confirmDiscard}
+        <div class="ta-confirm" role="alertdialog" aria-label={$_('trace_actions.discard_question')}>
+          <p>{$_('trace_actions.discard_question')}</p>
+          <div class="ta-buttons">
+            <button class="btn btn-secondary" bind:this={keepBtn} on:click={keep}>{$_('trace_actions.keep')}</button>
+            <button class="btn btn-danger" on:click={() => dispatch('close')}>{$_('trace_actions.discard')}</button>
+          </div>
+        </div>
+      {:else if confirmChanged}
+        <div class="ta-confirm" role="alertdialog" aria-label={$_('trace_actions.changed_question')}>
+          <p>{$_('trace_actions.changed_question')}</p>
+          <div class="ta-buttons">
+            <button class="btn btn-secondary" bind:this={changedBtn} on:click={keep}>{$_('trace_actions.keep')}</button>
+            {#if action !== 'checklist'}
+              <button class="btn btn-secondary" on:click={() => apply('append')}>{$_('trace_actions.add_below')}</button>
+            {/if}
+            <button class="btn btn-danger" on:click={() => apply('replace', true)}>{$_('trace_actions.replace_anyway')}</button>
+          </div>
+        </div>
+      {:else}
+        <div class="ta-buttons">
+          {#if action === 'custom'}
+            <!-- Back to the instruction, kept, to change it. -->
+            <button class="btn btn-secondary" on:click={() => { asking = true; action = null; tick().then(() => instructionEl?.focus()); }}>{$_('common.back')}</button>
+          {:else}
+            <button class="btn btn-secondary" on:click={() => dispatch('close')}>{$_('common.cancel')}</button>
+          {/if}
+          <button class="btn btn-secondary" on:click={() => run(action)}>{$_('trace_actions.try_again')}</button>
+          {#if action === 'summarize'}
+            <button class="btn btn-primary" bind:this={mainBtn} on:click={() => apply('prepend')}>{$_('trace_actions.add_to_top')}</button>
+          {:else if action === 'custom'}
+            <!-- An email or a reply made from the note goes under it; a changed note replaces it. -->
+            <button class="btn btn-secondary" on:click={() => apply('append')}>{$_('trace_actions.add_below')}</button>
+            <button class="btn btn-primary" bind:this={mainBtn} on:click={() => apply('replace')}>{$_('trace_actions.use_this')}</button>
+          {:else}
+            <button class="btn btn-primary" bind:this={mainBtn} on:click={() => apply('replace')} disabled={action === 'checklist' && !items.length}>
+              {action === 'checklist' ? $_('trace_actions.use_checklist') : $_('trace_actions.use_this')}
+            </button>
+          {/if}
+        </div>
+        <p class="ta-hint">{$_('trace_actions.history_hint')}</p>
+      {/if}
     {/if}
   {/if}
 </div>
@@ -168,5 +257,7 @@
   .ta-buttons .btn { height: 38px; }
   .ta-hint { font-size: 11px; color: var(--text-3); text-align: right; }
   .ta-instruction { width: 100%; resize: vertical; min-height: 72px; font: inherit; font-size: 14px; }
+  .ta-confirm { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-md); }
+  .ta-confirm p { font-size: 14px; color: var(--text-1); }
   .ta-asked { margin-top: -4px; font-size: 13px; color: var(--text-2); overflow-wrap: anywhere; white-space: pre-line; }
 </style>
