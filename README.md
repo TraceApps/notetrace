@@ -158,7 +158,7 @@ Open `http://localhost:3004` and a first-run wizard walks you through creating a
 | `UPLOADS_PATH` | `/data/uploads` | Uploaded images and server-side backups. |
 | `PORT` | `3004` | Port the server listens on inside the container. |
 | `BASE_URL` | - | Mount at a subpath, e.g. `/notetrace`. |
-| `PUBLIC_URL` | - | The full address people open the app at, subpath included (e.g. `https://notes.example.com`). Links in emails (password reset, invites, sharing) use it. Unset, they use an address an admin has opened the app at. |
+| `PUBLIC_URL` | - | The full address people open the app at, subpath included (e.g. `https://notes.example.com`). Links in emails (password reset, invites, sharing) use it. Unset, they use an address an admin has opened the app at. The server also takes it as the app's own address when it refuses changes sent from other sites' pages: set it if your reverse proxy passes neither the public `Host` nor `X-Forwarded-Host`; otherwise changes from a browser are refused (403, `cross_site`) over plain http, and over https from older browsers without `Sec-Fetch-Site` (such as Safari before 16.4). |
 | `LOG_LEVEL` | `info` | `error` \| `warn` \| `info` \| `debug`. |
 | `INSECURE_COOKIES` | `0` | Set `1` to send the sign-in cookie over plain HTTP too. The cookie is HTTPS-only by default, so at a plain `http://` address other than `localhost` (a LAN IP, an Unraid WebUI link) the browser drops it and signing in loops back to the sign-in page; the sign-in and setup screens say so. Use `1` only on a trusted LAN, and leave it `0` behind HTTPS. See [Plain-HTTP LAN](https://traceapps.github.io/docs/getting-started/lan-http/). |
 | `MAX_SESSION_HOURS` | `8760` | Session-length cap in hours. Lower for shared / kiosk machines. |
