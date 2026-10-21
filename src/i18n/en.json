@@ -1,4 +1,38 @@
 {
+  "notification_sounds": {
+    "title": "Browser notification sounds",
+    "description": "Play a tone for Trace chat replies, Ask Trace alerts, and note/task reminders while NoteTrace is open. Use Preview to enable audio. Browser, muted-tab, and device settings still apply; unavailable custom audio falls back to the system sound when supported.",
+    "enable": "Enable sounds in this browser",
+    "sound": "Sound",
+    "volume": "Volume",
+    "preview": "Preview sound",
+    "playing": "Preview played.",
+    "unavailable": "Sound unavailable. Check the volume and browser audio settings.",
+    "gentle": "Gentle",
+    "chime": "Chime",
+    "bell": "Bell",
+    "pulse": "Pulse",
+    "digital": "Digital"
+  },
+  "notification_history": {
+    "title": "Notification history",
+    "empty": "No notifications yet.",
+    "unread": "{count} unread notifications",
+    "mark_read": "Mark all read",
+    "clear": "Clear history",
+    "blocked": "Notifications are blocked. Allow them in your browser or device notification settings, then return here.",
+    "https": "Open NoteTrace over HTTPS (or localhost) to enable browser notifications.",
+    "device_only": "Recent notifications on this device. History clears on sign-out. Ask Trace results remain available only while the app stays open."
+  },
+  "trace_notifications": {
+    "chat_ready": "Trace replied",
+    "chat_review": "Open Trace chat to review the response.",
+    "channel": "Ask Trace results",
+    "ready": "Ask Trace is ready",
+    "failed": "Ask Trace needs attention",
+    "review": "Review Ask Trace for {title}",
+    "action": "Review"
+  },
   "nav": {
     "notes":    "Notes",
     "reminders": "Reminders",
@@ -626,6 +660,7 @@
     "channel_name":     "Note reminders"
   },
   "trace_actions": {
+    "background": "Continue in background",
     "title":          "Ask Trace",
     "tidy":           "Tidy Up",
     "tidy_desc":      "Fix spelling and grammar, and add structure",
@@ -1693,6 +1728,8 @@
     "continue":                  "Continue"
   },
   "settings_notifications": {
+    "trace_results": "Trace Results",
+    "trace_results_desc": "Notify for Trace chat replies and for Ask Trace results when you are away. Tap to review. Keep the app running. Without browser permission, a brief popup appears below the bell.",
     "toast": {
       "test_sent":                 "Test sent, check your push service.",
       "test_failed":               "Push test failed",

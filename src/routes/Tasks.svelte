@@ -1,4 +1,5 @@
 <script>
+  import NotificationHistory from '../components/layout/NotificationHistory.svelte';
   /**
    * Tasks: open checklist items that have a due date, plus everything on
    * checklists shown in Tasks (or every checklist, with that setting on).
@@ -386,6 +387,7 @@
 <div class="page-shell tasks-page">
   <header class="page-header" class:banner-gradient={$bannerStyle === 'gradient'} class:banner-animated={$bannerStyle === 'animated'}>
     <h1>{$_('nav.tasks')}</h1>
+    <NotificationHistory />
   </header>
 
   <div class="tasks-body" bind:this={listEl}>

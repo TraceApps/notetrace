@@ -19,6 +19,8 @@ import { notifLocalEnabled } from '../stores/settings.js';
 import { notesChanged } from '../stores/notes.js';
 import { DB } from './db.js';
 import { buildTaskDigest, localParts, timeToMinutes } from '../../server/lib/task-digest-core.js';
+import { notificationHistory } from './notification-history.js';
+import { notificationSoundSilent } from './notification-sounds.js';
 
 const TICK_MS = 20 * 1000;
 const REFRESH_MS = 5 * 60 * 1000;
@@ -39,7 +41,7 @@ export function webNotificationsSupported() {
 }
 
 function _enabled() {
-  return webNotificationsSupported() && Notification.permission === 'granted' && get(notifLocalEnabled) !== false;
+  return get(notifLocalEnabled) !== false;
 }
 
 function _readFired() {
@@ -65,7 +67,10 @@ async function _load() {
 
 async function _show(note) {
   const { title, body } = reminderNotificationText(note, _label);
-  const options = { body, tag: `note-reminder-${note.id}`, data: { noteId: note.id }, icon: 'icons/icon-192.png' };
+  notificationHistory.add({ id: `reminder:${note.id}:${Date.now()}`, kind: 'reminder', noteId: note.id, title, body });
+  const silent = notificationSoundSilent();
+  if (!webNotificationsSupported() || Notification.permission !== 'granted') return;
+  const options = { body, tag: `note-reminder-${note.id}`, data: { noteId: note.id }, icon: 'icons/icon-192.png', silent };
   try {
     const reg = await navigator.serviceWorker?.getRegistration?.();
     if (reg?.showNotification) { await reg.showNotification(title, options); return; }
@@ -95,6 +100,9 @@ async function _tasksDigestTick(now) {
   const digest = buildTaskDigest(_checklists.flatMap(n => (n.items || []).map(i => ({ ...i, list: n.title || '' }))), date);
   if (!_claim(`tasks@${date}`, now.getTime()) || !digest) return;
   const options = { body: digest.body, tag: `tasks-due-${date}`, data: { noteId: 'tasks' }, icon: 'icons/icon-192.png' };
+  notificationHistory.add({ id: `tasks:${date}`, kind: 'reminder', noteId: 'tasks', title: digest.title, body: digest.body });
+  options.silent = notificationSoundSilent();
+  if (!webNotificationsSupported() || Notification.permission !== 'granted') return;
   try {
     const reg = await navigator.serviceWorker?.getRegistration?.();
     if (reg?.showNotification) { await reg.showNotification(digest.title, options); return; }
@@ -120,7 +128,7 @@ async function _tick() {
 
 /** Start the reminder loop. Web only; the Android app schedules natively. */
 export function startWebReminders() {
-  if (_started || !webNotificationsSupported()) return;
+  if (_started) return;
   _started = true;
   // Reload the list whenever notes change here or through another tab's sync.
   notesChanged.subscribe(() => { _loadedAt = 0; });

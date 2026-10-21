@@ -159,7 +159,7 @@ test('the shared components and hand-built sheets are registered', () => {
   assert.match(read('../src/components/ui/ActionSheet.svelte'), /class="as-backdrop"[^>]*use:closeOnBack=/);
   assert.match(read('../src/components/notes/Popover.svelte'), /class="pop-backdrop"[^>]*use:closeOnBack=\{close\}/, 'the note menus (color, labels, reminder, share)');
   assert.match(read('../src/components/ui/ImagePicker.svelte'), /use:closeOnBack=\{stopCamera\}/, 'the camera stops, not just hides');
-  assert.match(read('../src/components/ai/Trace.svelte'), /use:closeOnBack=\{\(\) => panelOpen = false\}/);
+  assert.match(read('../src/components/ai/Trace.svelte'), /use:closeOnBack=\{\(\) => \$traceChatOpen = false\}/);
   assert.match(read('../src/routes/Notes.svelte'), /class="fab-layer" use:portal use:closeOnBack=\{\(\) => fabMenu = false\}/);
 });
 

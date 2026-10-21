@@ -51,6 +51,7 @@ export const DEVICE_PREFS = new Set([
   'biometricLoginEnabled', // Android-only, per-device biometric unlock for sign-in
   'appLockEnabled',        // Android-only: require biometric / device credential to open the app
   'appLockTimeoutMin',     // minutes in the background before the lock re-engages (0 = immediately)
+  'notifTraceResults', 'notifSoundEnabled', 'notifSound', 'notifSoundVolume',
   'notifLocalEnabled',     // reminder notifications on this device (phone, or this browser while open)
   'notesLayout',           // 'grid', 'list', or 'timeline' on the notes screens (the last one picked)
   'notesLayoutBySize',     // the layout picked for each size class, so a foldable's two screens keep their own
@@ -475,6 +476,10 @@ export const aiTranscribeModel = createSettingStore('aiTranscribeModel', '');
 
 // Notifications
 export const notifLocalEnabled = createSettingStore('notifLocalEnabled', true);
+export const notifTraceResults = createSettingStore('notifTraceResults', true);
+export const notifSoundEnabled = createSettingStore('notifSoundEnabled', false);
+export const notifSound = createSettingStore('notifSound', 'gentle');
+export const notifSoundVolume = createSettingStore('notifSoundVolume', 50);
 export const notifPushService  = createSettingStore('notifPushService',  'none');
 export const appriseUrl  = createSettingStore('appriseUrl',  '');
 export const appriseTag  = createSettingStore('appriseTag',  '');

@@ -10,6 +10,7 @@
  */
 import { isNative } from './platform.js';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import { notificationHistory } from './notification-history.js';
 
 const _dlog = import.meta.env.DEV
   ? console.log
@@ -113,6 +114,7 @@ export async function showUpdateNotification(latest) {
       }],
     });
     _dlog(`[notifications] update notification posted for ${latest.version}`);
+    notificationHistory.add({ id: 'app-update', kind: 'update', title: 'NoteTrace update available', body: `${latest.version} is ready. Tap to install.` });
     return true;
   } catch (e) {
     console.warn('[notifications] update notification failed:', e?.message || e);
