@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { appNavigationMatch } from '../src/lib/pwa-routing.js';
 import { escapeHtml, publicNoteDescription, publicNoteHead, injectPublicNoteHead, publicPageHtml, STALE_PAGE_RECOVERY_JS } from '../server/lib/public-note-meta.js';
 
 const ctx = { origin: 'https://notes.example.com', basePath: '/nt', pageUrl: 'https://notes.example.com/nt/n/abc' };
@@ -73,10 +74,7 @@ test('the page loads the app from its root, not from under /n/', () => {
 // (workbox-routing NavigationRoute: url.pathname + url.search), so a link with
 // anything after the token has to be left to the server too.
 test("the service worker leaves every public link to the server, query and all", () => {
-  const cfg = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8');
-  const list = cfg.match(/navigateFallbackDenylist:\s*\[(.*)\]/)[1];
-  const denied = eval(`[${list}]`);
-  const toServer = (p) => denied.some(r => r.test(p));
+  const toServer = p => !appNavigationMatch({ request: { mode: 'navigate' }, url: new URL(p, 'https://notes.example.com') });
   const tok = 'hYLnYCRymoXCxCGASWYYsA';
   // Any single segment, as the server's /n/:token: a mistyped or cut-off link
   // has to reach the server too, or the recovery would run for it every time.
