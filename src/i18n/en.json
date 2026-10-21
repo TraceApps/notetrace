@@ -1926,5 +1926,35 @@
       "view_notes":       "View Release Notes",
       "channel_note":     "To switch server channels, change your docker-compose.yml image tag (:latest, :dev) and re-run docker-compose pull && docker-compose up -d."
     }
+  },
+  "font_themes": {
+    "title": "Typography",
+    "description": "Choose a font theme for this device. Applies to menus, note text, and note titles. All fonts work offline.",
+    "sample": "Notes, ideas & reminders",
+    "default": "Inter for the app, Newsreader for note titles.",
+    "manrope": "Clean lines and a modern geometric feel.",
+    "nunito": "Soft, rounded letters for relaxed reading.",
+    "lora": "A classic serif with a book-like feel.",
+    "mono": "Evenly spaced letters with a technical feel.",
+    "system": "Use the default font on your device."
+  },
+  "font_collection": {
+    "size": "Text size",
+    "reset_size": "Reset size",
+    "pairings": "Font pairings",
+    "display": "Display",
+    "body": "Body",
+    "mono_label": "Mono",
+    "loading": "Loading preview fonts…",
+    "failed": "The preview font could not load.",
+    "retry": "Try again",
+    "family": "Font family",
+    "defaults": "Original & system",
+    "sans": "Sans serif",
+    "serif": "Serif",
+    "mono": "Monospace",
+    "preview": "Preview",
+    "count": "{count} locally bundled choices. Your selection updates the preview and app immediately.",
+    "sample_body": "Capture an idea, plan your week, or return to a favorite note. The right typeface makes every detail easier to read."
   }
 }

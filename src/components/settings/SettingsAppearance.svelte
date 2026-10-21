@@ -1,4 +1,5 @@
 <script>
+  import { onMount, onDestroy } from 'svelte';
   import Toggle from './Toggle.svelte';
   import { viewport, sizeClass } from '../../stores/window-size.js';
   // Appearance section — extracted from the Settings.svelte monolith.
@@ -13,8 +14,18 @@
   import {
     appearance, accentColor, navStyle, sidebarPersistent, disableAnimations,
     bannerStyle, bannerAnimation, startPage, forceMobileLayout,
+    fontTheme, fontSize,
   } from '../../stores/settings.js';
   import { openColorPicker } from '../../stores/color-picker.js';
+  import { FONT_THEMES, FONT_GROUPS, fontThemeFor } from '../../lib/font-themes.js';
+  import { createFontPreviewLoader } from '../../lib/font-preview.js';
+
+  $: selectedFont = fontThemeFor($fontTheme);
+  let previewState = 'loading';
+  let fontLoader;
+  onMount(() => { fontLoader = createFontPreviewLoader(document.fonts, state => previewState = state); });
+  onDestroy(() => fontLoader?.cancel());
+  $: if (fontLoader) fontLoader.load(selectedFont);
 
   // Theme / accent options — mirror NT exactly.
   const APPEARANCE_OPTS = [
@@ -62,6 +73,56 @@
 </script>
 
 <div class="section-body">
+  <div class="card settings-card typography-card">
+    <div class="setting-row">
+      <div>
+        <span class="setting-label">{$_('font_themes.title')}</span>
+        <span class="setting-desc">{$_('font_themes.description')}</span>
+      </div>
+    </div>
+    <div class="setting-row font-size-row">
+      <label class="setting-label" for="font-size">{$_('font_collection.size')}</label>
+      <input id="font-size" type="range" min="12" max="22" step="1" value={$fontSize}
+        aria-valuetext={`${$fontSize}px`} on:input={e => fontSize.set(Number(e.currentTarget.value))} />
+      <output for="font-size">{$fontSize}px</output>
+      <button class="font-size-reset" on:click={() => fontSize.set(15)}>{$_('font_collection.reset_size')}</button>
+    </div>
+    <div class="font-layout">
+      <div class="font-selection">
+        <label class="setting-label" for="font-theme">{$_('font_collection.family')}</label>
+        <select id="font-theme" class="select" value={selectedFont.id} on:change={e => fontTheme.set(e.currentTarget.value)}>
+          {#each FONT_GROUPS as group}
+            <optgroup label={$_(`font_collection.${group}`)}>
+              {#each FONT_THEMES.filter(theme => theme.group === group) as theme (theme.id)}
+                <option value={theme.id}>{theme.name}{theme.group === 'pairings' ? ` · ${theme.displayName} × ${theme.bodyName}` : ''}</option>
+              {/each}
+            </optgroup>
+          {/each}
+        </select>
+        <p class="setting-desc">{$_('font_collection.count', { values: { count: FONT_THEMES.length } })}</p>
+      </div>
+      <section class="font-preview" aria-label={$_('font_collection.preview')} aria-busy={previewState === 'loading'} style="font-family:{selectedFont.body}">
+        <span class="preview-label">{$_('font_collection.preview')} · {selectedFont.name}</span>
+        {#if selectedFont.description}<span class="preview-description">{selectedFont.description}</span>{/if}
+        <h3 style="font-family:{selectedFont.title || selectedFont.body}">{$_('font_themes.sample')}</h3>
+        <p>{$_('font_collection.sample_body')}</p>
+        <span class="preview-characters">Aa Bb Cc · 0123456789</span>
+        <code class="preview-code" style="font-family:{selectedFont.mono || 'ui-monospace, monospace'}">const note = "A little room to think";</code>
+        {#if selectedFont.group === 'pairings'}
+          <dl class="pairing-families">
+            <div><dt>{$_('font_collection.display')}</dt><dd>{selectedFont.displayName}</dd></div>
+            <div><dt>{$_('font_collection.body')}</dt><dd>{selectedFont.bodyName}</dd></div>
+            <div><dt>{$_('font_collection.mono_label')}</dt><dd>{selectedFont.monoName}</dd></div>
+          </dl>
+        {/if}
+        <div class="preview-status" role="status">
+          {#if previewState === 'loading'}{$_('font_collection.loading')}
+          {:else if previewState === 'failed'}{$_('font_collection.failed')} <button class="retry-font" on:click={() => fontLoader?.load(selectedFont)}>{$_('font_collection.retry')}</button>{/if}
+        </div>
+        <span class="btn btn-primary preview-button" aria-hidden="true">{$_('notes.done')}</span>
+      </section>
+    </div>
+  </div>
   <div class="card settings-card">
     <div class="setting-row">
       <span class="setting-label">{$_('settings_page.appearance.theme')}</span>
@@ -176,6 +237,29 @@
 </div>
 
 <style>
+  .font-size-row { flex-wrap: wrap; }
+  .font-size-row input { flex: 1 1 120px; min-width: 80px; max-width: 240px; accent-color: var(--accent); }
+  .font-size-row label { flex: 0 0 auto; }
+  .font-size-row output { font-size: 13px; color: var(--text-2); min-width: 38px; }
+  .font-size-reset { color: var(--accent); font-size: 12px; padding: 8px; border-radius: 8px; }
+  .font-layout { display: grid; grid-template-columns: minmax(180px, 240px) minmax(0, 1fr); gap: 20px; padding: 0 16px 20px; }
+  .font-selection { min-width: 0; }
+  .font-selection .select { width: 100%; margin: 8px 0; }
+  .font-preview { min-width: 0; padding: 20px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); }
+  .preview-label { display: block; font-size: 12px; color: var(--text-3); }
+  .font-preview h3 { font-size: 26px; line-height: 1.3; margin: 12px 0; overflow-wrap: anywhere; }
+  .font-preview p { font-size: 15px; line-height: 1.6; color: var(--text-2); }
+  .preview-characters { display: block; margin-top: 12px; font-size: 14px; color: var(--text-3); }
+  .preview-description { display: block; font-size: 13px; color: var(--text-3); margin-top: 6px; }
+  .preview-code { display: block; margin-top: 14px; font-size: 13px; overflow-wrap: anywhere; }
+  .pairing-families { display: grid; gap: 6px; margin-top: 16px; font-family: var(--font-sans); font-size: 12px; }
+  .pairing-families > div { display: flex; gap: 12px; }
+  .pairing-families dt { width: 52px; flex-shrink: 0; color: var(--text-3); }
+  .pairing-families dd { margin: 0; overflow-wrap: anywhere; color: var(--text-2); }
+  .preview-status { min-height: 20px; margin-top: 8px; font-size: 12px; color: var(--text-3); }
+  .retry-font { color: var(--accent); text-decoration: underline; padding: 4px; }
+  .preview-button { margin-top: 18px; pointer-events: none; }
+  @media (max-width: 700px) { .font-layout { grid-template-columns: 1fr; } }
   /* Accent-swatch styles live with the section that owns them so the
      rules travel with the extract. Mirrors NT. */
   .accent-swatches { display: flex; gap: 10px; flex-wrap: wrap; padding: 0 16px 14px; }

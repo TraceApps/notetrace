@@ -523,7 +523,7 @@
     color: var(--text-2);
   }
   .tiptap-host :global(.tiptap-body code) {
-    font-family: ui-monospace, 'JetBrains Mono', monospace;
+    font-family: var(--font-mono, ui-monospace, 'JetBrains Mono', monospace);
     font-size: 0.88em;
     background: color-mix(in srgb, var(--text-1) 8%, transparent);
     border-radius: 6px;

@@ -39,7 +39,7 @@ export const USER_PREFS = new Set([
 ]);
 
 export const DEVICE_PREFS = new Set([
-  'appearance','navStyle','sidebarPersistent','disableAnimations',
+  'appearance','fontTheme','fontSize','navStyle','sidebarPersistent','disableAnimations',
   'sidebarRail', 'sidebarLabelsCollapsed', // per-device sidebar shape
   'sidebarRailMedium',     // Auto navigation on a medium screen (an unfolded foldable): sidebar as icons
   'keyboardShortcuts',     // single-key shortcuts on this device
@@ -353,6 +353,8 @@ function createSettingStore(key, defaultValue) {
 
 // ── Device prefs (local-only) ──────────────────────────────────────────────
 export const appearance        = createSettingStore('appearance',        'system');
+export const fontTheme         = createSettingStore('fontTheme',         'default');
+export const fontSize          = createSettingStore('fontSize',          15);
 // 'auto' fits the screen: tab bar on phones, icons on an unfolded foldable, sidebar on desktop.
 export const navStyle          = createSettingStore('navStyle',          'auto');
 export const sidebarPersistent = createSettingStore('sidebarPersistent', true);
