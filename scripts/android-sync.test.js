@@ -568,6 +568,30 @@ test('a forced sync asked for while one runs runs again right after it, never al
   assert.deepEqual(r, { ok: true, here: true, most: 1 });
 });
 
+test('font sync scope gates native pending writes and incoming account typography', async (t) => {
+  if (skip(t)) return;
+  const r = phone('font-scope', A, `
+    await p.setupSignIn('alice'); await p.sync();
+    await p.offline(async () => {
+      p.settings.fontTheme.set('lora'); p.settings.fontSize.set(18);
+      await p.sleep(900);
+    });
+    p.settings.setFontSyncScope('device');
+    p.settings.fontTheme.set('nunito'); p.settings.fontSize.set(20);
+    await p.sync();
+    const headers = { Authorization: 'Bearer ' + p.platform.getAuthToken(), 'Content-Type': 'application/json' };
+    const before = await (await fetch(p.S + '/api/settings', { headers })).json();
+    await fetch(p.S + '/api/settings/bulk', { method: 'PUT', headers,
+      body: JSON.stringify({ settings: { fontTheme: 'mono', fontSize: 13 } }) });
+    await p.settings.loadServerSettings(); await p.sync();
+    const local = [p.settings.fontTheme.get(), p.settings.fontSize.get()];
+    p.settings.setFontSyncScope('account'); await p.sleep(900); await p.sync();
+    const after = await (await fetch(p.S + '/api/settings', { headers })).json();
+    p.done({ before: [before.fontTheme ?? null, before.fontSize ?? null], local,
+      after: [after.fontTheme, after.fontSize], scopeSaved: after.fontSyncScope ?? null });`);
+  assert.deepEqual(r, { before: [null, null], local: ['nunito', 20], after: ['nunito', 20], scopeSaved: null });
+});
+
 test('a list setting changed on the phone reaches the server as a list, not as text', async (t) => {
   if (skip(t)) return;
   const r = phone('list-setting', A, `

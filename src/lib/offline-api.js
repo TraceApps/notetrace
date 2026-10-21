@@ -27,6 +27,7 @@ import {
 // no copy of it. This is what "Failed to fetch dynamically imported module"
 // looked like from the outside.
 import { embeddableDataUrl } from './image-embed.js';
+import { isLocalFontSetting } from './font-sync.js';
 
 // Retries while the server can't be reached: 3 s, doubling up to 30 s.
 const RETRY_MIN_MS = 3_000;
@@ -385,6 +386,11 @@ async function _flushOnce() {
     const map = await _idMap();
     const done = new Set();
     for (const op of requests) {
+      // A queued account preference must not leak out after opting out.
+      if (op.path === '/api/settings' && isLocalFontSetting(op.body?.key)) {
+        done.add(op.key);
+        continue;
+      }
       const noteId = op.noteId == null ? null : _mapId(map, op.noteId);
       if (noteId != null && isTempId(noteId)) continue;   // its note hasn't gone up yet
       const path = noteId == null ? op.path : op.path.replace('{id}', String(noteId));

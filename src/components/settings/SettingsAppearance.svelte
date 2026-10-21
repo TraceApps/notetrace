@@ -14,7 +14,7 @@
   import {
     appearance, accentColor, navStyle, sidebarPersistent, disableAnimations,
     bannerStyle, bannerAnimation, startPage, forceMobileLayout,
-    fontTheme, fontSize,
+    fontTheme, fontSize, fontSyncScope, setFontSyncScope,
   } from '../../stores/settings.js';
   import { openColorPicker } from '../../stores/color-picker.js';
   import { FONT_THEMES, FONT_GROUPS, fontThemeFor } from '../../lib/font-themes.js';
@@ -78,6 +78,19 @@
       <div>
         <span class="setting-label">{$_('font_themes.title')}</span>
         <span class="setting-desc">{$_('font_themes.description')}</span>
+      </div>
+    </div>
+    <div class="setting-row" style="align-items:flex-start;flex-direction:column;gap:10px">
+      <div>
+        <label class="setting-label" for="font-sync-scope">{$_('font_collection.scope')}</label>
+        <span class="setting-desc" id="font-sync-description">{$_('font_collection.scope_description')}</span>
+      </div>
+      <div class="select-wrap" style="width:100%;max-width:240px">
+        <select id="font-sync-scope" class="select sel-sm" value={$fontSyncScope}
+          aria-describedby="font-sync-description" on:change={e => setFontSyncScope(e.currentTarget.value)}>
+          <option value="account">{$_('font_collection.scope_account')}</option>
+          <option value="device">{$_('font_collection.scope_device')}</option>
+        </select>
       </div>
     </div>
     <div class="setting-row font-size-row">

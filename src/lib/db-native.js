@@ -18,6 +18,7 @@
 
 import { CapacitorSQLite, SQLiteConnection } from '@capacitor-community/sqlite';
 import { isNative } from './platform.js';
+import { isLocalFontSetting } from './font-sync.js';
 
 export const LOCAL_USER_ID = 1;
 const DB_NAME = 'notetrace_local';
@@ -508,7 +509,7 @@ export async function dbGetPendingSettingsForPush() {
       WHERE user_id = ? AND deleted_at IS NULL AND sync_status = 'pending'`,
     [LOCAL_USER_ID]
   );
-  return r?.values || [];
+  return (r?.values || []).filter(row => !isLocalFontSetting(row.key));
 }
 
 /**
@@ -735,6 +736,7 @@ export async function dbApplyPull(payload, { live = () => true } = {}) {
   if (Array.isArray(payload.tables.settings)) {
     for (const s of payload.tables.settings) {
       if (!live()) return false;
+      if (isLocalFontSetting(s.key)) continue;
       const localRow = (await db.query(
         `SELECT sync_status FROM user_settings WHERE user_id = ? AND key = ? LIMIT 1`,
         [LOCAL_USER_ID, s.key]

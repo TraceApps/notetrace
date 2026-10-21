@@ -1,5 +1,6 @@
 import { writable, get, derived } from 'svelte/store';
 import { DB } from '../lib/db.js';
+import { FONT_SETTING_KEYS, isLocalFontSetting } from '../lib/font-sync.js';
 
 const _dlog = import.meta.env.DEV
   ? console.log
@@ -15,6 +16,7 @@ export const USER_PREFS = new Set([
   // Locale + display
   'accentColor','pageBanners','bannerStyle','bannerAnimation','startPage',
   'language','dateFormat','timeFormat','timezone',
+  'fontTheme','fontSize', // typography follows the account across devices
   // AI Assistant ("Trace" persona)
   'aiEnabled','aiProvider','aiApiKey','aiModel','aiBaseUrl','aiAssistantName','aiKeyVerified',
   // Smart Log (hold-to-record on the FAB → AI parses spoken intent → tool execution)
@@ -39,7 +41,8 @@ export const USER_PREFS = new Set([
 ]);
 
 export const DEVICE_PREFS = new Set([
-  'appearance','fontTheme','fontSize','navStyle','sidebarPersistent','disableAnimations',
+  'fontSyncScope', // whether typography follows the account on this device
+  'appearance','navStyle','sidebarPersistent','disableAnimations',
   'sidebarRail', 'sidebarLabelsCollapsed', // per-device sidebar shape
   'sidebarRailMedium',     // Auto navigation on a medium screen (an unfolded foldable): sidebar as icons
   'keyboardShortcuts',     // single-key shortcuts on this device
@@ -58,7 +61,7 @@ export const DEVICE_PREFS = new Set([
   'listColumnWidth',       // List layout: width of the list column beside the reading pane, px
 ]);
 
-const SERVER_SETTINGS = USER_PREFS;
+const isServerSetting = key => USER_PREFS.has(key) && !isLocalFontSetting(key);
 
 import { isNative, getServerUrl, getAuthToken, apiUrl } from '../lib/platform.js';
 
@@ -111,15 +114,20 @@ async function _intoPhoneCopy(write) {
   return write(live);
 }
 function _queueInPhoneCopy(key, value) {
-  _intoPhoneCopy(async () => (await import('../lib/db-native.js')).dbUpsertSetting(key, value)).catch(() => {});
+  _intoPhoneCopy(async () => {
+    if (isServerSetting(key)) await (await import('../lib/db-native.js')).dbUpsertSetting(key, value);
+  }).catch(() => {});
 }
 
 export function scheduleSave(key, value) {
-  if (!SERVER_SETTINGS.has(key)) return;
+  if (!isServerSetting(key)) return;
   if (_suppressSync) return;
+  const forUser = localStorage.getItem('wl:userId');
+  const forUrl = _settingsUrl();
   clearTimeout(_saveQueue[key]);
   _saveQueue[key] = setTimeout(async () => {
-    if (!_shouldSyncToServer()) return;
+    if (!_shouldSyncToServer() || !isServerSetting(key)
+      || localStorage.getItem('wl:userId') !== forUser || _settingsUrl() !== forUrl) return;
     // When the phone's copy of this setting was last changed, before it
     // goes up: if it changes again while this is out, it stays waiting
     // for the next sync instead of being marked as sent.
@@ -152,7 +160,7 @@ export function scheduleSave(key, value) {
       console.warn(`[settings] direct push failed for ${key}:`, e.message);
       // With no connection the change is kept and goes up with everything
       // else, rather than staying local while the server keeps the old value.
-      if (!isNative) {
+      if (!isNative && isServerSetting(key) && localStorage.getItem('wl:userId') === forUser) {
         try {
           const { queueRequest } = await import('../lib/offline-api.js');
           await queueRequest({ kind: `the "${key}" setting`, key: `setting:${key}`, method: 'PUT', path: '/api/settings', body: { key, value } });
@@ -166,12 +174,12 @@ export async function bulkSet(settingsObj) {
   if (!settingsObj || typeof settingsObj !== 'object') return;
   const entries = Object.entries(settingsObj);
   if (entries.length === 0) return;
-  const userPrefEntries = entries.filter(([k]) => USER_PREFS.has(k));
 
   _suppressSync = true;
   try {
     for (const [key, value] of entries) DB.setSetting(key, value);
   } finally { _suppressSync = false; }
+  const userPrefEntries = entries.filter(([k]) => isServerSetting(k));
 
   // When each went into the phone's copy, to mark it sent below.
   const sentAt = new Map();
@@ -228,7 +236,7 @@ async function _mirrorServerSettings(serverSettings) {
     await _intoPhoneCopy(async (live) => {
       const { dbMirrorSetting } = await import('../lib/db-native.js');
       for (const [key, value] of Object.entries(serverSettings)) {
-        if (DEVICE_PREFS.has(key)) continue;
+        if (DEVICE_PREFS.has(key) || isLocalFontSetting(key)) continue;
         if (!live()) return;
         await dbMirrorSetting(key, value);
       }
@@ -240,15 +248,19 @@ async function _mirrorServerSettings(serverSettings) {
 
 export async function loadServerSettings() {
   if (!_shouldSyncToServer()) return;
+  const forUser = localStorage.getItem('wl:userId');
+  const forUrl = _settingsUrl();
+  const stillCurrent = () => _shouldSyncToServer()
+    && localStorage.getItem('wl:userId') === forUser && _settingsUrl() === forUrl;
   try {
-    const res = await fetch(_settingsUrl(), { credentials: 'include', headers: _authHeaders(), signal: AbortSignal.timeout(8000) });
+    const res = await fetch(forUrl, { credentials: 'include', headers: _authHeaders(), signal: AbortSignal.timeout(8000) });
     if (!res.ok) return;
     const serverSettings = await res.json();
     // Settings changed on this phone and not sent yet are the newer ones:
     // kept when the server's come down. Only while the phone's copy is
     // this account's (before, its rows can be the previous account's).
-    const forUser = localStorage.getItem('wl:userId');
     const unsent = isNative ? await _unsentSettingKeys(forUser) : new Set();
+    if (!stillCurrent()) return;
     _suppressSync = true;
     // CRITICAL: skip DEVICE_PREFS keys. These are local-only (form-factor
     // or hardware specific) and should never be overwritten by server
@@ -258,8 +270,10 @@ export async function loadServerSettings() {
     // phone's `false` and the persistent-sidebar toggle would silently
     // turn off mid-session.
     for (const [key, value] of Object.entries(serverSettings)) {
-      if (DEVICE_PREFS.has(key)) continue;
+      if (DEVICE_PREFS.has(key) || isLocalFontSetting(key)) continue;
       if (unsent.has(key)) continue; // changed here, not sent yet: the newer value
+      // A visibility refresh can race the debounced typography save.
+      if (FONT_SETTING_KEYS.has(key) && isRecentlyChanged(key)) continue;
       DB.setSetting(key, value, true);
     }
     // Into the phone's copy only once it's this account's, and never over
@@ -267,6 +281,18 @@ export async function loadServerSettings() {
     // waits on the account check.
     if (isNative) _mirrorServerSettings(serverSettings).catch(() => {});
     _suppressSync = false;
+
+    // These used to be device-only. Seed an account with its existing
+    // local choices only if the server has no value. A fresh browser's
+    // defaults are never uploaded over another device's saved choices.
+    for (const key of FONT_SETTING_KEYS) {
+      if (!isServerSetting(key)) continue;
+      if (Object.hasOwn(serverSettings, key)) continue;
+      const value = DB.getSetting(key, null);
+      if (value === null) continue;
+      if (isNative) _queueInPhoneCopy(key, value);
+      scheduleSave(key, value);
+    }
 
     try {
       if (typeof window !== 'undefined') {
@@ -285,7 +311,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('wl:setting', (e) => {
     const key = e.detail?.key;
     if (!key) return;
-    if (!USER_PREFS.has(key)) return;
+    if (!isServerSetting(key)) return;
     if (_suppressSync) return;
     const value = DB.getSetting(key, undefined);
     _recentlyChanged.set(key, Date.now());
@@ -340,7 +366,7 @@ function createSettingStore(key, defaultValue) {
       store.set(value);
       if (_suppressSync) return;
       _recentlyChanged.set(key, Date.now());
-      if (isNative && SERVER_SETTINGS.has(key)) _queueInPhoneCopy(key, value);
+      if (isNative && isServerSetting(key)) _queueInPhoneCopy(key, value);
       scheduleSave(key, value);
     },
     update(fn) {
@@ -353,8 +379,7 @@ function createSettingStore(key, defaultValue) {
 
 // ── Device prefs (local-only) ──────────────────────────────────────────────
 export const appearance        = createSettingStore('appearance',        'system');
-export const fontTheme         = createSettingStore('fontTheme',         'default');
-export const fontSize          = createSettingStore('fontSize',          15);
+export const fontSyncScope     = createSettingStore('fontSyncScope',     'account');
 // 'auto' fits the screen: tab bar on phones, icons on an unfolded foldable, sidebar on desktop.
 export const navStyle          = createSettingStore('navStyle',          'auto');
 export const sidebarPersistent = createSettingStore('sidebarPersistent', true);
@@ -398,6 +423,21 @@ export const appLockTimeoutMin = createSettingStore('appLockTimeoutMin', 1);
 export const forceMobileLayout = createSettingStore('forceMobileLayout', false);
 
 // ── User prefs (server-synced) ─────────────────────────────────────────────
+export const fontTheme = createSettingStore('fontTheme', 'default');
+export const fontSize  = createSettingStore('fontSize', 15);
+export function setFontSyncScope(scope) {
+  if (!['account', 'device'].includes(scope) || fontSyncScope.get() === scope) return;
+  fontSyncScope.set(scope);
+  for (const key of FONT_SETTING_KEYS) {
+    clearTimeout(_saveQueue[key]);
+    if (scope !== 'account') continue;
+    // Opting in shares the current selection, including explicit defaults.
+    const value = key === 'fontTheme' ? fontTheme.get() : fontSize.get();
+    _recentlyChanged.set(key, Date.now());
+    if (isNative) _queueInPhoneCopy(key, value);
+    scheduleSave(key, value);
+  }
+}
 export const accentColor = createSettingStore('accentColor', 'lavender');
 // Page banners — three styles:
 //   'animated' = tall header with the page's illustrated SVG

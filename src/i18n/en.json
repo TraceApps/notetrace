@@ -1929,7 +1929,7 @@
   },
   "font_themes": {
     "title": "Typography",
-    "description": "Choose a font theme for this device. Applies to menus, note text, and note titles. All fonts work offline.",
+    "description": "Choose a font theme for menus, note text, and note titles. All fonts work offline.",
     "sample": "Notes, ideas & reminders",
     "default": "Inter for the app, Newsreader for note titles.",
     "manrope": "Clean lines and a modern geometric feel.",
@@ -1939,6 +1939,10 @@
     "system": "Use the default font on your device."
   },
   "font_collection": {
+    "scope": "Font settings",
+    "scope_account": "Across devices",
+    "scope_device": "This device only",
+    "scope_description": "Across devices saves your current font and text size to your signed-in account. This device only keeps changes in this browser or app.",
     "size": "Text size",
     "reset_size": "Reset size",
     "pairings": "Font pairings",
