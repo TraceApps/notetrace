@@ -171,7 +171,7 @@
 </script>
 
 <div class="section-body">
-  <p class="sub-label">{$_('capture.token_help')}</p>
+  <p class="setting-desc">{$_('capture.token_help')}</p>
   {#if $currentUser?.role === 'admin'}
   <p class="sub-label" style="padding:0 0 6px">
     {$_('settings_api_tokens_ct.intro_before')} <em>{$_('settings_api_tokens_ct.intro_dev')}</em>){$_('settings_api_tokens_ct.intro_middle')}

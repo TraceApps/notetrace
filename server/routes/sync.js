@@ -357,7 +357,7 @@ router.post('/push', wrap((req, res) => {
             ...(spec.softDelete ? [translated.deleted_at ?? null] : [])
           );
           const serverId = Number(info.lastInsertRowid);
-          if (name === 'notes' && typeof row.source_json === 'string' && row.source_json.length <= 120000 && captureSource(row)) {
+          if (name === 'notes' && typeof row.source_json === 'string' && row.source_json.length <= 1000000 && captureSource(row)) {
             db.prepare('UPDATE notes SET source_json = ? WHERE id = ?').run(row.source_json, serverId);
           }
           setCreateKey(name, serverId, createKey);

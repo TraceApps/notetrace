@@ -1092,7 +1092,7 @@ export const importNotes = db.transaction((u, list = []) => {
           reminderAt, reminderAt ? _cleanRepeat(raw.reminder_rrule) : null, reminderAt ? _cleanTz(raw.reminder_tz) : null,
           created, updated);
     const id = Number(info.lastInsertRowid);
-    if (typeof raw.source_json === 'string') db.prepare('UPDATE notes SET source_json = ? WHERE id = ?').run(raw.source_json.slice(0, 120000), id);
+    if (typeof raw.source_json === 'string' && raw.source_json.length <= 1000000) db.prepare('UPDATE notes SET source_json = ? WHERE id = ?').run(raw.source_json, id);
     items.forEach((it, i) => _upsertItem(u, id, { text: it.text, checked: !!it.checked, position: i + 1, checked_at: null }, updated));
 
     const ids = [];

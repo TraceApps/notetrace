@@ -654,7 +654,7 @@ export const NotesNative = {
          raw.pinned && !raw.archived && !raw.trashed ? 1 : 0, raw.archived ? 1 : 0, kind === 'checklist' && raw.in_tasks ? 1 : 0, raw.read_only ? 1 : 0, raw.trashed ? ts : null,
          reminderAt, reminderAt && REPEATS.includes(raw.reminder_rrule) ? raw.reminder_rrule : null,
          reminderAt ? (raw.reminder_tz || null) : null, created, updated]);
-      if (typeof raw.source_json === 'string') await _run('UPDATE notes SET source_json = ? WHERE id = ?', [raw.source_json.slice(0, 120000), id]);
+      if (typeof raw.source_json === 'string' && raw.source_json.length <= 1000000) await _run('UPDATE notes SET source_json = ? WHERE id = ?', [raw.source_json, id]);
       for (let i = 0; i < items.length; i++) {
         await _upsertItem(id, { text: items[i].text, checked: !!items[i].checked, position: i + 1 }, updated);
       }

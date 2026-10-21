@@ -237,7 +237,7 @@
     backup:        ['backup','export','import','restore','json','full backup','reset','danger zone','portable','portable export','clear','clear all data','clear data','data','clear settings','schedule','scheduled backup','retention','auto backup','upload','local backup'],
     users:         ['users','user management','accounts','login','admin','register','invite','strong passwords','password policy','passwords','session','session duration','duration','sign-in','require'],
     auth:          ['authentication','auth','sso','single sign-on','single sign on','oidc','openid','authentik','keycloak','authelia','password login','management','user management','required','admin','admin only','provider','providers','active','allow password login'],
-    apitokens:     ['api tokens','api token','personal access token','pat','mcp','model context protocol','claude desktop','cursor','codex','agent','ai agent','bearer token','scopes','revoke token'],
+    apitokens:     ['api tokens','api token','personal access token','pat','mcp','model context protocol','claude desktop','cursor','codex','agent','ai agent','bearer token','scopes','revoke token','mailflow','capture','connect apps','notes','tasks','write'],
     webhooks:      ['webhooks','webhook','automation','n8n','home assistant','ifttt','push','event','integration','integrations','http post','callback url','signature','hmac','secret'],
     applock:       ['app lock','lock','biometric','fingerprint','face unlock','pin','privacy','security','unlock','notetrace','lock after','timeout','lock timeout'],
     serverconn:    ['server','connection','sync','connect','disconnect','local mode','offline','standalone','android','native','url','login'],
