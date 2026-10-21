@@ -79,8 +79,9 @@ test('the sign-in options come from /api/auth/status, and a failure to read them
   // A gateway error, the server's own error, or no answer at all.
   signin._useHttpForTests(fakeHttp({ '/api/auth/status': { status: 502, data: GATEWAY_PAGE } }));
   await assert.rejects(signin.discoverSignIn(URL_), isUnreachable(502));
+  // The server's own error (JSON with a 5xx): it answered, so a server error, not "can't reach".
   signin._useHttpForTests(fakeHttp({ '/api/auth/status': { status: 500, data: { error: 'boom' } } }));
-  await assert.rejects(signin.discoverSignIn(URL_), isUnreachable(500));
+  await assert.rejects(signin.discoverSignIn(URL_), (e) => e.serverError === true && e.status === 500 && !e.webPage);
   signin._useHttpForTests(fakeHttp({}));
   await assert.rejects(signin.discoverSignIn(URL_), /Unable to resolve host/);
   // What the user reads is translatable: no English status inside it.
@@ -255,7 +256,7 @@ test('the sign-in page says when its options can\'t be read, and a web page in p
   // The app asks natively (a proxy page is said as such, not "Failed to fetch").
   assert.match(src, /if \(isNative\) data = \(await discoverSignIn\(getServerUrl\(\)\)\)\.status;/);
   assert.match(src, /data = await responseJson\(r\);/);
-  assert.match(src, /\{#if optionsError\}[\s\S]{0,300}on:click=\{loadSignInOptions\}/);
+  assert.match(src, /\{#if \$authUnavailable \|\| optionsError\}[\s\S]{0,400}on:click=\{\$authUnavailable \? retryServer : loadSignInOptions\}/);
   assert.match(src, /const data = await responseJson\(res\);\n\s*if \(!res\.ok\)/);
   assert.match(src, /showError\(e\?\.webPage \? e\.message : \$_\('common\.errors\.cant_reach_server'\)\)/);
   const en = JSON.parse(read('../src/i18n/en.json'));
@@ -318,3 +319,41 @@ test('the server check reads the reply first: an outpost 401 page is a sign-in p
   assert.throws(() => checkHealth({ status: 502, data: page }), (e) => e.unreachable === true && e.status === 502);
   assert.throws(() => checkHealth({ status: 503, data: { error: 'down' } }), (e) => e.unreachable === true);
 });
+
+test('the sign-in page says one reason, the same on Android and the web, whichever check failed', async () => {
+  const en = JSON.parse(read('../src/i18n/en.json'));
+  // The sign-in options as Android reads them (discoverSignIn), each way they fail.
+  const why = async (reply, native) => {
+    signin._useHttpForTests(reply === 'drop'
+      ? { get: async () => { throw new Error('Unable to resolve host'); }, post: async () => { throw new Error('Unable to resolve host'); } }
+      : fakeHttp({ '/api/auth/status': reply }));
+    try { await signin.discoverSignIn(URL_); return 'read'; } catch (e) { return signin.signInProblemKey(e, { native }); }
+  };
+  const cases = [
+    ['no connection, or a timeout', 'drop', 'unreachable', 'unreachable'],
+    ['a gateway 502 page', { status: 502, data: GATEWAY_PAGE }, 'unreachable', 'unreachable'],
+    ['a gateway 504 page', { status: 504, data: GATEWAY_PAGE }, 'unreachable', 'unreachable'],
+    ['a sign-in proxy page', { status: 200, data: PROXY_PAGE }, 'web_page', 'proxy_sign_in'],
+    ['an outpost 401 page', { status: 401, data: PROXY_PAGE }, 'web_page', 'proxy_sign_in'],
+    ['the server starting (503 JSON)', { status: 503, data: { error: 'starting' } }, 'server_error', 'server_error'],
+    ['too many requests (429 JSON)', { status: 429, data: { error: 'slow down' } }, 'server_error', 'server_error'],
+  ];
+  for (const [name, reply, phone, web] of cases) {
+    assert.equal(await why(reply, true), phone, `Android: ${name}`);
+    assert.equal(await why(reply, false), web, `web: ${name}`);
+  }
+  // On the web, fetch's own failures say the same.
+  assert.equal(signin.signInProblemKey(new TypeError('Failed to fetch')), 'unreachable');
+  assert.equal(signin.signInProblemKey(Object.assign(new Error('t'), { name: 'TimeoutError' })), 'unreachable');
+  // Only something else unreadable keeps the general line; startup never uses it.
+  assert.equal(signin.signInProblemKey(new Error('odd')), 'options_failed');
+  assert.equal(signin.signInProblemKey(new Error('odd'), { fallback: 'unreachable' }), 'unreachable');
+  for (const key of ['unreachable', 'web_page', 'proxy_sign_in', 'server_error', 'options_failed']) assert.ok(en.server_signin[key], key);
+  // One notice on the sign-in page, from one decision: startup's reason, else the options'.
+  const login = read('../src/routes/Login.svelte');
+  assert.match(login, /optionsError = signInProblemKey\(e, \{ native: isNative \}\);/);
+  assert.equal((login.match(/class="options-error"/g) || []).length, 1, 'one notice');
+  assert.match(login, /\{#if \$authUnavailable \|\| optionsError\}[\s\S]{0,200}server_signin\.\$\{\$authUnavailable \|\| optionsError\}/);
+  assert.match(read('../src/stores/auth.js'), /signInProblemKey\(e, \{ native: isNative, fallback: 'unreachable' \}\)/);
+});
+

@@ -24,6 +24,14 @@ export const setupRequired = writable(false);
 // is torn down and rebuilt when the user flips on and back off. See
 // lib/cookie-check.js.
 export const signInProblem = writable(null);
+// Why the web app couldn't read who is signed in, or null: 'unreachable',
+// 'server_error' (it answered with its own error), 'proxy_sign_in' (a
+// sign-in proxy's page on the web) or 'web_page' (the same in the Android
+// app). The sign-in page says it, with Retry, instead
+// of the app opening with nobody signed in, which looked like every note
+// was gone. Whoever signs in is past it.
+export const authUnavailable = writable(null);
+currentUser.subscribe((u) => { if (u) authUnavailable.set(null); });
 
 // Synthetic local user for native standalone mode (no server configured).
 // full_name is overridden at load time from the localUserName setting (set
@@ -123,16 +131,27 @@ export async function loadAuthState() {
 /** Fetch auth state from server — used by PWA (blocking) and as background refresh for native */
 async function _fetchAuthFromServer() {
   try {
-    const [statusRes, meRes] = await Promise.all([
-      fetch(_apiUrl('/api/auth/status'), { credentials: 'include', headers: _authHeaders(), signal: AbortSignal.timeout(8000) }),
-      fetch(_apiUrl('/api/auth/me'),     { credentials: 'include', headers: _authHeaders(), signal: AbortSignal.timeout(8000) }),
-    ]);
-    const statusData = await statusRes.json();
-    const meData     = await meRes.json();
+    // The server never redirects these: on the web a redirect is a sign-in
+    // proxy's, to its own domain as often as not, which fetch would only
+    // report as a failed request. Not followed, it shows as one.
+    const ask = (path) => fetch(_apiUrl(path), {
+      credentials: 'include', headers: _authHeaders(), signal: AbortSignal.timeout(8000),
+      ...(isNative ? {} : { redirect: 'manual' }),
+    }).catch((err) => { throw Object.assign(err, { network: true }); });
+    const [statusRes, meRes] = await Promise.all([ask('/api/auth/status'), ask('/api/auth/me')]);
+    // Only the server's own answers count: a sign-in proxy's page or a
+    // gateway's error page while the server restarts is no answer.
+    const statusData = await _serverAnswer(statusRes, d => typeof d.active === 'boolean');
+    const meData     = await _serverAnswer(meRes, d => 'user' in d);
     const user       = meData.user || null;
     const active     = !!statusData.active;
     userMgmtActive.set(active);
     setupRequired.set(!!statusData.setup_required);
+    authUnavailable.set(null);
+    // What the server is, for when it can't be asked: a server without
+    // accounts opens the app then, one with accounts never does.
+    if (statusData.setup_required) localStorage.removeItem('note:cachedUserMgmt');
+    else localStorage.setItem('note:cachedUserMgmt', active ? '1' : '0');
 
     // PWA single-user mode (server reachable, user mgmt off): hydrate the
     // synthetic LOCAL_USER from local settings so $currentUser is never
@@ -157,12 +176,9 @@ async function _fetchAuthFromServer() {
     if (meData.csrf) localStorage.setItem('note:csrf', meData.csrf);
     else             localStorage.removeItem('note:csrf');
     // Cache for offline fallback
-    if (user) {
-      localStorage.setItem('note:cachedUser', JSON.stringify(user));
-      localStorage.setItem('note:cachedUserMgmt', active ? '1' : '0');
-    }
+    if (user) localStorage.setItem('note:cachedUser', JSON.stringify(user));
     if (user) await loadServerSettings();
-  } catch {
+  } catch (e) {
     // Offline fallback for PWA (native uses cached auth above)
     const cached = localStorage.getItem('note:cachedUser');
     if (cached) {
@@ -174,9 +190,47 @@ async function _fetchAuthFromServer() {
         return;
       } catch {}
     }
-    userMgmtActive.set(false);
+    const kind = localStorage.getItem('note:cachedUserMgmt');
+    // A server last seen without accounts: the app, as when it answers.
+    if (kind === '0') {
+      userMgmtActive.set(false);
+      await _hydrateLocalUser({ setUserId: false });
+      return;
+    }
+    // Never heard from (a single-user browser from before this was kept,
+    // first opened offline) and simply no connection: the app, as it always
+    // opened. Nothing is remembered from that.
+    const offline = e?.network || (typeof navigator !== 'undefined' && navigator.onLine === false);
+    if (kind == null && offline && !e?.webPage) {
+      userMgmtActive.set(false);
+      currentUser.set(null);
+      return;
+    }
+    // A server with accounts, or something answering in its place: the
+    // sign-in page, saying why, never the app with nobody signed in.
+    console.warn('[auth] who is signed in is unreadable:', e?.status || e?.message);
+    userMgmtActive.set(true);
     currentUser.set(null);
+    // The same reasons, in the same words, as the sign-in page's own check.
+    const { signInProblemKey } = await import('../lib/server-signin.js');
+    authUnavailable.set(signInProblemKey(e, { native: isNative, fallback: 'unreachable' }));
   }
+}
+
+/**
+ * A response's JSON when it's the server's own answer (`isOurs` checks its
+ * shape: an empty 200 from something in between reads as {}); throws
+ * otherwise.
+ */
+async function _serverAnswer(res, isOurs) {
+  const { responseJson, webPageError, serverErrorFor } = await import('../lib/server-signin.js');
+  if (res.type === 'opaqueredirect') throw webPageError(); // a sign-in proxy's redirect (above)
+  const data = await responseJson(res); // a web page: a sign-in proxy's (webPage), or a gateway's
+  // The server's own error (a 503 with JSON while it starts, a 429): it
+  // answered, so not "can't reach", and not something else in its place.
+  if (!res.ok) throw serverErrorFor(res.status);
+  if (!isOurs(data)) throw webPageError();
+  return data;
 }
 
 /** Background refresh — updates cached auth if server is reachable.

@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { currentUser, userMgmtActive, loadAuthState, signInProblem } from '../stores/auth.js';
+  import { currentUser, userMgmtActive, loadAuthState, signInProblem, authUnavailable } from '../stores/auth.js';
   import { cookieBlockedByHttp, droppedCookieReason } from '../lib/cookie-check.js';
   import CookieWarning from '../components/ui/CookieWarning.svelte';
   import { loadServerSettings } from '../stores/settings.js';
@@ -11,7 +11,7 @@
   import { apiUrl, isNative, getServerUrl, setAuthToken, forgetServerCookies, resolveAssetUrl, iconUrl } from '../lib/platform.js';
 
   import { get } from 'svelte/store';
-  import { responseJson, discoverSignIn } from '../lib/server-signin.js';
+  import { responseJson, discoverSignIn, webPageError, serverErrorFor, signInProblemKey } from '../lib/server-signin.js';
 
   let username = '';
   let password = '';
@@ -62,7 +62,7 @@
   let oidcProviders = [];
   let passwordLoginEnabled = true;
   let authStatus = null;
-  let optionsError = '';  // the sign-in options couldn't be read: said, with Retry (#36)
+  let optionsError = '';  // why the sign-in options couldn't be read, a server_signin key: said, with Retry (#36)
   onMount(async () => {
     if (isNative && !getServerUrl()) return; // standalone — skip
     // Probe biometric concurrently with the auth-status fetch.
@@ -73,8 +73,25 @@
         _biometricReady = available && !!saved;
       } catch {}
     }
-    await loadSignInOptions();
+    if (!get(authUnavailable)) await loadSignInOptions();
   });
+
+  // The server couldn't say who is signed in when the app opened (stores/
+  // auth.js): Retry asks again, as does the browser coming back online. A
+  // session that's still good opens the app; otherwise the sign-in options
+  // load as usual.
+  let retrying = false;
+  async function retryServer() {
+    if (retrying) return;
+    retrying = true;
+    try {
+      await loadAuthState();
+      if (!get(authUnavailable)) await loadSignInOptions();
+    } finally {
+      retrying = false;
+    }
+  }
+  function _backOnline() { if (get(authUnavailable)) retryServer(); }
 
   async function loadSignInOptions() {
     try {
@@ -83,9 +100,12 @@
       let data;
       if (isNative) data = (await discoverSignIn(getServerUrl())).status;
       else {
-        const r = await fetch(apiUrl('/api/auth/status'), { credentials: 'include' });
+        // Not following a redirect: the server never redirects this, a
+        // sign-in proxy does (see stores/auth.js).
+        const r = await fetch(apiUrl('/api/auth/status'), { credentials: 'include', redirect: 'manual' });
+        if (r.type === 'opaqueredirect') throw webPageError();
         data = await responseJson(r);
-        if (!r.ok) throw Object.assign(new Error(`status ${r.status}`), { status: r.status });
+        if (!r.ok) throw serverErrorFor(r.status);
       }
       authStatus = data;
       // Plain HTTP with an HTTPS-only cookie: say so before anyone signs
@@ -98,7 +118,7 @@
       optionsError = '';
     } catch (e) {
       console.warn('[login] sign-in options:', e?.status || e?.message);
-      optionsError = e?.webPage ? e.message : $_('server_signin.options_failed');
+      optionsError = signInProblemKey(e, { native: isNative });
     }
   }
 
@@ -219,6 +239,8 @@
   function onKey(e) { if (e.key === 'Enter') login(); }
 </script>
 
+<svelte:window on:online={_backOnline} />
+
 <main class="login-page">
   <div class="login-card card">
     <div class="login-logo">
@@ -232,10 +254,12 @@
     {/if}
 
     {#if !recoveryDone}
-      {#if optionsError}
+      <!-- One notice, one reason (lib/server-signin.js signInProblemKey): who is
+           signed in couldn't be read at startup, else the sign-in options. -->
+      {#if $authUnavailable || optionsError}
         <div class="options-error" role="alert">
-          <span>{optionsError}</span>
-          <button class="btn btn-secondary options-retry" type="button" on:click={loadSignInOptions}>{$_('server_signin.retry')}</button>
+          <span>{$_(`server_signin.${$authUnavailable || optionsError}`)}</span>
+          <button class="btn btn-secondary options-retry" type="button" on:click={$authUnavailable ? retryServer : loadSignInOptions} disabled={retrying}>{$_('server_signin.retry')}</button>
         </div>
       {/if}
       {#if oidcProviders.length}

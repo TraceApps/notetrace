@@ -44,6 +44,26 @@ function _unreachable(status) {
 // 401 or 403). Anything else that isn't JSON is the server out of reach.
 const _proxyStatus = (s) => (s >= 200 && s < 300) || s === 401 || s === 403;
 
+/** The server's own error reply (JSON with a 5xx, or a 429): it answered, so not "can't reach". */
+export function serverErrorFor(status) {
+  return Object.assign(new Error(`status ${status}`), { status, serverError: status >= 500 || status === 429, unreachable: !(status >= 500 || status === 429) });
+}
+
+/**
+ * Why the server's sign-in state or options couldn't be read, as one key
+ * under server_signin, the same on every screen: 'proxy_sign_in' (a sign-in
+ * proxy's page, on the web) or 'web_page' (the same in the Android app),
+ * 'server_error' (the server answered with its own error), 'unreachable'
+ * (no answer: a network error, a timeout, a gateway's error page), else
+ * `fallback`.
+ */
+export function signInProblemKey(e, { native = false, fallback = 'options_failed' } = {}) {
+  if (e?.webPage) return native ? 'web_page' : 'proxy_sign_in';
+  if (e?.serverError) return 'server_error';
+  if (e?.unreachable || e?.network || e instanceof TypeError || e?.name === 'TimeoutError' || e?.name === 'AbortError') return 'unreachable';
+  return fallback;
+}
+
 /** Text to JSON, or null when it isn't a JSON object. */
 function _parse(text) {
   try {
@@ -112,11 +132,12 @@ const _ok = (res) => res.status >= 200 && res.status < 300;
  */
 export async function discoverSignIn(url) {
   const http = await _http();
-  const res = await http.get({ url: `${url}/api/auth/status` });
+  // No answer at all (no connection, a timeout): the server out of reach.
+  const res = await http.get({ url: `${url}/api/auth/status` }).catch((err) => { throw Object.assign(err, { network: true }); });
   const data = serverJson(res);
   if (!_ok(res)) {
     console.warn('[server-signin] sign-in options: status', res.status);
-    throw _unreachable(res.status);
+    throw serverErrorFor(res.status);
   }
   return {
     providers: Array.isArray(data?.oidc?.providers) ? data.oidc.providers : [],
