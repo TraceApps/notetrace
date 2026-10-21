@@ -202,9 +202,9 @@ export function iconUrl(path) {
   return `${resolved}?v=${encodeURIComponent(v)}`;
 }
 
-// WebView's own origin — historically https://localhost, now
-// https://app.notetrace.local after the hostname flip for password-
-// manager identity. Resolved once at load time; any absolute URL that
+// WebView's own origin: https://app.notetrace.local, the hostname set in
+// capacitor.config.ts for password-manager identity since the first
+// release. Resolved once at load time; any absolute URL that
 // begins with this origin is already a bundled asset served from the
 // APK and doesn't need further path resolution.
 const _webviewOrigin = typeof window !== 'undefined' ? window.location.origin : '';
