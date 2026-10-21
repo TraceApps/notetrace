@@ -1,4 +1,5 @@
 <script>
+  import NotificationHistory from '../components/layout/NotificationHistory.svelte';
   import { closeOnBack } from '../lib/back-stack.js';
   /**
    * Notes: the notes grid and its sibling views.
@@ -478,10 +479,15 @@
       return;
     }
     const id = Number(params.get('note'));
-    if (!id || editing) return;
+    const trace = params.get('trace') === '1';
+    if (!id || (editing && !trace)) return;
     try {
+      if (trace) { await overlayRef?.flush?.(); await paneRef?.flush?.(); }
       const n = await NoteApi.getNote(id);
-      if (n) editing = { note: n };
+      if (n) {
+        if (trace && splitPane) await openInPane({ note: n, autoTrace: true });
+        else editing = { note: n, autoTrace: trace };
+      }
     } catch { /* note gone */ }
     replaceRoute(path);
   }
@@ -873,6 +879,7 @@
         {/if}
       </div>
     {/if}
+    <NotificationHistory />
   </header>
 
   {#if showFilters}
@@ -1020,7 +1027,7 @@
         <div class="pane">
           {#if pane}
             {#key paneKey}
-              <NoteEditor bind:this={paneRef} inline autoRecord={!!pane.voice} autoDraw={!!pane.drawing} note={pane.note || null} initialKind={pane.kind || 'text'}
+              <NoteEditor bind:this={paneRef} inline autoTrace={!!pane.autoTrace} autoRecord={!!pane.voice} autoDraw={!!pane.drawing} note={pane.note || null} initialKind={pane.kind || 'text'}
                 initialLabels={pane.labels || []} prefill={pane.prefill || null} on:close={closePane} />
             {/key}
           {:else}
@@ -1155,7 +1162,7 @@
   <!-- Keyed per open: reopening while the last editor is still fading out
        would otherwise resume that editor with the previous note's state. -->
   {#key editing}
-    <NoteEditor bind:this={overlayRef} autoRecord={!!editing.voice} autoDraw={!!editing.drawing} note={editing.note || null} initialKind={editing.kind || 'text'} initialLabels={editing.labels || []}
+    <NoteEditor bind:this={overlayRef} autoTrace={!!editing.autoTrace} autoRecord={!!editing.voice} autoDraw={!!editing.drawing} note={editing.note || null} initialKind={editing.kind || 'text'} initialLabels={editing.labels || []}
       prefill={editing.prefill || null} originId={editing.originId ?? null} on:close={closeEditor} />
   {/key}
 {/if}
@@ -1290,8 +1297,8 @@
   .notes-header .header-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
   .notes-header .header-btn { border-radius: 12px; color: var(--text-2); display: flex; align-items: center; justify-content: center; transition: background var(--dur-fast), color var(--dur-fast); }
   .notes-header .header-btn:hover { background: color-mix(in srgb, var(--text-1) 10%, transparent); color: var(--text-1); }
-  .notes-header.banner-gradient .header-btn, .notes-header.banner-animated .header-btn { color: rgba(255, 255, 255, 0.92); }
-  .notes-header.banner-gradient .header-btn:hover, .notes-header.banner-animated .header-btn:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+  .notes-header.banner-gradient .header-btn, .notes-header.banner-animated .header-btn { color: var(--accent-text); }
+  .notes-header.banner-gradient .header-btn:hover, .notes-header.banner-animated .header-btn:hover { background: rgba(255, 255, 255, 0.16); color: var(--accent-text); }
   .header-search {
     flex: 1; min-width: 0; height: 40px;
     display: flex; align-items: center; gap: 8px; padding: 0 0 0 12px;
@@ -1303,12 +1310,12 @@
   .header-search input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text-1); font-size: 15px; }
   .header-search input::-webkit-search-cancel-button { display: none; }
   .notes-header.banner-gradient .header-search, .notes-header.banner-animated .header-search {
-    background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.28); color: rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.28); color: var(--accent-text);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
   }
-  .notes-header.banner-gradient .header-search input, .notes-header.banner-animated .header-search input { color: #fff; }
-  .notes-header.banner-gradient .header-search input::placeholder, .notes-header.banner-animated .header-search input::placeholder { color: rgba(255, 255, 255, 0.72); }
-  .notes-header.banner-gradient .search-kbd, .notes-header.banner-animated .search-kbd { border-color: rgba(255, 255, 255, 0.3); color: rgba(255, 255, 255, 0.8); }
+  .notes-header.banner-gradient .header-search input, .notes-header.banner-animated .header-search input { color: var(--accent-text); }
+  .notes-header.banner-gradient .header-search input::placeholder, .notes-header.banner-animated .header-search input::placeholder { color: color-mix(in srgb, var(--accent-text) 72%, transparent); }
+  .notes-header.banner-gradient .search-kbd, .notes-header.banner-animated .search-kbd { border-color: rgba(255, 255, 255, 0.3); color: color-mix(in srgb, var(--accent-text) 80%, transparent); }
 
   .view-menu { display: flex; flex-direction: column; gap: 2px; width: 280px; max-width: 100%; }
   :global(.pop-panel.sheet) .view-menu { width: 100%; }

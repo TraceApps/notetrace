@@ -40,6 +40,7 @@
   import { ensureReminderPermission, rescheduleReminders } from '../../lib/note-reminders.js';
   import ShareDialog from './ShareDialog.svelte';
   import TraceActions from './TraceActions.svelte';
+  import { traceSessions, traceNoteKey } from '../../lib/trace-sessions.js';
   import CooktraceSend from './CooktraceSend.svelte';
   import { cooktraceLink, cooktraceOn, loadCooktraceLink } from '../../lib/cooktrace.js';
   import VoiceRecorder from './VoiceRecorder.svelte';
@@ -72,6 +73,8 @@
   export let initialLabels = [];
   /** Content for a new note, e.g. from the share sheet: { title, body_md, images: File[] }. */
   export let prefill = null;
+  /** Reopen the retained Ask Trace result after a notification tap. */
+  export let autoTrace = false;
 
   const dispatch = createEventDispatcher();
   const TEXT_SAVE_MS = 700;
@@ -738,6 +741,7 @@
   async function openTrace(e) {
     traceAnchor = e.currentTarget.getBoundingClientRect();
     await flushAll();
+    if (!noteId) await enqueue(ensureNote);
     traceOpen = true;
   }
   // A Trace rewrite always leaves a restore point, however recent the last edit.
@@ -969,7 +973,7 @@
       try { await NoteApi.updateNote(noteId, { title, rename_links_from: renamedFrom }); } catch { /* links can be fixed by hand */ }
     }
     // A note that ended up empty is removed instead of lingering as a blank card.
-    if (!skipDiscard && noteId && !trashed && !hasPendingFor(noteId) && isEmptyNote({ title, body_md: body, items, attachments })) {
+    if (!skipDiscard && noteId && !trashed && !hasPendingFor(noteId) && !traceSessions.hasWork(traceNoteKey(noteId)) && isEmptyNote({ title, body_md: body, items, attachments })) {
       try { await NoteApi.deleteNoteForever(noteId); } catch { /* best effort */ }
       noteId = null;
     }
@@ -1105,6 +1109,10 @@
   }
 
   onMount(async () => {
+    if (autoTrace && traceSessions.hasWork(traceNoteKey(noteId))) {
+      traceAnchor = { left: window.innerWidth / 2, top: 64, bottom: 64 };
+      traceOpen = true;
+    }
     if (autoRecord && canRecord && !noteId) startQuickVoice();
     if (autoDraw && !noteId && !contentLocked) { drawFirst = true; newDrawing(); }
     loadLinks();
@@ -1649,7 +1657,7 @@
 <Popover bind:open={traceOpen} anchor={traceAnchor} label={$_('trace_actions.title')}
   closeOnOutside={!traceHolding} beforeClose={() => traceActions?.requestClose() ?? true}>
   {#if traceOpen}
-    <TraceActions bind:this={traceActions} bind:holding={traceHolding} {title} {body}
+    <TraceActions bind:this={traceActions} bind:holding={traceHolding} {title} {body} {noteId}
       on:replace={(e) => applyTraceText(e.detail.markdown)}
       on:prepend={(e) => applyTraceText(`${e.detail.markdown}\n\n${body}`)}
       on:append={(e) => applyTraceText(body.trim() ? `${body.replace(/\s+$/, '')}\n\n${e.detail.markdown}` : e.detail.markdown)}

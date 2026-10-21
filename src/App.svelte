@@ -33,6 +33,9 @@
   import OfflineStatus from './components/OfflineStatus.svelte';
   import { describeConnectionIssue } from './lib/connection-message.js';
 
+  import { startNotificationSounds } from './lib/notification-sounds.js';
+  onMount(startNotificationSounds);
+
   // Sync state — mirrored from the real sync store (dynamically imported).
   // Includes the smart-banner fields (connectionIssue, showErrorBanner) so
   // the banner + red cloud badge below stay reactive to the classifier.
@@ -335,6 +338,7 @@
     // can skip it (see lib/updates.js).
     import('./lib/updates.js').then(({ migrateAutoCheck }) => migrateAutoCheck()).catch(() => {});
     initFold();
+    import('./lib/trace-notifications.js').then(m => m.startTraceNotifications()).catch(() => {});
     import('./lib/pending-voice.js').then(m => m.startPendingVoice()).catch(() => {});
     // Start Page: only when the app opens on the default route, never over a
     // deep link, a share, or a notification tap.

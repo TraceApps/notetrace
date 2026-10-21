@@ -5,12 +5,16 @@
    * Shows Trace's result first; nothing changes until the user applies it,
    * and applying keeps the previous text in version history.
    */
-  import { createEventDispatcher, onDestroy, tick } from 'svelte';
+  import { createEventDispatcher, onMount, tick } from 'svelte';
   import { _ } from 'svelte-i18n';
-  import { askTrace, TRACE_ACTIONS, cleanTraceReply, checklistLines } from '../../lib/trace-run.js';
+  import { askTrace, checklistLines } from '../../lib/trace-run.js';
   import { markdownToPreview } from '../../lib/note-preview.js';
-  import { closeStep, createAsk } from '../../lib/trace-close.js';
+  import { closeStep } from '../../lib/trace-close.js';
 
+  import { traceSessions, traceNoteKey } from '../../lib/trace-sessions.js';
+  import { requestTracePermission } from '../../lib/trace-notifications.js';
+
+  export let noteId = null;
   export let title = '';
   export let body = '';
   /**
@@ -29,8 +33,12 @@
   let instruction = '';
   let asking = false;
   let instructionEl;
-  // The request running now: stopping it stops the request.
-  const asker = createAsk(askTrace);
+  // The session outlives this popup; explicit cancellation still stops it.
+  const session = traceSessions.forNote(traceNoteKey(noteId) ?? Symbol('unsaved-note'));
+  onMount(() => session.view());
+  $: ({ action, busy, result, instruction, asking, askedBody } = $session);
+  $: error = $session.failure === 'empty' ? $_('trace_actions.empty')
+    : $session.failure ? ($session.error || $_('trace_actions.failed')) : '';
   // Asked before an answer not used yet is thrown away.
   let confirmDiscard = false;
   // The note's text when Trace was asked: if it changed since, using the
@@ -47,30 +55,15 @@
 
   async function run(kind) {
     if (kind === 'custom' && !instruction.trim()) return;
-    action = kind;
-    asking = false;
     confirmDiscard = confirmChanged = false;
-    busy = true;
-    result = '';
-    error = '';
-    askedBody = body;
-    const a = TRACE_ACTIONS[kind];
-    const out = await asker.run({ systemPrompt: a.system, prompt: a.prompt(title, body, instruction) });
-    // Cancelled, or a newer request took its place: nothing to say.
-    if (out.cancelled) return;
-    busy = false;
-    if (out.error) error = out.error?.message || $_('trace_actions.failed');
-    else {
-      result = cleanTraceReply(out.reply);
-      if (!result) error = $_('trace_actions.empty');
-    }
+    requestTracePermission();
+    await session.run(kind, { noteId, title, body, instruction, request: askTrace });
     focusSoon(() => mainBtn);
   }
 
   /** Stop what Trace is working on. */
   function stop() {
-    asker.stop();
-    busy = false;
+    session.reset();
   }
 
   async function focusSoon(get) {
@@ -99,8 +92,8 @@
     focusSoon(() => mainBtn);
   }
 
-  // Closed any other way (the note closed, a note change): stop asking.
-  onDestroy(() => asker.stop());
+  // Closing the note detaches its view; explicit Cancel/Escape/back still abort.
+  // The per-note session retains background work and the original note snapshot.
 
   $: items = action === 'checklist' ? checklistLines(result) : [];
 
@@ -113,10 +106,11 @@
     else if (action === 'summarize') dispatch(mode === 'replace' ? 'replace' : 'prepend', { markdown: result });
     else if (mode === 'append') dispatch('append', { markdown: result });
     else dispatch('replace', { markdown: result });
+    session.reset();
   }
 
   async function ask() {
-    asking = true;
+    session.patch({ asking: true });
     await tick();
     instructionEl?.focus();
   }
@@ -133,9 +127,9 @@
     <p class="ta-title">{$_('trace_actions.custom')}</p>
     <textarea class="input ta-instruction" dir="auto" rows="3" enterkeyhint="send" bind:this={instructionEl} bind:value={instruction}
       maxlength="2000" placeholder={$_('trace_actions.custom_placeholder')} aria-label={$_('trace_actions.custom')}
-      on:keydown={onInstructionKey}></textarea>
+      on:keydown={onInstructionKey} on:input={e => session.patch({ instruction: e.currentTarget.value })}></textarea>
     <div class="ta-buttons">
-      <button class="btn btn-secondary" on:click={() => asking = false}>{$_('common.back')}</button>
+      <button class="btn btn-secondary" on:click={() => session.patch({ asking: false })}>{$_('common.back')}</button>
       <button class="btn btn-primary" on:click={() => run('custom')} disabled={!instruction.trim()}>{$_('trace_actions.custom_go')}</button>
     </div>
   {:else if !action}
@@ -167,11 +161,12 @@
       <p class="ta-status" aria-live="polite"><span class="material-symbols-rounded spin">progress_activity</span>{$_('trace_actions.working')}</p>
       <div class="ta-buttons">
         <button class="btn btn-secondary" on:click={() => { stop(); dispatch('close'); }}>{$_('common.cancel')}</button>
+        <button class="btn btn-secondary" on:click={() => dispatch('close')}>{$_('trace_actions.background')}</button>
       </div>
     {:else if error}
       <p class="ta-error" role="alert">{error}</p>
       <div class="ta-buttons">
-        <button class="btn btn-secondary" on:click={() => { if (action === 'custom') asking = true; action = null; }}>{$_('common.back')}</button>
+        <button class="btn btn-secondary" on:click={() => session.patch({ asking: action === 'custom', action: null })}>{$_('common.back')}</button>
         <button class="btn btn-primary" bind:this={mainBtn} on:click={() => run(action)}>{$_('trace_actions.try_again')}</button>
       </div>
     {:else}
@@ -187,7 +182,7 @@
           <p>{$_('trace_actions.discard_question')}</p>
           <div class="ta-buttons">
             <button class="btn btn-secondary" bind:this={keepBtn} on:click={keep}>{$_('trace_actions.keep')}</button>
-            <button class="btn btn-danger" on:click={() => dispatch('close')}>{$_('trace_actions.discard')}</button>
+            <button class="btn btn-danger" on:click={() => { session.reset(); dispatch('close'); }}>{$_('trace_actions.discard')}</button>
           </div>
         </div>
       {:else if confirmChanged}
@@ -205,9 +200,9 @@
         <div class="ta-buttons">
           {#if action === 'custom'}
             <!-- Back to the instruction, kept, to change it. -->
-            <button class="btn btn-secondary" on:click={() => { asking = true; action = null; tick().then(() => instructionEl?.focus()); }}>{$_('common.back')}</button>
+            <button class="btn btn-secondary" on:click={() => { session.patch({ asking: true, action: null }); tick().then(() => instructionEl?.focus()); }}>{$_('common.back')}</button>
           {:else}
-            <button class="btn btn-secondary" on:click={() => dispatch('close')}>{$_('common.cancel')}</button>
+            <button class="btn btn-secondary" on:click={() => { session.reset(); dispatch('close'); }}>{$_('common.cancel')}</button>
           {/if}
           <button class="btn btn-secondary" on:click={() => run(action)}>{$_('trace_actions.try_again')}</button>
           {#if action === 'summarize'}

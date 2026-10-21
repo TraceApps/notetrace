@@ -1,4 +1,5 @@
 <script>
+  import NotificationHistory from '../components/layout/NotificationHistory.svelte';
   /**
    * Shopping: the CookTrace shopping list, live, grouped by aisle the way
    * CookTrace shows it. Tick items off, add a few, and clear what's bought;
@@ -76,6 +77,7 @@
         {/if}
       </div>
     {/if}
+    <NotificationHistory />
   </header>
 
   <div class="shopping-body">

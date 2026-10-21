@@ -1,4 +1,5 @@
 <script>
+  import NotificationPermission from '../ui/NotificationPermission.svelte';
   import Toggle from './Toggle.svelte';
   import ConnectionStatus from './ConnectionStatus.svelte';
   // SettingsNotifications — device + push-service reminders.
@@ -14,16 +15,24 @@
   //   - Note reminders (a note's reminder time comes due)
   import { onMount } from 'svelte';
   import { _ } from 'svelte-i18n';
-  import { showSuccess, showError } from '../../stores/toast.js';
+  import { showSuccess } from '../../stores/toast.js';
   import { isNative, getServerUrl, getAuthToken, apiUrl } from '../../lib/platform.js';
   import {
-    notifLocalEnabled, notifPushService,
+    notifLocalEnabled, notifTraceResults, notifPushService,
+    notifSoundEnabled, notifSound, notifSoundVolume,
     appriseUrl, appriseTag,
     gotifyUrl, gotifyToken,
     ntfyUrl, ntfyTopic, ntfyToken,
   } from '../../stores/settings.js';
   import { DB } from '../../lib/db.js';
   import { scheduleSave } from '../../stores/settings.js';
+  import { NOTIFICATION_SOUNDS } from '../../lib/notification-sound-core.js';
+  import { previewNotificationSound } from '../../lib/notification-sounds.js';
+
+  let soundStatus = '';
+  async function previewSound() {
+    soundStatus = await previewNotificationSound() ? $_('notification_sounds.playing') : $_('notification_sounds.unavailable');
+  }
 
   function setS(key, value) { DB.setSetting(key, value); scheduleSave(key, value); }
 
@@ -36,7 +45,6 @@
   let notifNoteReminders   = getBool('notifNoteReminders', true);
   let notifTasksDue        = getBool('notifTasksDue', true);
   let tasksDigestTime      = String(DB.getSetting('tasksDigestTime', '09:00') || '09:00');
-  let browserPermission = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
 
   // Android: reminders fire at the exact minute only with the exact-alarm
   // permission (granted automatically on most phones).
@@ -108,22 +116,6 @@
     }
   }
 
-  // Device notifications: ask permission on Web (Capacitor handles
-  // separately on the native side via the Settings UI).
-  async function requestDevicePermission() {
-    if (typeof Notification === 'undefined') {
-      showError($_('settings_notifications.toast.not_supported'));
-      return;
-    }
-    try {
-      const result = await Notification.requestPermission();
-      browserPermission = result;
-      if (result === 'granted') showSuccess($_('settings_notifications.toast.permission_granted'));
-      else if (result === 'denied') showError($_('settings_notifications.toast.permission_denied'));
-    } catch (e) {
-      showError(e.message || 'Permission request failed');
-    }
-  }
 </script>
 
 <div class="section-body">
@@ -154,16 +146,52 @@
           <span class="setting-label">{$_('settings_notifications.browser_permission')}</span>
           <span class="setting-desc">{$_('settings_notifications.browser_permission_desc')}</span>
         </div>
-        {#if browserPermission === 'granted'}
-          <span class="perm-ok"><span class="material-symbols-rounded">check</span>{$_('settings_notifications.permission_allowed')}</span>
-        {:else}
-          <button class="btn btn-secondary" on:click={requestDevicePermission}>
-            {$_('settings_notifications.request_permission')}
-          </button>
-        {/if}
+        <NotificationPermission />
       </div>
     {/if}
   </div>
+
+  <div class="card settings-card">
+    <div class="setting-row">
+      <div>
+        <span class="setting-label">{$_('settings_notifications.trace_results')}</span>
+        <span class="setting-desc">{$_('settings_notifications.trace_results_desc')}</span>
+      </div>
+      <Toggle label={$_('settings_notifications.trace_results')} checked={$notifTraceResults} on:change={e => notifTraceResults.set(e.detail)} />
+    </div>
+  </div>
+
+  {#if !isNative}
+    <p class="settings-group-heading">{$_('notification_sounds.title')}</p>
+    <p class="settings-group-sub">{$_('notification_sounds.description')}</p>
+    <div class="card settings-card">
+      <div class="setting-row">
+        <span class="setting-label">{$_('notification_sounds.enable')}</span>
+        <Toggle label={$_('notification_sounds.enable')} checked={$notifSoundEnabled} on:change={e => notifSoundEnabled.set(e.detail)} />
+      </div>
+      <div class="setting-divider"></div>
+      <div class="setting-row">
+        <label class="setting-label" for="notification-sound">{$_('notification_sounds.sound')}</label>
+        <div class="select-wrap sound-select-wrap">
+          <select id="notification-sound" class="select sel-sm" value={$notifSound}
+            on:change={e => { notifSound.set(e.currentTarget.value); soundStatus = ''; }}>
+            {#each NOTIFICATION_SOUNDS as sound (sound.id)}<option value={sound.id}>{$_(`notification_sounds.${sound.id}`)}</option>{/each}
+          </select>
+        </div>
+      </div>
+      <div class="setting-divider"></div>
+      <div class="setting-row">
+        <label class="setting-label" for="notification-volume">{$_('notification_sounds.volume')}</label>
+        <input id="notification-volume" class="sound-volume" type="range" min="0" max="100" step="5" value={$notifSoundVolume}
+          on:input={e => { notifSoundVolume.set(Number(e.currentTarget.value)); soundStatus = ''; }} />
+        <span class="volume-value">{$notifSoundVolume}%</span>
+      </div>
+      <div class="setting-row sound-preview">
+        <button class="btn btn-secondary" on:click={previewSound}><span class="material-symbols-rounded" aria-hidden="true">volume_up</span>{$_('notification_sounds.preview')}</button>
+        <span class="setting-desc" role="status">{soundStatus}</span>
+      </div>
+    </div>
+  {/if}
 
   <p class="settings-group-heading">{$_('settings_notifications.push_service')}</p>
   <p class="settings-group-sub">{$_('settings_notifications.push_service_sub')}</p>
@@ -280,6 +308,10 @@
 </div>
 
 <style>
+  .sound-select-wrap { width: 180px; max-width: 50%; }
+  .sound-volume { width: min(180px, 40vw); min-width: 70px; accent-color: var(--accent); }
+  .volume-value { min-width: 36px; font-size: 12px; color: var(--text-2); text-align: end; }
+  .sound-preview { flex-wrap: wrap; }
   /* Two classes, so the shared .input width: 100% can't stretch the clock and
      squeeze the label into a column of letters. */
   .input.time-input { width: 130px; flex: 0 0 auto; }
@@ -319,6 +351,4 @@
     appearance: none; -webkit-appearance: none; cursor: pointer;
   }
   .select.sel-sm { height: 36px; }
-  .perm-ok { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--accent); white-space: nowrap; }
-  .perm-ok .material-symbols-rounded { font-size: 18px; }
 </style>

@@ -11,7 +11,7 @@
    * with the next user message in a provider-specific format
    * (Claude / OpenAI / Gemini).
    */
-  import { tick, onMount } from 'svelte';
+  import { tick, onMount, onDestroy } from 'svelte';
   import { fly, fade } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import AttachImageButton from './AttachImageButton.svelte';
@@ -39,7 +39,9 @@
   import { executeNoteTool } from '../../lib/trace-note-tools.js';
   import { signalNotesChanged, refreshLabels } from '../../stores/notes.js';
 
-  let panelOpen = false;
+  import { traceChatOpen, traceChatRequests } from '../../lib/trace-chat.js';
+  import { requestTracePermission } from '../../lib/trace-notifications.js';
+  onDestroy(() => traceChatRequests.clear());
   let messages = [];      // { role, content, time? }
 
   // ── Draggable FAB (NutriTrace parity) ────────────────────────────────
@@ -268,7 +270,7 @@
     // Also skip if a hold timer is still pending (the synthetic click
     // can fire before pointerup on some platforms).
     if (recording && _smartLogActive) return;
-    panelOpen = !panelOpen;
+    $traceChatOpen = !$traceChatOpen;
   }
   let input = '';
   let busy = false;
@@ -332,6 +334,9 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
       showError($_('trace_ai_ct.toast.trace_disabled'));
       return;
     }
+    requestTracePermission();
+    const completion = traceChatRequests.begin(assistantName);
+    let failure = '';
     input = '';
     const userMsg = { role: 'user', content: text || '(image attached)', time: _fmtTime() };
     if (smartLog) userMsg.smartLog = true; // visual hint badge in bubble
@@ -376,17 +381,26 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
             onToolsUnsupported,
           });
       const reply2 = reply || '(no response)';
+      if (!completion.isCurrent()) return;
+      if (!reply) failure = 'empty';
       messages = [...messages, { role: 'assistant', content: reply2, time: _fmtTime() }];
       if (toolsNote) messages = toolsNotice.add(messages, $_(toolsNote));
       NoteApi.post('/api/ai/history', { role: 'assistant', content: reply2 })
         .catch(e => console.warn('[Trace] history save (assistant) failed:', e?.message || e));
     } catch (e) {
-      messages = [...messages, { role: 'assistant', content: `⚠ ${e.message || 'AI request failed'}`, time: _fmtTime() }];
+      if (!completion.isCurrent()) return;
+      failure = 'failed';
+      const content = `⚠ ${e.message || 'AI request failed'}`;
+      messages = [...messages, { role: 'assistant', content, time: _fmtTime() }];
+      NoteApi.post('/api/ai/history', { role: 'assistant', content })
+        .catch(error => console.warn('[Trace] history save (error) failed:', error?.message || error));
     } finally {
+      if (!completion.isCurrent()) return;
       busy = false;
       toolStatus = '';
       attachedImage = null;
       await tick(); _scrollToBottom();
+      await completion.complete(failure);
     }
   }
   // Used by Smart Log auto-submit. Same as send() but flagged so the
@@ -467,7 +481,7 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
       setTimeout(() => {
         if (!_commitNextTranscript) return; // user cancelled mid-record
         if (input?.trim()) {
-          if (fromHold) panelOpen = true;
+          if (fromHold) $traceChatOpen = true;
           sendMessage({ smartLog: true });
         }
       }, 60);
@@ -478,7 +492,7 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
     _voicePrefix = input ? `${input} ` : '';
     _smartLogActive = !!smartLog;
     recording = true;
-    if (!fromHold) panelOpen = true;
+    if (!fromHold) $traceChatOpen = true;
 
     // Web Speech API path — works on both PWA and Android WebView now
     // that the manifest declares RECORD_AUDIO + MODIFY_AUDIO_SETTINGS
@@ -569,11 +583,11 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
   // console.warn for diagnostics.
   let _historyLoading = false;
   async function _loadChatHistory() {
-    if (_historyLoading) return;
+    if (_historyLoading || busy) return;
     _historyLoading = true;
     try {
       const rows = await NoteApi.get('/api/ai/history');
-      if (Array.isArray(rows)) {
+      if (Array.isArray(rows) && !busy) {
         messages = rows.map(r => ({
           role: r.role,
           content: r.content,
@@ -592,10 +606,10 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
   // B) shows up the next time browser A opens the chat without
   // requiring a full page refresh.
   let _wasPanelOpen = false;
-  $: if (panelOpen && !_wasPanelOpen) {
+  $: if ($traceChatOpen && !_wasPanelOpen) {
     _wasPanelOpen = true;
     _loadChatHistory();
-  } else if (!panelOpen) {
+  } else if (!$traceChatOpen) {
     _wasPanelOpen = false;
   }
 
@@ -619,6 +633,9 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
       confirmText: $_('trace.clear_confirm_ok'),
       dangerous: true,
     })) return;
+    traceChatRequests.clear();
+    busy = false;
+    toolStatus = '';
     messages = [];
     toolsNotice.reset();
     // Wipe server-side history too so the cleared state survives a
@@ -642,7 +659,7 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
        the accessibility surface. -->
   <div
     class="fab"
-    class:open={panelOpen}
+    class:open={$traceChatOpen}
     class:recording={_fabRecording}
     class:cancel-preview={_fabCancelPreview}
     style={fabStyle}
@@ -651,12 +668,12 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
     on:keydown={e => e.key === 'Enter' && onFabClick()}
     role="button"
     tabindex="0"
-    aria-label={_fabRecording ? 'Recording — release to send' : (panelOpen ? `Close ${assistantName}` : `Open ${assistantName}`)}
-    title={_fabRecording ? 'Recording…' : (panelOpen ? `Hide ${assistantName}` : `Hold to Smart Log, tap to chat`)}
+    aria-label={_fabRecording ? 'Recording — release to send' : ($traceChatOpen ? `Close ${assistantName}` : `Open ${assistantName}`)}
+    title={_fabRecording ? 'Recording…' : ($traceChatOpen ? `Hide ${assistantName}` : `Hold to Smart Log, tap to chat`)}
   >
     {#if _fabRecording}
       <span class="material-symbols-rounded fab-mic">mic</span>
-    {:else if panelOpen}
+    {:else if $traceChatOpen}
       <span class="material-symbols-rounded">close</span>
     {:else}
       <svelte:component this={Mascot} />
@@ -682,14 +699,14 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
     </div>
   {/if}
 
-  {#if panelOpen}
+  {#if $traceChatOpen}
     <!-- Backdrop — mobile only via CSS gate. Tap to dismiss. -->
     <div
       class="panel-backdrop"
       use:portal
-      use:closeOnBack={() => panelOpen = false}
+      use:closeOnBack={() => $traceChatOpen = false}
       transition:fade={{ duration: 200 }}
-      on:click={() => panelOpen = false}
+      on:click={() => $traceChatOpen = false}
       on:keydown={() => {}}
       role="button"
       tabindex="-1"
@@ -717,7 +734,7 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
           <button class="btn-icon" on:click={clearChat} aria-label="Clear Chat" title="Clear Chat">
             <span class="material-symbols-rounded">delete_sweep</span>
           </button>
-          <button class="btn-icon" on:click={() => panelOpen = false} aria-label="Close" title="Close">
+          <button class="btn-icon" on:click={() => $traceChatOpen = false} aria-label="Close" title="Close">
             <span class="material-symbols-rounded">close</span>
           </button>
         </div>

@@ -1,4 +1,5 @@
 <script>
+  import NotificationHistory from '../components/layout/NotificationHistory.svelte';
   import { onMount } from 'svelte';
   import { pop, location } from 'svelte-spa-router';
   import { _ } from 'svelte-i18n';
@@ -305,6 +306,7 @@
       <button class="btn btn-primary" on:click={save} disabled={saving}>
         {saving ? $_('common.saving') : $_('common.save')}
       </button>
+      <NotificationHistory />
     </div>
   {/if}
 

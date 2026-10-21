@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { closeStep, createAsk } from '../src/lib/trace-close.js';
 
-const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
+const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 
 test('what Escape or back does to Ask Trace', () => {
   assert.equal(closeStep({ busy: true }), 'stop', 'working: stop the request and close');
@@ -71,9 +71,9 @@ test('a click outside only closes Ask Trace when there is nothing to lose', () =
   assert.match(editor, /<TraceActions bind:this=\{traceActions\} bind:holding=\{traceHolding\}/);
   const ta = read('../src/components/notes/TraceActions.svelte');
   assert.match(ta, /\$: holding = busy \|\| waiting;/);
-  assert.match(ta, /onDestroy\(\(\) => asker\.stop\(\)\)/, 'closed any other way, the request stops');
-  // A cancelled request says nothing, and focus follows what's on screen.
-  assert.match(ta, /if \(out\.cancelled\) return;/);
+  assert.match(ta, /onMount\(\(\) => session\.view\(\)\)/, 'closing the note detaches the view while retaining background work');
+  assert.match(ta, /function stop\(\) \{\s*session\.reset\(\);/, 'explicit cancellation resets and aborts the request');
+  assert.match(ta, /body !== askedBody/, 'a retained result cannot silently replace newer note text');
   assert.match(ta, /\$: if \(confirmDiscard\) focusSoon\(\(\) => keepBtn\);/);
   const en = JSON.parse(read('../src/i18n/en.json'));
   assert.deepEqual([en.trace_actions.discard_question, en.trace_actions.keep, en.trace_actions.discard], ["Discard Trace's answer?", 'Keep', 'Discard']);
@@ -144,7 +144,12 @@ try {
   process.env.DB_PATH = join(dir, 'test.db');
   server = await import('../server/routes/ai.js');
 } catch { /* better-sqlite3 not built for this Node: the server half skips */ }
-test.after(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
+test.after(async () => {
+  if (dir) {
+    try { (await import('../server/db.js')).default.close(); } catch { /* no database was opened */ }
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 test('the server stops asking the provider when the app stops waiting', { skip: !server && 'needs better-sqlite3' }, async () => {
   const res = () => Object.assign(new EventEmitter(), { writableFinished: false });

@@ -6,7 +6,25 @@
 // Share target: the installed app receives shares as a POST with photos.
 // The photos are held in Cache Storage under a one-time id, and the share
 // is redirected into the app, which reads them back (src/lib/share-intent.js).
+self.addEventListener('message', event => {
+  if (event.data?.type === 'trace-client-id') event.ports[0]?.postMessage(event.source?.id || null);
+});
+
 self.addEventListener('notificationclick', (event) => {
+  const data = event.notification?.data;
+  if (['trace-result', 'trace-chat'].includes(data?.kind)) {
+    event.notification.close();
+    event.waitUntil((async () => {
+      const tabs = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const scoped = tabs.filter(client => client.url.startsWith(self.registration.scope));
+      const tab = scoped.find(client => client.id === data.clientId);
+      if (tab) { await tab.focus(); tab.postMessage({ ...data, type: 'trace-result' }); }
+      else for (const client of scoped) client.postMessage({ ...data, type: 'trace-result' });
+      // Results live in the running app's memory. A new tab cannot restore
+      // that result, and must not open another account's note from stale data.
+    })());
+    return;
+  }
   const noteId = event.notification?.data?.noteId;
   event.notification.close();
   if (!noteId) return;

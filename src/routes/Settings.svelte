@@ -9,6 +9,7 @@
 </script>
 
 <script>
+  import NotificationHistory from '../components/layout/NotificationHistory.svelte';
   // Thin router shell (mirrors NutriTrace / LiftTrace). Section bodies
   // live in components/settings/*.svelte and are dispatched to via
   // <svelte:component> when the URL is /settings/<slug>. The /settings
@@ -198,7 +199,7 @@
   // a per-slug wrapper below (see markup) instead of prop-drilling to
   // every child.
   const SECTION_COMPONENTS = {
-    appearance:    SettingsAppearance,
+    appearance:    { titleKey: 'settings.appearance.section',        icon: 'contrast' },
     notes:         SettingsNotes,
     regional:      SettingsRegional,
     ai:            SettingsTrace,
@@ -226,12 +227,12 @@
   // runs on the index, before drill-in.
   const SECTION_KEYWORDS = {
     profile:       ['profile','my profile','account','name','avatar','log out','logout','sign out','password','change password'],
-    appearance:    ['appearance','theme','dark','light','accent','color','navigation','sidebar','persistent','start page','animations','reduce motion','banner','page banner','force mobile','mobile layout','mobile view','phone layout','narrow layout','auto','foldable','fold','tab bar','bottom bar','icons','rail','navigation style','animation style','style'],
+    appearance:    { titleKey: 'settings.appearance.section',        icon: 'contrast' },
     notes:         ['notes','cards','density','compact','comfortable','dense','card size','note order','label order','sort labels','labels a to z','most used','sort','custom order','drag','reorder','arrange','swipe','gesture','gestures','archive','keyboard','shortcuts','hotkeys','keys','link previews','link preview','previews','tasks','every checklist','checklists in tasks','shopping list','templates','template','new from template','date token','watch','wear','wear os','watch notes','on your watch','pixel watch'],
     regional:      ['regional','date','time','12h','24h','units','energy','kcal','kj','calories','kilojoules','imperial','metric','measurement system','date format','time format','format','language','translation','translations','english','locale'],
     ai:            ['ai','trace','assistant','test connection','connection','failed to fetch','cors','address','without','v1','provider','model','custom model','model id','api key','chat','claude','openai','gemini','sonnet','opus','haiku','fable','gpt','gpt-6','luna','sol','terra','gemini 3','flash','flash lite','pro preview','base url','artificial intelligence','smart log','smartlog','quick log','voice','dictate','hold to record','mic','voice language','voice input','language','transcribe','transcription','whisper','voice notes','summary','summarize','summarise','recap','read text','ocr','image text','endpoint','completions','chat completions','assistant name','recordings','long recordings','summarize recordings'],
     cooktrace:     ['cooktrace','cook trace','shopping','shopping list','groceries','grocery','send to cooktrace','integration','integrations','link','unlink','api token','token','base url','traceapps','recipes','remove link','remove','test connection'],
-    notifications: ['notifications','reminders','tasks due','task digest','due dates','cook day','thaw','alerts','push','apprise','gotify','ntfy','expiration','expiry','expires','expiring','pantry expiry','digest','weekly summary','shopping nudge','device','this device','browser','permission','browser permission','service','push service','exact','exact times','reminder times','note reminders','time','digest time','notification time'],
+    notifications: ['sound','sounds','audio','tone','volume','chime','bell','ask trace','results','completion','notifications','reminders','tasks due','task digest','due dates','cook day','thaw','alerts','push','apprise','gotify','ntfy','expiration','expiry','expires','expiring','pantry expiry','digest','weekly summary','shopping nudge','device','this device','browser','permission','browser permission','service','push service','exact','exact times','reminder times','note reminders','time','digest time','notification time'],
     email:         ['email','smtp','mail','password reset','invite','from address','tls','outgoing','send test','test email','recipient','test recipient','connection status','change password','change smtp','invites','user invites'],
     importexport:  ['import','export','google keep','keep','takeout','markdown','obsidian','memos','joplin','blinko','bko','usememos','evernote','enex','zip','migrate','move from','images','trash','keep trash','notebook','notebooks','labels','tags','hashtags','files','markdown files','backup','blinko backup','names'],
     backup:        ['backup','export','import','restore','json','full backup','reset','danger zone','portable','portable export','clear','clear all data','clear data','data','clear settings','schedule','scheduled backup','retention','auto backup','upload','local backup'],
@@ -587,6 +588,7 @@
       {:else}
         <h1>{$_('routes.settings.title')}</h1>
       {/if}
+      <NotificationHistory />
     </header>
 
     <!-- Search bar renders on every settings view (index AND sub-pages).
@@ -843,6 +845,7 @@
     border-radius: 50%;
     transition: background-color 120ms ease;
   }
+  .page-header.banner-gradient .settings-back, .page-header.banner-animated .settings-back { color: var(--accent-text); }
   .settings-back:hover  { background: var(--surface-2); }
   .settings-back:active { background: var(--surface-3); }
   .settings-back .material-symbols-rounded { font-size: 24px; }

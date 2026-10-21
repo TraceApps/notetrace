@@ -1019,12 +1019,23 @@ test('a sync with nothing new reads little and writes nothing but the pull curso
   if (skip(t)) return;
   const r = phone('idle', A, `
     await p.setupSignIn('alice'); await p.sync(); await p.sync();
+    // Startup reminder scheduling is debounced. Let its native handoff finish
+    // before measuring the next sync, so its reads cannot race this counter.
+    const scheduled = (globalThis.__reminders || []).length;
+    p.reminders.rescheduleReminders();
+    for (let i = 0; i < 250 && (globalThis.__reminders || []).length === scheduled; i++) await p.sleep(20);
+    if ((globalThis.__reminders || []).length === scheduled) throw new Error('startup reminder scheduling did not finish');
+    // The scheduler's first cached-API read also starts its sync loop. Join
+    // that startup sync before counting the following quiet timer pass.
+    await p.sync();
+    p.syncMod.stopSyncLoop();
     globalThis.__sqlCalls = [];
     const before = p.mod.net.sent.length;
     await p.sync();
     const calls = globalThis.__sqlCalls; globalThis.__sqlCalls = null;
     p.done({
       calls: calls.length,
+      sql: calls.map(c => c.sql),
       writes: calls.filter(c => c.kind !== 'query' || !/^(SELECT|PRAGMA)/i.test(c.sql)).map(c => c.sql),
       // Reading every attachment's address: the photo check and the pictures pass.
       scans: calls.filter(c => /^SELECT (id, )?(url|preview_url)\b.* FROM note_attachments/.test(c.sql)).map(c => c.sql.slice(0, 90)),
@@ -1034,5 +1045,5 @@ test('a sync with nothing new reads little and writes nothing but the pull curso
   assert.deepEqual(r.requests.filter(x => !/^GET \/api\/(health|sync\/pull)$/.test(x)), []);
   assert.equal(r.writes.length, 1, 'only the pull cursor moves: ' + JSON.stringify(r.writes));
   assert.deepEqual(r.scans, [], 'every attachment read again');
-  assert.ok(r.calls <= 20, `an idle sync costs ${r.calls} database calls`);
+  assert.ok(r.calls <= 20, `an idle sync costs ${r.calls} database calls: ${JSON.stringify(r.sql)}`);
 });

@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Per-note Ask Trace background sessions and completion alerts; explicit Cancel, Escape, back, and sign-out abort pending requests, while retained answers still protect newer note text before replacement.
+- Device notification history, a shared permission control, optional browser sounds, Trace chat alerts, and a brief in-app popup when browser notifications are unavailable.
+
 ---
 
 ## [1.2.0-dev01] - 2026-10-20 (pre-release)
