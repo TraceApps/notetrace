@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Fetch authenticated PWA manifests with session credentials, refresh online app documents from the network, and retain the precached shell for offline fallback. Honor the update prompt before activating a new service worker.
+- Version the local font stylesheet so an updated app cannot reuse older font definitions.
+
 ---
 
 ## [1.2.0-dev01] - 2026-10-20 (pre-release)
