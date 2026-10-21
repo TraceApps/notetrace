@@ -1,4 +1,8 @@
 {
+  "note_window": {
+    "maximize": "Maximize note",
+    "restore_size": "Restore note size"
+  },
   "nav": {
     "notes":    "Notes",
     "reminders": "Reminders",

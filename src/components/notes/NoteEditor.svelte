@@ -40,6 +40,7 @@
   import { ensureReminderPermission, rescheduleReminders } from '../../lib/note-reminders.js';
   import ShareDialog from './ShareDialog.svelte';
   import TraceActions from './TraceActions.svelte';
+  import { visibleToolbarCount } from '../../lib/toolbar-fit.js';
   import CooktraceSend from './CooktraceSend.svelte';
   import { cooktraceLink, cooktraceOn, loadCooktraceLink } from '../../lib/cooktrace.js';
   import VoiceRecorder from './VoiceRecorder.svelte';
@@ -117,7 +118,7 @@
   let saving = false;
   let showHistory = false;
   let colorOpen = false, labelsOpen = false, reminderOpen = false, shareOpen = false, traceOpen = false, recordOpen = false, cookOpen = false;
-  // Ask Trace while it works or has an answer waiting: a click outside doesn't close it (#35).
+  // Ask Trace retains upstream's cancellation and unsaved-answer protection.
   let traceActions, traceHolding = false;
   $: if (!traceOpen) traceHolding = false;
   let colorAnchor = null, labelsAnchor = null, reminderAnchor = null, shareAnchor = null, traceAnchor = null, recordAnchor = null, cookAnchor = null;
@@ -347,6 +348,7 @@
   const canRecord = recordingSupported();
 
   function openRecorder(e) {
+    if (contentLocked) return;
     recordAnchor = e.currentTarget.getBoundingClientRect();
     recordOpen = true;
   }
@@ -552,7 +554,7 @@
   let pendingFiles = [];          // shown as "Uploading" until they're stored
   let fileInput;
   let fileViewerIndex = null;
-  function openFilePicker() { tick().then(() => fileInput?.click()); }
+  function openFilePicker() { if (contentLocked) return; tick().then(() => fileInput?.click()); }
 
   async function addOtherFiles(files) {
     if (contentLocked) return;
@@ -736,6 +738,7 @@
 
   // ── Trace actions ─────────────────────────────────────────────────
   async function openTrace(e) {
+    if (contentLocked) return;
     traceAnchor = e.currentTarget.getBoundingClientRect();
     await flushAll();
     traceOpen = true;
@@ -1037,8 +1040,34 @@
   let barW = 800;
   // A narrow editor card (beside a half-open fold) uses the phone's compact toolbar.
   let panelW = 0;
+  let maximized = false;
   $: compactBar = narrow || (!inline && panelW > 0 && panelW < 560);
-  $: tightBar = inline && barW < 600;
+  $: readerActions = [
+    { key: 'pin', icon: 'keep', label: pinned ? $_('notes.unpin') : $_('notes.pin'), pressed: pinned, run: togglePin },
+    ...(isOwner ? [{ key: 'reminder', icon: 'notification_add', label: $_('reminders.remind_me'), run: openReminder }] : []),
+    ...($traceReady && kind === 'text' && !baseLocked && body.trim() ? [{ key: 'trace', icon: 'auto_awesome', label: $_('trace_actions.title'), run: openTrace }] : []),
+    ...(!baseLocked ? [{ key: 'convert', icon: kind === 'text' ? 'checklist' : 'notes', label: kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text'), run: () => convert() }] : []),
+    ...(noteId && !baseLocked ? [{ key: 'readonly', icon: 'edit_off', label: $_('notes.read_only'), pressed: readOnlyNote, run: toggleReadOnly }] : []),
+    ...($sharingAvailable ? [{ key: 'share', icon: 'person_add', label: $_('sharing.share'), run: openShare }] : []),
+    ...(!baseLocked ? [
+      { key: 'image', icon: 'add_photo_alternate', label: $_('attachments.add_image'), run: () => imageInput.click() },
+      { key: 'file', icon: 'attach_file', label: $_('files.attach'), run: openFilePicker },
+      { key: 'drawing', icon: 'draw', label: $_('drawing.new'), run: newDrawing },
+      ...(canRecord ? [{ key: 'voice', icon: 'mic', label: $_('voice.record'), run: openRecorder }] : []),
+    ] : []),
+    ...(!baseLocked ? [{ key: 'color', icon: 'palette', label: $_('notes.color'), run: openColor }] : []),
+    { key: 'labels', icon: 'label', label: $_('notes.labels'), run: openLabels },
+    ...(canShowInTasks ? [{ key: 'tasks', icon: 'task_alt', label: $_('tasks.show_in_tasks'), pressed: inTasks, run: toggleInTasks }] : []),
+    ...(cooktraceOn($cooktraceLink) && kind === 'checklist' ? [{ key: 'cooktrace', icon: 'add_shopping_cart', label: $_('cooktrace.send'), run: openCooktrace }] : []),
+    { key: 'archive', icon: archived ? 'unarchive' : 'archive', label: archived ? $_('notes.unarchive') : $_('notes.archive'), run: archive },
+    { key: 'print', icon: 'print', label: $_('print.print'), run: printThis },
+    ...(canTemplate({ title, body_md: body, kind, items }) ? [{ key: 'template', icon: 'note_stack_add', label: $_('templates.save_as'), run: saveAsTemplate }] : []),
+    ...(noteId ? [{ key: 'history', icon: 'history', label: $_('notes.version_history'), run: async () => { await flushAll(); showHistory = true; } }] : []),
+    ...(isOwner ? [{ key: 'trash', icon: 'delete', label: $_('notes.move_to_trash'), danger: true, run: trash }] : []),
+  ].map(action => ({ ...action, disabled: contentLocked && ['trace', 'convert', 'image', 'file', 'drawing', 'voice'].includes(action.key) }));
+  $: readerVisibleCount = visibleToolbarCount(barW, readerActions.length);
+  $: readerVisible = readerActions.slice(0, readerVisibleCount);
+  $: readerOverflow = readerActions.slice(readerVisibleCount);
   // The desktop editor's own bar (not the phone bar or the list pane's): what it shows stays out of the More menu.
   $: fullBar = !inline && !compactBar;
   /** Save anything pending, for switching notes in the side pane. */
@@ -1095,7 +1124,7 @@
   let formats = {};
   $: fmtTools = bodyRef?.formatTools?.() || [];
   $: if (kind !== 'text' || contentLocked) fmtMode = false;
-  function openAdd(e) { addAnchor = e.currentTarget.getBoundingClientRect(); addOpen = true; }
+  function openAdd(e) { if (contentLocked) return; addAnchor = e.currentTarget.getBoundingClientRect(); addOpen = true; }
   function openMore(e) { moreAnchor = e.currentTarget.getBoundingClientRect(); moreOpen = true; }
   // Run a sheet item once its sheet has closed, anchored where the sheet's button was.
   function fromSheet(fn, anchorRect) {
@@ -1159,8 +1188,8 @@
 <!-- The host stays in place while the backdrop moves to <body>. Without a fixed
      first node, closing the editor left its other top-level nodes behind. -->
 <div class="editor-host">
-<div use:portal={!inline} class="editor-backdrop" class:inline use:backdropClick={() => { if (!inline) close(); }} transition:fade|global={{ duration: $disableAnimations || inline ? 0 : 160 }}>
-  <div class="editor-panel" class:inline class:narrow class:compact-bar={compactBar} bind:clientWidth={panelW} class:kb-open={narrow && kb > 0} class:drag-over={dragOver} style="{noteColorStyle(color)} --kb:{narrow ? kb : 0}px"
+<div use:portal={!inline} class="editor-backdrop" class:inline class:maximized use:backdropClick={() => { if (!inline) close(); }} transition:fade|global={{ duration: $disableAnimations || inline ? 0 : 160 }}>
+  <div class="editor-panel" class:inline class:maximized class:narrow class:compact-bar={compactBar} bind:clientWidth={panelW} class:kb-open={narrow && kb > 0} class:drag-over={dragOver} style="{noteColorStyle(color)} --kb:{narrow ? kb : 0}px"
     on:paste={onPaste} on:dragover={onDragOver} on:dragleave={() => dragOver = false} on:drop={onDrop}
     role={inline ? 'region' : 'dialog'} aria-modal={inline ? undefined : 'true'} aria-label={title || $_('notes.untitled')}
     tabindex="-1" use:dialogFocus={{ disabled: inline, autofocus: false }}
@@ -1181,53 +1210,22 @@
             {/if}
             <span class="crumb-text">{crumb}</span>
           </span>
-          <span class="edited" aria-live="polite">
+          {#if barW >= 1100}<span class="edited" aria-live="polite">
             {#if saving}{$_('notes.saving')}{:else if updatedAt}{$_('notes.edited', { values: { when: relativeTime(updatedAt).toLowerCase() } })}{/if}
-          </span>
+          </span>{/if}
           <span class="spacer"></span>
-          <button class="icon-btn" class:on={pinned} on:click={togglePin}
-            title={pinned ? $_('notes.unpin') : $_('notes.pin')} aria-label={pinned ? $_('notes.unpin') : $_('notes.pin')} aria-pressed={pinned}>
-            <span class="material-symbols-rounded" class:fill={pinned}>keep</span>
-          </button>
-          {#if isOwner}
-            <button class="icon-btn" on:click={openReminder} title={$_('reminders.remind_me')} aria-label={$_('reminders.remind_me')}>
-              <span class="material-symbols-rounded">notification_add</span>
+          {#each readerVisible as action (action.key)}
+            <button class="icon-btn" class:on={action.pressed} class:danger={action.danger}
+              disabled={action.disabled} on:click={action.run} title={action.label} aria-label={action.label} aria-pressed={action.pressed}
+              data-record={action.key === 'voice' ? '' : undefined}>
+              <span class="material-symbols-rounded" class:fill={action.pressed}>{action.icon}</span>
             </button>
-          {/if}
-          {#if $sharingAvailable && !tightBar}
-            <button class="icon-btn" on:click={openShare} title={$_('sharing.share')} aria-label={$_('sharing.share')}>
-              <span class="material-symbols-rounded">person_add</span>
-            </button>
-          {/if}
-          {#if !contentLocked && !tightBar}
-            <button class="icon-btn" on:click={() => imageInput.click()} title={$_('attachments.add_image')} aria-label={$_('attachments.add_image')}>
-              <span class="material-symbols-rounded">add_photo_alternate</span>
-            </button>
-            <button class="icon-btn" on:click={openFilePicker} title={$_('files.attach')} aria-label={$_('files.attach')}>
-              <span class="material-symbols-rounded">attach_file</span>
-            </button>
-            <button class="icon-btn" on:click={newDrawing} title={$_('drawing.new')} aria-label={$_('drawing.new')}>
-              <span class="material-symbols-rounded">draw</span>
-            </button>
-            {#if canRecord}
-              <button class="icon-btn" data-record on:click={openRecorder} title={$_('voice.record')} aria-label={$_('voice.record')}>
-                <span class="material-symbols-rounded">mic</span>
-              </button>
-            {/if}
-          {/if}
-          {#if !baseLocked && !tightBar}
-            <button class="icon-btn" on:click={openColor} title={$_('notes.color')} aria-label={$_('notes.color')}>
-              <span class="material-symbols-rounded">palette</span>
-            </button>
-          {/if}
-          {#if !tightBar}
-            <button class="icon-btn" on:click={openLabels} title={$_('notes.labels')} aria-label={$_('notes.labels')}>
-              <span class="material-symbols-rounded">label</span>
-            </button>
-          {/if}
+          {/each}
+          {#if readerOverflow.length}
           <button class="icon-btn" on:click={openMore} title={$_('notes.more_options')} aria-label={$_('notes.more_options')} aria-haspopup="menu">
             <span class="material-symbols-rounded">more_horiz</span>
           </button>
+          {/if}
           <span class="bar-sep" aria-hidden="true"></span>
           <button class="icon-btn" on:click={() => close()} title={$_('common.close')} aria-label={$_('common.close')}>
             <span class="material-symbols-rounded">close</span>
@@ -1256,6 +1254,12 @@
           <button class="icon-btn" class:on={pinned} on:click={togglePin}
             title={pinned ? $_('notes.unpin') : $_('notes.pin')} aria-label={pinned ? $_('notes.unpin') : $_('notes.pin')} aria-pressed={pinned}>
             <span class="material-symbols-rounded" class:fill={pinned}>keep</span>
+          </button>
+        {/if}
+        {#if !inline && !narrow}
+          <button class="icon-btn" class:on={maximized} on:click={() => maximized = !maximized}
+            title={$_(maximized ? 'note_window.restore_size' : 'note_window.maximize')} aria-label={$_(maximized ? 'note_window.restore_size' : 'note_window.maximize')} aria-pressed={maximized}>
+            <span class="material-symbols-rounded">{maximized ? 'fullscreen_exit' : 'fullscreen'}</span>
           </button>
         {/if}
       </div>
@@ -1301,7 +1305,7 @@
           on:open={openFile} on:remove={removeImage} />
         {#key editorKey}
           {#if kind === 'text'}
-            <TipTapEditor bind:this={bodyRef} bind:value={body} editable={!contentLocked} checkable={!baseLocked} showToolbar={!narrow}
+            <TipTapEditor bind:this={bodyRef} bind:value={body} editable={!contentLocked} checkable={!baseLocked} showToolbar={!narrow} showLockedToolbar={!baseLocked}
               on:formats={(e) => formats = e.detail}
               slashActions={contentLocked ? [] : ['checklist', 'image', 'file', 'drawing', ...(canRecord ? ['voice'] : []), ...(isOwner ? ['reminder'] : [])]}
               on:slash={(e) => onSlash(e.detail)}
@@ -1359,7 +1363,7 @@
       </div>
 
       {#if !inline || readOnly}
-      <footer class="editor-bar">
+      <footer class="editor-bar" class:expanded={maximized && !narrow}>
         {#if readOnly}
           <span class="edited">{$_('notes.in_trash')}</span>
           <span class="spacer"></span>
@@ -1367,6 +1371,17 @@
             <span class="material-symbols-rounded">restore_from_trash</span>{$_('notes.restore')}
           </button>
           <button class="btn btn-danger" on:click={deleteForever}>{$_('notes.delete_forever')}</button>
+        {:else if maximized && !narrow}
+          <div class="bar-actions expanded-actions" role="toolbar" aria-label={$_('notes.more_options')}>
+            {#each readerActions.filter(action => action.key !== 'pin') as action (action.key)}
+              <button class="icon-btn" class:on={action.pressed} class:danger={action.danger}
+                disabled={action.disabled} on:click={action.run} title={action.label} aria-label={action.label} aria-pressed={action.pressed}
+                data-record={action.key === 'voice' ? '' : undefined}>
+                <span class="material-symbols-rounded" class:fill={action.pressed}>{action.icon}</span>
+              </button>
+            {/each}
+          </div>
+          <button class="btn btn-primary done" on:click={() => close()}>{$_('notes.done')}</button>
         {:else if compactBar && fmtMode}
           <div class="phone-bar fmt-row" role="toolbar" aria-label={$_('notes.formatting')}>
             <button class="icon-btn" on:mousedown|preventDefault on:click={() => fmtMode = false} aria-label={$_('notes.close_formatting')}>
@@ -1375,7 +1390,7 @@
             <div class="fmt-scroll">
               {#each fmtTools.filter(t => (t.inTable ? formats.table : t.notInTable ? !formats.table : true)) as t (t.key)}
                 <button class="icon-btn" class:on={formats[t.key]} aria-pressed={!!formats[t.key]} aria-label={$_(t.label)}
-                  on:mousedown|preventDefault on:click={() => bodyRef?.format(t.key)}>
+                  on:mousedown|preventDefault on:click={() => bodyRef?.format(t.key)} disabled={contentLocked}>
                   <span class="material-symbols-rounded">{t.icon}</span>
                 </button>
               {/each}
@@ -1383,21 +1398,21 @@
           </div>
         {:else if compactBar}
           <div class="phone-bar">
-            {#if !contentLocked}
-              <button class="icon-btn" on:mousedown|preventDefault on:click={openAdd} aria-label={$_('notes.add_to_note')} title={$_('notes.add_to_note')}>
+            {#if !baseLocked}
+              <button class="icon-btn" on:mousedown|preventDefault on:click={openAdd} aria-label={$_('notes.add_to_note')} title={$_('notes.add_to_note')} disabled={contentLocked}>
                 <span class="material-symbols-rounded">add_box</span>
               </button>
               {#if kind === 'text'}
-                <button class="icon-btn" on:mousedown|preventDefault on:click={() => fmtMode = true} aria-label={$_('notes.formatting')} title={$_('notes.formatting')}>
+                <button class="icon-btn" on:mousedown|preventDefault on:click={() => fmtMode = true} aria-label={$_('notes.formatting')} title={$_('notes.formatting')} disabled={contentLocked}>
                   <span class="material-symbols-rounded">text_format</span>
                 </button>
                 <button class="icon-btn" class:on={formats.todo} aria-pressed={!!formats.todo} on:mousedown|preventDefault on:click={() => bodyRef?.format('todo')}
-                  aria-label={$_('notes.fmt_checkboxes')} title={$_('notes.fmt_checkboxes')}>
+                  aria-label={$_('notes.fmt_checkboxes')} title={$_('notes.fmt_checkboxes')} disabled={contentLocked}>
                   <span class="material-symbols-rounded">check_box</span>
                 </button>
               {/if}
               {#if canRecord}
-                <button class="icon-btn" data-record on:mousedown|preventDefault on:click={openRecorder} aria-label={$_('voice.record')} title={$_('voice.record')}>
+                <button class="icon-btn" data-record on:mousedown|preventDefault on:click={openRecorder} aria-label={$_('voice.record')} title={$_('voice.record')} disabled={contentLocked}>
                   <span class="material-symbols-rounded">mic</span>
                 </button>
               {/if}
@@ -1427,8 +1442,8 @@
                 <span class="material-symbols-rounded">notification_add</span>
               </button>
             {/if}
-            {#if $traceReady && kind === 'text' && !contentLocked && body.trim()}
-              <button class="icon-btn trace-btn" on:click={openTrace} title={$_('trace_actions.title')} aria-label={$_('trace_actions.title')}>
+            {#if $traceReady && kind === 'text' && !baseLocked && body.trim()}
+              <button class="icon-btn trace-btn" on:click={openTrace} title={$_('trace_actions.title')} aria-label={$_('trace_actions.title')} disabled={contentLocked}>
                 <span class="material-symbols-rounded">auto_awesome</span>
               </button>
             {/if}
@@ -1442,18 +1457,18 @@
                 <span class="material-symbols-rounded">person_add</span>
               </button>
             {/if}
-            {#if !contentLocked}
-              <button class="icon-btn" on:click={() => imageInput.click()} title={$_('attachments.add_image')} aria-label={$_('attachments.add_image')}>
+            {#if !baseLocked}
+              <button class="icon-btn" on:click={() => imageInput.click()} title={$_('attachments.add_image')} aria-label={$_('attachments.add_image')} disabled={contentLocked}>
                 <span class="material-symbols-rounded">add_photo_alternate</span>
               </button>
-              <button class="icon-btn" on:click={openFilePicker} title={$_('files.attach')} aria-label={$_('files.attach')}>
+              <button class="icon-btn" on:click={openFilePicker} title={$_('files.attach')} aria-label={$_('files.attach')} disabled={contentLocked}>
                 <span class="material-symbols-rounded">attach_file</span>
               </button>
-              <button class="icon-btn" on:click={newDrawing} title={$_('drawing.new')} aria-label={$_('drawing.new')}>
+              <button class="icon-btn" on:click={newDrawing} title={$_('drawing.new')} aria-label={$_('drawing.new')} disabled={contentLocked}>
                 <span class="material-symbols-rounded">draw</span>
               </button>
               {#if canRecord}
-                <button class="icon-btn" data-record on:click={openRecorder} title={$_('voice.record')} aria-label={$_('voice.record')}>
+                <button class="icon-btn" data-record on:click={openRecorder} title={$_('voice.record')} aria-label={$_('voice.record')} disabled={contentLocked}>
                   <span class="material-symbols-rounded">mic</span>
                 </button>
               {/if}
@@ -1472,10 +1487,10 @@
                 <span class="material-symbols-rounded" class:fill={inTasks}>task_alt</span>
               </button>
             {/if}
-            {#if !contentLocked}
+            {#if !baseLocked}
               <button class="icon-btn" on:click={() => convert()}
                 title={kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}
-                aria-label={kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}>
+                aria-label={kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')} disabled={contentLocked}>
                 <span class="material-symbols-rounded">{kind === 'text' ? 'checklist' : 'notes'}</span>
               </button>
             {/if}
@@ -1518,7 +1533,7 @@
 
 <Popover bind:open={addOpen} anchor={addAnchor} label={$_('notes.add_to_note')}>
   <div class="sheet-menu">
-    <button class="sheet-item" on:click={() => fromSheet(() => imageInput.click(), addAnchor)}>
+    <button class="sheet-item" on:click={() => fromSheet(() => imageInput.click(), addAnchor)} disabled={contentLocked}>
       <span class="material-symbols-rounded">add_photo_alternate</span>{$_('attachments.add_image')}
     </button>
     <button class="sheet-item" on:click={() => { addOpen = false; openFilePicker(); }}>
@@ -1528,64 +1543,37 @@
       <span class="material-symbols-rounded">draw</span>{$_('drawing.new')}
     </button>
     {#if canRecord}
-      <button class="sheet-item" on:click={() => fromSheet(openRecorder, addAnchor)}>
+      <button class="sheet-item" on:click={() => fromSheet(openRecorder, addAnchor)} disabled={contentLocked}>
         <span class="material-symbols-rounded">mic</span>{$_('voice.record')}
       </button>
     {/if}
     <button class="sheet-item" on:click={() => { addOpen = false; tick().then(() => audioInput?.click()); }}>
       <span class="material-symbols-rounded">audio_file</span>{$_('voice.add_file')}
     </button>
-    <button class="sheet-item" on:click={() => fromSheet(() => convert(), addAnchor)}>
+    <button class="sheet-item" on:click={() => fromSheet(() => convert(), addAnchor)} disabled={contentLocked}>
       <span class="material-symbols-rounded">{kind === 'text' ? 'checklist' : 'notes'}</span>{kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}
     </button>
   </div>
 </Popover>
 <Popover bind:open={moreOpen} anchor={moreAnchor} label={$_('notes.more_options')}>
   <div class="sheet-menu">
+    {#if inline}
+      {#each readerOverflow as action (action.key)}
+        <button class="sheet-item" class:danger={action.danger}
+          role={typeof action.pressed === 'boolean' ? 'menuitemcheckbox' : 'menuitem'} aria-checked={action.pressed}
+          disabled={action.disabled} on:click={() => fromSheet(action.run, moreAnchor)}>
+          <span class="material-symbols-rounded" class:fill={action.pressed}>{action.icon}</span>{action.label}
+          {#if action.pressed}<span class="material-symbols-rounded sheet-check">check</span>{/if}
+        </button>
+      {/each}
+    {:else}
     {#if canShowInTasks && !fullBar}
       <button class="sheet-item" role="menuitemcheckbox" aria-checked={inTasks} on:click={() => { toggleInTasks(); moreOpen = false; }}>
         <span class="material-symbols-rounded" class:fill={inTasks}>task_alt</span>{$_('tasks.show_in_tasks')}
         {#if inTasks}<span class="material-symbols-rounded sheet-check">check</span>{/if}
       </button>
     {/if}
-    {#if inline}
-      {#if tightBar}
-        {#if !contentLocked}
-          <button class="sheet-item" on:click={() => fromSheet(() => imageInput.click(), moreAnchor)}>
-            <span class="material-symbols-rounded">add_photo_alternate</span>{$_('attachments.add_image')}
-          </button>
-          <button class="sheet-item" on:click={() => { moreOpen = false; openFilePicker(); }}>
-            <span class="material-symbols-rounded">attach_file</span>{$_('files.attach')}
-          </button>
-          <button class="sheet-item" on:click={() => { moreOpen = false; newDrawing(); }}>
-            <span class="material-symbols-rounded">draw</span>{$_('drawing.new')}
-          </button>
-          {#if canRecord}
-            <button class="sheet-item" on:click={() => fromSheet(openRecorder, moreAnchor)}>
-              <span class="material-symbols-rounded">mic</span>{$_('voice.record')}
-            </button>
-          {/if}
-        {/if}
-        {#if !baseLocked}
-          <button class="sheet-item" on:click={() => fromSheet(openColor, moreAnchor)}>
-            <span class="material-symbols-rounded">palette</span>{$_('notes.color')}
-          </button>
-        {/if}
-        <button class="sheet-item" on:click={() => fromSheet(openLabels, moreAnchor)}>
-          <span class="material-symbols-rounded">label</span>{$_('notes.labels')}
-        </button>
-        {#if $sharingAvailable}
-          <button class="sheet-item" on:click={() => fromSheet(openShare, moreAnchor)}>
-            <span class="material-symbols-rounded">person_add</span>{$_('sharing.share')}
-          </button>
-        {/if}
-      {/if}
-      {#if !contentLocked}
-        <button class="sheet-item" on:click={() => fromSheet(() => convert(), moreAnchor)}>
-          <span class="material-symbols-rounded">{kind === 'text' ? 'checklist' : 'notes'}</span>{kind === 'text' ? $_('notes.to_checklist') : $_('notes.to_text')}
-        </button>
-      {/if}
-    {:else if !fullBar}
+    {#if !fullBar}
     <button class="sheet-item" on:click={() => fromSheet(openLabels, moreAnchor)}>
       <span class="material-symbols-rounded">label</span>{$_('notes.labels')}
     </button>
@@ -1595,8 +1583,8 @@
         <span class="material-symbols-rounded">person_add</span>{$_('sharing.share')}
       </button>
     {/if}
-    {#if $traceReady && kind === 'text' && !contentLocked && body.trim() && !fullBar}
-      <button class="sheet-item" on:click={() => fromSheet(openTrace, moreAnchor)}>
+    {#if $traceReady && kind === 'text' && !baseLocked && body.trim() && !fullBar}
+      <button class="sheet-item" on:click={() => fromSheet(openTrace, moreAnchor)} disabled={contentLocked}>
         <span class="material-symbols-rounded">auto_awesome</span>{$_('trace_actions.title')}
       </button>
     {/if}
@@ -1631,6 +1619,7 @@
       <button class="sheet-item danger" on:click={() => fromSheet(trash, moreAnchor)}>
         <span class="material-symbols-rounded">delete</span>{$_('notes.move_to_trash')}
       </button>
+    {/if}
     {/if}
   </div>
 </Popover>
@@ -1720,17 +1709,19 @@
     height: 58px; padding: 0 12px 0 32px;
     border-bottom: 1px solid var(--note-border);
   }
-  .crumb { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text-2); }
+  .crumb { display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex: 0 0 96px; font-size: 13px; font-weight: 600; color: var(--text-2); }
   .crumb .material-symbols-rounded { font-size: 17px; color: var(--note-glow, var(--accent)); }
   .crumb-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .reader-bar .edited { margin-left: 12px; overflow: hidden; text-overflow: ellipsis; }
-  .reader-bar .icon-btn { width: 36px; height: 36px; border-radius: 10px; }
+  .reader-bar .edited { margin-left: 12px; flex: 0 0 124px; overflow: hidden; text-overflow: ellipsis; }
+  .reader-bar .icon-btn { width: 36px; height: 36px; flex-shrink: 0; border-radius: 10px; }
   .reader-bar .icon-btn .material-symbols-rounded { font-size: 21px; }
   .bar-sep { width: 1px; height: 22px; background: var(--note-border); margin: 0 6px; }
   .inline .editor-top { padding-top: 26px; }
-  @media (max-width: 1320px) { .reader-bar .edited { display: none; } }
   .reader-bar.tight { padding-left: 20px; }
-  .reader-bar.tight .crumb { flex-shrink: 1; }
+  .reader-bar.tight .crumb { flex-basis: 24px; }
+  .reader-bar.tight .crumb-text { display: none; }
+  .reader-bar.tight .icon-btn { width: 44px; height: 44px; }
+  .reader-bar .icon-btn.danger { color: var(--danger); }
   .editor-backdrop {
     position: fixed; inset: 0; z-index: 200;
     background: rgba(0, 0, 0, 0.55);
@@ -1750,6 +1741,13 @@
     color: var(--text-1);
     overflow: hidden;
   }
+  .editor-backdrop.maximized { padding: max(12px, var(--safe-top)) 12px max(12px, var(--safe-bottom)); }
+  .editor-panel.maximized:not(.narrow) {
+    max-width: none;
+    height: calc(100dvh - max(12px, var(--safe-top)) - max(12px, var(--safe-bottom)));
+    max-height: calc(100dvh - max(12px, var(--safe-top)) - max(12px, var(--safe-bottom)));
+  }
+  .icon-btn:disabled, .sheet-item:disabled { opacity: 0.45; cursor: not-allowed; }
   .editor-panel.narrow {
     max-width: none; max-height: none;
     position: fixed; inset: 0;
@@ -1811,6 +1809,9 @@
     -webkit-backdrop-filter: blur(24px) saturate(180%);
   }
   .bar-actions { display: flex; flex-wrap: nowrap; gap: 2px; min-width: 0; }
+  .editor-bar.expanded { flex-shrink: 0; }
+  .bar-actions.expanded-actions { flex: 1; flex-wrap: wrap; }
+  .expanded-actions .icon-btn { flex-shrink: 0; }
   .spacer { flex: 1; }
   .edited { font-size: 12px; color: var(--text-3); white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .compact-bar .edited { display: none; }

@@ -5,6 +5,7 @@
   import { createEventDispatcher } from 'svelte';
   import { portal } from '../../lib/portal.js';
   import { timeFormat } from '../../stores/settings.js';
+  import { overlayLayer } from '../../lib/overlay-layer.js';
 
   export let value = '12:00'; // HH:MM (24h internal)
   export let label = '';
@@ -77,6 +78,7 @@
 
 {#if open}
   <div use:portal class="tp-backdrop" role="presentation" use:closeOnBack={() => open = false}
+    use:overlayLayer
     on:click|self={() => open = false}>
     <!-- svelte-ignore a11y_click_events_have_key_events (keys: dialogFocus) -->
     <div class="tp-sheet" role="dialog" aria-modal="true" aria-label={label || undefined} tabindex="-1"

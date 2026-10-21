@@ -7,6 +7,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Keep Read Only note controls visible while disabling content changes, fit reader actions to the available width, and expose available actions in maximized desktop note windows.
+- Open nested reminder calendars and time pickers above their parent form, and dismiss only the top overlay on Escape.
+- Use consistent rounded page headers and the theme button foreground for banner contrast.
+
 ---
 
 ## [1.2.0-dev01] - 2026-10-20 (pre-release)
