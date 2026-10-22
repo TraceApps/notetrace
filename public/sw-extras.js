@@ -6,6 +6,9 @@
 // Share target: the installed app receives shares as a POST with photos.
 // The photos are held in Cache Storage under a one-time id, and the share
 // is redirected into the app, which reads them back (src/lib/share-intent.js).
+// Any page can send this same POST, so the app treats every web share as a
+// draft: nothing is saved or uploaded until the person keeps it. Files left
+// here for more than 10 minutes (a share never opened) are cleared.
 self.addEventListener('notificationclick', (event) => {
   const noteId = event.notification?.data?.noteId;
   event.notification.close();
@@ -24,6 +27,15 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 const SHARE_CACHE = 'note-share';
+const SHARE_MAX_AGE_MS = 10 * 60 * 1000;
+
+// Share ids start with the time they were made (`${Date.now()}-...`).
+async function clearOldShares(cache, now = Date.now()) {
+  for (const req of await cache.keys()) {
+    const at = Number((req.url.match(/\/__share\/(\d+)-/) || [])[1]);
+    if (!at || now - at > SHARE_MAX_AGE_MS) await cache.delete(req);
+  }
+}
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
@@ -42,6 +54,7 @@ self.addEventListener('fetch', (event) => {
       if (images.length) {
         const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const cache = await caches.open(SHARE_CACHE);
+        await clearOldShares(cache);
         await Promise.all(images.map((f, i) => cache.put(
           new Request(`${scope}__share/${id}/${i}`),
           new Response(f, { headers: { 'Content-Type': f.type || 'application/octet-stream', 'X-File-Name': encodeURIComponent(f.name || `file-${i + 1}`) } }),

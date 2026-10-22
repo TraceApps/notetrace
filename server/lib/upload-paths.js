@@ -7,6 +7,7 @@
  * tested directly without a compiled better-sqlite3 native binding.
  */
 import path from 'path';
+import { frameAncestorsDirective } from './frame-ancestors.js';
 
 const uploadsPath = process.env.UPLOADS_PATH || './uploads';
 
@@ -136,5 +137,5 @@ export function uploadMaxBytes(env = process.env) {
  */
 export const UPLOAD_RESPONSE_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
-  'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; sandbox",
+  'Content-Security-Policy': `default-src 'none'; img-src 'self' data:; media-src 'self'; style-src 'unsafe-inline'; sandbox; ${frameAncestorsDirective(process.env.FRAME_ANCESTORS)}`,
 };

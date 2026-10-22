@@ -54,8 +54,9 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="notetrace" android:host="callback" />
                 <data android:scheme="notetrace" android:host="oidc-callback" />
-                <!-- notetrace://new/voice, /text, /checklist: home screen shortcuts -->
-                <data android:scheme="notetrace" android:host="new" />
+                <!-- Not notetrace://new: the home screen shortcuts and the Quick
+                     Note widget open it with explicit intents, and no web page
+                     may (it can start recording a voice note). -->
             </intent-filter>
 
         </activity>

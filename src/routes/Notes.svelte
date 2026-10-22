@@ -40,7 +40,8 @@
   import { labelAndDescendantIds } from '../lib/label-tree.js';
   import { isNative } from '../lib/platform.js';
   import NoteCard from '../components/notes/NoteCard.svelte';
-  import { pendingShare, shareToNote, takeSharedFiles } from '../lib/share-intent.js';
+  import { pendingShare, shareToNote, takeSharedFiles, clearOldShares } from '../lib/share-intent.js';
+  import { takeAppNewNote } from '../lib/new-note-intent.js';
   import { FILTER_TYPES, emptyFilters, hasFilters, matchesFilters, toggleFilter } from '../lib/note-filters.js';
   import { recordingSupported } from '../lib/voice-recorder.js';
   import { longpress } from '../lib/long-press.js';
@@ -237,6 +238,7 @@
   const focusSearch = () => { openSearch(); };
   onMount(() => {
     refreshLabels();
+    clearOldShares();   // files from a web share never opened don't stay in the browser
     window.addEventListener('note:focus-search', focusSearch);
   });
   onDestroy(() => {
@@ -426,11 +428,12 @@
     if (splitPane) openInPane(entry);
     else editing = entry;
   }
-  // A quick voice note: a new note that opens straight into recording.
+  // A quick voice note: a new note that opens straight into recording. One
+  // opened from a link waits for a tap on Record (waitForTap).
   const canRecordVoice = recordingSupported();
-  function newVoiceNote() {
+  function newVoiceNote(waitForTap = false) {
     if (!canRecordVoice) return;
-    const entry = { kind: 'text', labels: labelId != null ? [labelId] : [], voice: true };
+    const entry = { kind: 'text', labels: labelId != null ? [labelId] : [], voice: true, voiceWait: waitForTap };
     if (splitPane) openInPane(entry);
     else editing = entry;
   }
@@ -465,7 +468,9 @@
     if (fresh) {
       replaceRoute(path);
       await tick();
-      if (fresh === 'voice') newVoiceNote();
+      // A voice note asked for by the app's own shortcut or widget records at
+      // once; the same address from a link waits for a tap on Record.
+      if (fresh === 'voice') newVoiceNote(!takeAppNewNote('voice'));
       else if (fresh === 'drawing') newDrawingNote();
       else newNote(fresh === 'checklist' ? 'checklist' : 'text');
       return;
@@ -473,7 +478,10 @@
     if (params.get('share') === '1') {
       const prefill = shareToNote({ title: params.get('title'), text: params.get('text'), url: params.get('url') });
       replaceRoute(path);
+      // Any page can send the share POST or link here, so a web share is a
+      // draft: nothing is saved or uploaded until the person keeps it.
       prefill.images = await takeSharedFiles(params.get('files'));
+      prefill.fromLink = true;
       if (prefill.title || prefill.body_md || prefill.images.length) editing = { kind: 'text', prefill };
       return;
     }
@@ -1021,7 +1029,7 @@
           {#if pane}
             {#key paneKey}
               <NoteEditor bind:this={paneRef} inline autoRecord={!!pane.voice} autoDraw={!!pane.drawing} note={pane.note || null} initialKind={pane.kind || 'text'}
-                initialLabels={pane.labels || []} prefill={pane.prefill || null} on:close={closePane} />
+                initialLabels={pane.labels || []} prefill={pane.prefill || null} recordOnTap={!!pane.voiceWait} on:close={closePane} />
             {/key}
           {:else}
             <div class="pane-empty">
@@ -1156,7 +1164,7 @@
        would otherwise resume that editor with the previous note's state. -->
   {#key editing}
     <NoteEditor bind:this={overlayRef} autoRecord={!!editing.voice} autoDraw={!!editing.drawing} note={editing.note || null} initialKind={editing.kind || 'text'} initialLabels={editing.labels || []}
-      prefill={editing.prefill || null} originId={editing.originId ?? null} on:close={closeEditor} />
+      prefill={editing.prefill || null} originId={editing.originId ?? null} recordOnTap={!!editing.voiceWait} on:close={closeEditor} />
   {/key}
 {/if}
 

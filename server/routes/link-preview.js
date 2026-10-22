@@ -10,6 +10,7 @@
  */
 import { Router } from 'express';
 import { wrap } from '../logger.js';
+import { frameAncestorsDirective } from '../lib/frame-ancestors.js';
 import { requireAuth } from '../middleware/auth.js';
 import { makeRateLimiter } from '../middleware/rate-limit.js';
 import { getLinkPreview, getPreviewAsset } from '../lib/link-preview.js';
@@ -34,7 +35,7 @@ for (const kind of ['image', 'icon']) {
     res.set('Content-Type', asset.type);
     res.set('Cache-Control', 'public, max-age=604800');
     res.set('X-Content-Type-Options', 'nosniff');
-    res.set('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+    res.set('Content-Security-Policy', `default-src 'none'; style-src 'unsafe-inline'; sandbox; ${frameAncestorsDirective(process.env.FRAME_ANCESTORS)}`);
     res.send(asset.body);
   }));
 }

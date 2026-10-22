@@ -474,6 +474,8 @@
         // A home screen shortcut that cold-starts the app arrives as the launch URL.
         App.getLaunchUrl?.().then((r) => {
           const m = String(r?.url || '').match(/^notetrace:\/\/new\/(\w+)/);
+          // Not marked here: appUrlOpen below also fires for this launch and
+          // marks it, and marking both starts the recorder twice (it stops).
           if (m) import('svelte-spa-router').then(({ push }) => push(`/?new=${m[1]}`));
         }).catch(() => {});
         App.addListener('appUrlOpen', async ({ url }) => {
@@ -489,6 +491,10 @@
             const host = link.host;
             if (host === 'new') {
               const what = (link.path || '').replace(/^\/+/, '') || 'text';
+              // Only the app's own shortcuts and widget reach this (explicit
+              // intents): their voice note may start recording at once.
+              const { markAppNewNote } = await import('./lib/new-note-intent.js');
+              markAppNewNote(what);
               import('svelte-spa-router').then(({ push }) => push(`/?new=${encodeURIComponent(what)}`));
               return;
             }

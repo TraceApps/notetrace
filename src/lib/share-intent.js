@@ -8,7 +8,10 @@
  * holds the files in Cache Storage and redirects to
  * /#/?share=1&title=&text=&url=&files=<id> (takeSharedFiles reads them back).
  * Both open a pre-filled editor, which sorts the files into pictures, voice
- * notes, and attachments. (The field is still called `images`.)
+ * notes, and attachments. (The field is still called `images`.) Any page can
+ * send the PWA's share POST or link to the address it leads to, so every web
+ * share opens as a draft (prefill.fromLink) that saves, and uploads its
+ * files, only when the person keeps it. Android's share sheet saves as before.
  */
 import { writable } from 'svelte/store';
 import { Capacitor, registerPlugin } from '@capacitor/core';
@@ -40,9 +43,24 @@ async function _sharedFiles(images = []) {
   return files;
 }
 
+const SHARE_MAX_AGE_MS = 10 * 60 * 1000;
+
+/** Clears shared files left in Cache Storage for more than 10 minutes (a share never opened). */
+export async function clearOldShares(now = Date.now()) {
+  if (typeof caches === 'undefined') return;
+  try {
+    const cache = await caches.open('note-share');
+    for (const req of await cache.keys()) {
+      const at = Number((req.url.match(/\/__share\/(\d+)-/) || [])[1]);
+      if (!at || now - at > SHARE_MAX_AGE_MS) await cache.delete(req);
+    }
+  } catch { /* nothing to clear */ }
+}
+
 /** Files a PWA share left in Cache Storage (public/sw-extras.js). Read once, then removed. */
 export async function takeSharedFiles(id) {
   if (!id || typeof caches === 'undefined') return [];
+  await clearOldShares();
   try {
     const cache = await caches.open('note-share');
     const keys = (await cache.keys()).filter(r => r.url.includes(`/__share/${id}/`));

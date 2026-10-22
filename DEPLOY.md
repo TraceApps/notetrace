@@ -96,6 +96,7 @@ Optional integrations:
 - `AI_*`: Trace assistant config.
 
 - `WEBHOOKS_ENABLED` / `ALLOW_PRIVATE_WEBHOOK_URLS`: outgoing webhooks. See `docs/webhooks.md`.
+- `FRAME_ANCESTORS`: addresses allowed to show NoteTrace inside a frame, several separated by spaces or commas (`https://*.example.com` covers a whole domain). By default only NoteTrace itself may, so no other site can frame it to trick a click. If you show NoteTrace inside a dashboard (Homarr, Organizr, Home Assistant), it shows blank after this update until you set `FRAME_ANCESTORS` to the dashboard's address, for example `FRAME_ANCESTORS=https://home.example.com`. Origins only; a path is ignored. A proxy that already sets its own frame-ancestors for the dashboard needs `FRAME_ANCESTORS` too.
 
 ## Reverse proxy
 

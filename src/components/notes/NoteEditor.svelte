@@ -108,6 +108,22 @@
   let shareCount = note?.share_count ?? 0;
   let editorKey = 0;
   let touched = false;
+  // A share from the web (the installed app's share target, or any link to
+  // it): a draft until the person keeps it or changes it, so no other site
+  // can save a note or upload a file. Its files wait here until then.
+  let linkDraft = !note && !!prefill?.fromLink;
+  let draftFiles = linkDraft ? [...(prefill?.images || [])] : [];
+  let draftSaid = '';   // the draft bar, said by a live region that was there first
+  function keepDraft(moveFocus = true) {
+    if (!linkDraft) return;
+    linkDraft = false;
+    const files = draftFiles;
+    draftFiles = [];
+    scheduleText();
+    if (files.length) addFiles(files);
+    if (moveFocus) tick().then(() => titleEl?.focus());
+  }
+  $: if (touched && linkDraft) keepDraft(false);
 
   let checklistRef;
   let bodyRef;
@@ -1031,6 +1047,8 @@
   export let inline = false;
   /** A quick voice note: start recording as soon as the editor opens. */
   export let autoRecord = false;
+  /** With autoRecord, open the recorder waiting for a tap on Record (a voice note opened from a link). */
+  export let recordOnTap = false;
   /** Open straight into a new drawing (the + menu's Drawing). */
   export let autoDraw = false;
   // A narrow reading pane (a half-open foldable) keeps the main actions and moves the rest into More.
@@ -1116,9 +1134,12 @@
     window.visualViewport?.addEventListener('scroll', onViewport);
     await tick();
     if (!noteId) {
-      if (prefill?.title || prefill?.body_md || prefill?.items?.length) scheduleText(); // shared or template content saves without needing an edit
-      if (prefill?.images?.length) addFiles(prefill.images);
-      else if (kind === 'text' && !voiceFirst) titleEl?.focus();
+      // Shared or template content saves without needing an edit; a web share waits for Keep.
+      if (linkDraft) setTimeout(() => { draftSaid = $_('notes.link_draft'); }, 150);
+      else if (prefill?.title || prefill?.body_md || prefill?.items?.length) scheduleText();
+      if (!linkDraft && prefill?.images?.length) addFiles(prefill.images);
+      // A draft from a link isn't focused, so a stray keypress can't act on it.
+      else if (kind === 'text' && !voiceFirst && !linkDraft) titleEl?.focus();
     }
   });
   onDestroy(() => {
@@ -1261,6 +1282,17 @@
       </div>
 
       <div class="editor-scroll">
+        <div class="sr-only" aria-live="polite">{draftSaid}</div>
+        {#if linkDraft}
+          <div class="ro-bar link-draft">
+            <span class="material-symbols-rounded">link</span>
+            <span class="ro-text">
+              {$_('notes.link_draft')}
+              {#if draftFiles.length}<span class="draft-files">{$_('notes.link_draft_files', { values: { n: draftFiles.length, names: draftFiles.map(f => f.name).join(', ') } })}</span>{/if}
+            </span>
+            <button class="ro-btn" on:click={() => keepDraft()}>{$_('notes.link_draft_keep')}</button>
+          </div>
+        {/if}
         {#if readOnlyNote && !baseLocked}
           <div class="ro-bar" class:editing={editingAnyway} role="status">
             <span class="material-symbols-rounded">{editingAnyway ? 'edit' : 'edit_off'}</span>
@@ -1643,7 +1675,7 @@
 </Popover>
 <Popover bind:open={recordOpen} anchor={recordAnchor} label={$_('voice.record')}>
   {#if recordOpen}
-    <VoiceRecorder canAddFile={!contentLocked} on:done={onRecorded} on:cancel={onRecordCancel} on:file={openAudioPicker} />
+    <VoiceRecorder canAddFile={!contentLocked} waitForTap={recordOnTap} on:done={onRecorded} on:cancel={onRecordCancel} on:file={openAudioPicker} />
   {/if}
 </Popover>
 <Popover bind:open={traceOpen} anchor={traceAnchor} label={$_('trace_actions.title')}
@@ -1686,6 +1718,7 @@
   .ro-bar.editing { background: var(--accent-dim); color: var(--text-1); }
   .ro-bar.editing > .material-symbols-rounded { color: var(--accent); }
   .ro-text { flex: 1; min-width: 0; }
+  .draft-files { display: block; margin-top: 2px; color: var(--text-3); overflow-wrap: anywhere; }
   .ro-btn {
     display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; height: 30px; padding: 0 10px;
     border-radius: 8px; font-size: 13px; font-weight: 600; color: var(--accent);

@@ -9,6 +9,10 @@
 
   /** Offer to pick an audio file instead of recording. */
   export let canAddFile = false;
+  /** Wait for a tap on Record instead of starting at once: a voice note
+   * opened from a link or another app never starts the microphone by itself. */
+  export let waitForTap = false;
+  let waiting = waitForTap;
   const dispatch = createEventDispatcher();
   const BARS = 32;
   let handle = null;
@@ -26,8 +30,12 @@
   let stopping = false;
   let gone = false;
 
-  onMount(async () => {
+  onMount(() => {
     if (!recordingSupported()) { error = $_('voice.unsupported'); return; }
+    if (!waiting) begin();
+  });
+  async function begin() {
+    waiting = false;
     try {
       const h = await startRecording();
       // Closed while the permission prompt was up: release the mic.
@@ -37,7 +45,7 @@
     } catch (e) {
       if (!gone) error = /denied/i.test(String(e?.message || '')) || e?.name === 'NotAllowedError' ? $_('voice.denied') : (e?.message || $_('voice.denied'));
     }
-  });
+  }
   onDestroy(() => {
     gone = true;
     clearInterval(timer);
@@ -87,6 +95,15 @@
   {#if error}
     <p class="vr-error" role="alert">{error}</p>
     <button class="btn btn-secondary" on:click={() => dispatch('cancel')}>{$_('common.close')}</button>
+  {:else if waiting}
+    <div class="vr-status" role="status"><span class="dot"></span><span>{$_('voice.ready')}</span></div>
+    <div class="vr-buttons">
+      <button class="btn btn-secondary vr-discard" on:click={() => dispatch('cancel')}>{$_('voice.cancel')}</button>
+      <!-- Not focused: it only waits like this for a link, and a stray key mustn't start the microphone. -->
+      <button class="btn btn-primary vr-start" on:click={begin}>
+        <span class="material-symbols-rounded">fiber_manual_record</span>{$_('voice.start')}
+      </button>
+    </div>
   {:else}
     <div class="vr-status" aria-live="polite">
       <span class="dot" class:live={!!handle && !stopping && !paused} class:paused></span>

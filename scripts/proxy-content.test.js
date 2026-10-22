@@ -21,7 +21,7 @@ test('the type is read in lower case, so IMAGE/JPEG is still an image', () => {
   assert.match(src, /const contentType = \(response\.headers\.get\('content-type'\) \|\| ''\)\.toLowerCase\(\);/);
 });
 
-test('an image is sent with nosniff and a sandbox policy', () => {
+test('an image is sent with nosniff and a sandbox policy, framed only where the app may be', () => {
   assert.match(src, /res\.set\('X-Content-Type-Options', 'nosniff'\);/);
-  assert.match(src, /res\.set\('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox"\);/);
+  assert.match(src, /res\.set\('Content-Security-Policy', `default-src 'none'; style-src 'unsafe-inline'; sandbox; \$\{frameAncestorsDirective\(process\.env\.FRAME_ANCESTORS\)\}`\);/);
 });

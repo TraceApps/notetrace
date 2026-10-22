@@ -503,6 +503,9 @@
     "read_only_done":          "Done Editing",
     "read_only_on":            "This note now opens for reading.",
     "read_only_off":           "This note can be edited again.",
+    "link_draft":              "Opened from a link. It isn't saved until you keep it or change it.",
+    "link_draft_keep":         "Keep",
+    "link_draft_files":        "{n, plural, one {# file waits} other {# files wait}} until then: {names}",
     "color":                   "Color",
     "color_default":           "Default",
     "color_plum":              "Plum",
@@ -686,6 +689,8 @@
   "voice": {
     "record":        "Record Voice Note",
     "recording":     "Recording",
+    "ready":         "Ready to record",
+    "start":         "Record",
     "stop":          "Stop and Save",
     "cancel":        "Discard",
     "denied":        "NoteTrace needs microphone access to record. Allow it in your browser or phone settings.",
