@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Trace with Gemini takes any answer a tool gives** (found with [lifttrace#147](https://github.com/TraceApps/lifttrace/issues/147), thanks @wretchedxx). Gemini takes a tool's answer only as an object and refuses a list with "Proto field is not repeating, cannot start list", which broke Trace in LiftTrace, NutriTrace and CookTrace. NoteTrace's tools all answer with objects, so nothing failed here, but any other answer now goes to Gemini inside an object too.
+
 ### Security
 
 - **Pages on lookalike addresses can no longer read or change your account.** The server let any web page whose address contained its own name call it with your sign-in and read the answer: `notes.example.com.attacker.example`, `xnotes.example.com`, any subdomain of it, the same name on another port, or on a home network `:30041` for a server on `:3004`. Such a page under your own domain or on your server's machine could read and change your account while you were signed in; a page anywhere else got nothing, unless the server runs without accounts (single-user mode), where it could read what your browser can reach. Someone would need a page on such an address and you to open it. Only the Android app's own addresses and `PUBLIC_URL` are allowed now, compared exactly; the Android app works as before.
