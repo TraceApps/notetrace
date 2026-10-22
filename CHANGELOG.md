@@ -9,6 +9,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Scheduled backups run at the time you picked, in your time zone, and are named in it** ([#44](https://github.com/TraceApps/notetrace/issues/44), thanks @marinierb). The time in Settings > Backup was read in the server's zone, UTC on a container without `TZ`, so a 2:00 AM backup in New York ran at 10:00 PM the evening before, and files were named in UTC. The schedule now keeps the zone of the browser that set it and shows it next to the time; a schedule set before this runs as it did, with **Use My Time Zone** to switch. Runs stay on that time through clock changes, and one missed while the server was down happens once, then the schedule carries on. Backup files, on the server and the phone, are named in local time with its UTC offset (`notetrace-backup-2026-10-21T22-00-00-0400.zip`). `TZ` on the container sets the server's own zone.
 - **Trace with Gemini takes any answer a tool gives** (found with [lifttrace#147](https://github.com/TraceApps/lifttrace/issues/147), thanks @wretchedxx). Gemini takes a tool's answer only as an object and refuses a list with "Proto field is not repeating, cannot start list", which broke Trace in LiftTrace, NutriTrace and CookTrace. NoteTrace's tools all answer with objects, so nothing failed here, but any other answer now goes to Gemini inside an object too.
 
 ### Security
