@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Security
+
+- **The server log no longer shows a key or password from an address when a lookup fails.** The server logged the full address of a failed lookup through its proxy, a USDA key included. Keys, tokens, passwords and a `user:password@` part in it are now shown as `***`.
+
 ---
 
 ## [1.2.0-dev02] - 2026-10-22 (pre-release)
