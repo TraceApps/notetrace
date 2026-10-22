@@ -329,6 +329,9 @@ function _full(note, labelName, bodyLimit = BODY_LIMIT) {
   };
 }
 
+/** A note as get_note gives it (the public API answers with this too). */
+export const fullNote = (note, labelName) => _full(note, labelName);
+
 export function validTimeZone(tz) {
   if (!tz || typeof tz !== 'string') return null;
   try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return tz; } catch { return null; }
@@ -336,19 +339,29 @@ export function validTimeZone(tz) {
 
 /**
  * Parse the model's time: wall-clock ("2026-09-20T09:00") in `timeZone`
- * (this runtime's zone when omitted), or ISO with an offset.
+ * (this runtime's zone when omitted), or ISO with an offset. Impossible
+ * dates and times (Feb 30, 25:00) and years outside 2000-2200 are refused,
+ * where Date would quietly roll them over.
  */
 export function parseToolTime(at, timeZone = null) {
   const s = String(at || '').trim();
   if (!s) return null;
   const hasZone = /([zZ]|[+-]\d\d:?\d\d)$/.test(s);
+  const head = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?/);
+  if (head) {
+    const [y, mo, day, h = 0, mi = 0] = head.slice(1).map(v => (v == null ? undefined : +v));
+    const days = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    if (mo < 1 || mo > 12 || day < 1 || day > days || h > 23 || mi > 59) return null;
+  }
   const local = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?$/);
   let d;
   if (!hasZone && local) {
     const parts = [+local[1], +local[2], +local[3], local[4] != null ? +local[4] : 9, local[5] != null ? +local[5] : 0];
     d = timeZone ? zonedToUtc(...parts, timeZone) : new Date(parts[0], parts[1] - 1, parts[2], parts[3], parts[4]);
   } else d = new Date(s);
-  return Number.isFinite(d.getTime()) ? d : null;
+  if (!Number.isFinite(d.getTime())) return null;
+  const year = d.getUTCFullYear();
+  return year >= 2000 && year <= 2200 ? d : null;
 }
 
 async function _labelIds(api, names = []) {

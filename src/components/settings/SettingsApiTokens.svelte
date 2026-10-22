@@ -2,10 +2,11 @@
   /**
    * SettingsApiTokens.svelte
    *
-   * Admin-only Settings section for personal access token management.
-   * Currently the sole consumer is the MCP endpoint (/api/mcp). Lists
-   * existing tokens, lets the admin create new ones (with name + scope
-   * checkboxes + optional expiry), and revoke them.
+   * Settings section for the signed-in user's own personal access
+   * tokens, used by the MCP endpoint (/api/mcp) and the public API
+   * (/api/v1). Lists existing tokens, creates new ones (with name +
+   * scope checkboxes + optional expiry), and revokes them. The server
+   * offers admins every scope and everyone else only notes:create.
    *
    * The raw token value is shown EXACTLY ONCE on creation — the user
    * is responsible for copying it before dismissing the banner. After
@@ -33,7 +34,7 @@
   // Create-form state
   let showCreateForm = false;
   let newName = '';
-  let newScopes = new Set(['mcp:read']);
+  let newScopes = new Set();
   let newExpiresDays = '';   // '' = never
 
   // The just-created raw token, shown to the user once
@@ -64,6 +65,7 @@
       knownScopes = data.known_scopes || [];
       scopeDescriptions = data.scope_descriptions || {};
       mcpState = data.mcp_state || { enabled: false, write: false, destroy: false };
+      if (!showCreateForm) newScopes = _defaultScopes();
     } catch (e) {
       showError(e.message);
     } finally {
@@ -72,6 +74,12 @@
   }
 
   onMount(load);
+
+  // MCP read for admins; a non-admin's only choice is notes:create.
+  function _defaultScopes() {
+    return new Set(knownScopes.includes('mcp:read') ? ['mcp:read'] : knownScopes.slice(0, 1));
+  }
+  $: offersMcp = knownScopes.some(s => s.startsWith('mcp:'));
 
   function toggleScope(s) {
     if (newScopes.has(s)) newScopes.delete(s);
@@ -108,7 +116,7 @@
       justCreatedName = data.token.name;
       showCreateForm = false;
       newName = '';
-      newScopes = new Set(['mcp:read']);
+      newScopes = _defaultScopes();
       newExpiresDays = '';
       await load();
     } catch (e) {
@@ -169,10 +177,16 @@
 </script>
 
 <div class="section-body">
+  {#if offersMcp}
   <p class="sub-label" style="padding:0 0 6px">
     {$_('settings_api_tokens_ct.intro_before')} <em>{$_('settings_api_tokens_ct.intro_dev')}</em>){$_('settings_api_tokens_ct.intro_middle')}
     <code>/api/mcp</code>. {$_('settings_api_tokens_ct.intro_see')}
     <a href="https://traceapps.github.io/docs/notetrace/mcp/" target="_blank" rel="noopener">docs/notetrace/mcp.md</a>.
+  </p>
+  {/if}
+  <p class="sub-label" style="padding:0 0 6px">
+    {$_('settings_api_tokens_ct.intro_api')}
+    <a href="https://traceapps.github.io/docs/notetrace/public-api/" target="_blank" rel="noopener">docs/notetrace/public-api.md</a>.
   </p>
 
   {#if justCreatedRaw}

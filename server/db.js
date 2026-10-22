@@ -72,6 +72,18 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id);
   CREATE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash);
 
+  -- Answers to public API requests sent with an Idempotency-Key, kept a day
+  -- so a retried request gets the same answer instead of a second note.
+  CREATE TABLE IF NOT EXISTS api_idempotency (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    key        TEXT NOT NULL,
+    body_hash  TEXT NOT NULL,
+    status     INTEGER NOT NULL,
+    response   TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, key)
+  );
+
   -- Outgoing webhooks. secret_encrypted is AES-256-GCM (token-crypto.js),
   -- not hashed like api_tokens.token_hash, because the server needs the
   -- plaintext back later to compute each delivery's HMAC.

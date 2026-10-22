@@ -98,6 +98,14 @@ test('reminders use local time, and shared view-only notes are protected', async
   const reminders = await executeNoteTool('list_reminders', {}, api);
   assert.equal(reminders.reminders.length, 1);
 
+  // Impossible dates and times are refused, not rolled over into another day.
+  for (const at of ['2099-02-30T09:00', '2099-13-45', '2099-01-01T99:99', '2099-01-01T24:00Z', '2099-02-30T09:00:00Z', '+099999-01-01T00:00Z', '1999-12-31T09:00Z', '2201-01-01']) {
+    assert.equal(parseToolTime(at, 'America/New_York'), null, at);
+    assert.match((await executeNoteTool('set_reminder', { id: note.id, at, repeat: 'weekly' }, api)).error, /Couldn't read/, at);
+  }
+  assert.equal(api.notes.get(note.id).reminder_rrule, 'weekly');
+  assert.equal(parseToolTime('2096-02-29T23:59', 'UTC').toISOString(), '2096-02-29T23:59:00.000Z');
+
   api.notes.get(note.id).share_role = 'view';
   assert.match((await executeNoteTool('update_note', { id: note.id, text: 'x' }, api)).error, /view only/);
   assert.match((await executeNoteTool('move_to_trash', { id: note.id }, api)).error, /owner/);

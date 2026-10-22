@@ -22,6 +22,7 @@ const SERVER_SKIP = {
   password_reset_tokens: 'single use, expire quickly',
   notification_log: 'restoring it would re-fire or silence notifications',
   link_previews: 'a cache that refills itself',
+  api_idempotency: 'public API retry answers, kept a day',
 };
 // Left out of the Android local backup on purpose.
 const LOCAL_SKIP = {

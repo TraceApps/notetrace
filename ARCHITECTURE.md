@@ -174,6 +174,21 @@ the client too. Trace passes `NoteApi`
 adapter over `server/lib/notes.js`. The view-only guard, owner-only
 actions, and item matching live in that one file.
 
+### The public REST API only adds
+
+`/api/v1` (`server/routes/api-v1.js`) is for other apps: `GET /me` and
+`POST /notes`, behind bearer tokens with the `notes:create` scope, which
+can do nothing else. `server/lib/public-notes.js` checks every field
+before writing anything, then writes the labels, note and reminder in one
+transaction through `server/lib/notes.js`, answering in the same shape as
+the MCP `get_note` tool. A source link is plain Markdown in the note, so
+it needs no column. An `Idempotency-Key` is remembered for 24 hours in
+`api_idempotency` (left out of backups, pruned by the scheduler), so a
+retry replays the first answer instead of adding a second note. Keys
+belong to the user, and the body is hashed with its keys sorted. Every
+signed-in user manages their own tokens (`server/routes/api-tokens.js`)
+and may give them only `notes:create`; the MCP scopes stay admin-only.
+
 ### `[[Links]]` are plain Markdown
 
 A link is stored as `[[Title]]` in `body_md` and shown as a chip by a

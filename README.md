@@ -98,7 +98,7 @@ The foundation it shares with the other Trace apps:
 - **In-app updates.** Stable and Dev channels, same as the rest of the family.
 - **Trace AI.** Multi-provider assistant (Claude / OpenAI / Gemini / any OpenAI-compatible endpoint).
 - **Push notifications.** Apprise, Gotify, and ntfy.
-- **Integrations.** API tokens, webhooks, and an MCP endpoint.
+- **Integrations.** API tokens, webhooks, an MCP endpoint, and a public API that lets another app add notes and tasks with a token that can do nothing else ([Public API](https://traceapps.github.io/docs/notetrace/public-api/)).
 - **Accessibility.** Dialogs hold and return focus, switches say what they are, landmarks and headings are in place, and text meets contrast targets, checked with an automated audit.
 
 What comes next, including the Wear OS companion, is in [ROADMAP.md](ROADMAP.md).

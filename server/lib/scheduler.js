@@ -104,6 +104,10 @@ async function runTick() {
   try { pruneReminderLog(); }
   catch (e) { logger.debug?.(`[scheduler] reminder log prune error: ${e.message}`); }
 
+  // Public API retry answers are kept a day (routes/api-v1.js).
+  try { db.prepare(`DELETE FROM api_idempotency WHERE created_at <= datetime('now', '-1 day')`).run(); }
+  catch (e) { logger.debug?.(`[scheduler] idempotency prune error: ${e.message}`); }
+
   // Scheduled full backup (admin-global). Off by default; mirrors NT's
   // scheduled-backup feature for TraceApps parity. See
   // routes/full-backup.js for the schedule config + once-per-interval

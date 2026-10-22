@@ -5,30 +5,37 @@
  * the user session), not the token Bearer auth. This is for the
  * Settings UI to manage tokens, not for MCP clients to use tokens.
  *
- * Restricted to admins; non-admins get 403. requireAuth/requireAdmin
- * both pass single-user-mode requests through unconditionally (there's
- * no meaningful non-admin in that mode) — but single-user mode has
- * zero rows in `users`, so req.user is null there, not a synthetic
- * "LOCAL_USER". A token needs a real owner (api_tokens.user_id is NOT
- * NULL), so the guard below refuses cleanly instead of crashing on
- * req.user.id when this is hit without a real signed-in admin.
+ * Every signed-in user lists, creates and revokes their OWN tokens.
+ * Admins may grant any scope; everyone else only USER_SCOPES (the
+ * public API's notes:create), and a request for an MCP scope gets 403.
+ * Admins see and revoke only their own tokens too.
+ *
+ * requireAuth passes single-user-mode requests through unconditionally,
+ * but single-user mode has zero rows in `users`, so req.user is null
+ * there, not a synthetic "LOCAL_USER". A token needs a real owner
+ * (api_tokens.user_id is NOT NULL), so the guard below refuses cleanly
+ * instead of crashing on req.user.id when this is hit without a real
+ * signed-in account.
  */
 import { Router } from 'express';
 import { wrap } from '../logger.js';
-import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { createToken, listTokens, revokeToken, KNOWN_SCOPES, SCOPE_DESCRIPTIONS } from '../lib/api-tokens.js';
+import { requireAuth } from '../middleware/auth.js';
+import { createToken, listTokens, revokeToken, KNOWN_SCOPES, SCOPE_DESCRIPTIONS, USER_SCOPES } from '../lib/api-tokens.js';
 
 const router = Router();
-router.use(requireAuth, requireAdmin);
+router.use(requireAuth);
 
 router.use((req, res, next) => {
   if (!req.user) {
     return res.status(400).json({
-      error: 'API tokens require a signed-in account. Enable user management and sign in as an admin first.',
+      error: 'API tokens require a signed-in account. Enable user management and sign in first.',
     });
   }
   next();
 });
+
+const _isAdmin = (req) => req.user.role === 'admin';
+const _scopesFor = (req) => (_isAdmin(req) ? Array.from(KNOWN_SCOPES) : USER_SCOPES.filter(s => KNOWN_SCOPES.has(s)));
 
 function _envFlag(v) {
   if (v === undefined || v === null) return false;
@@ -38,23 +45,31 @@ function _envFlag(v) {
 
 router.get('/', wrap((req, res) => {
   const tokens = listTokens(req.user.id);
+  const scopes = _scopesFor(req);
   res.json({
     tokens,
-    known_scopes: Array.from(KNOWN_SCOPES),
-    scope_descriptions: SCOPE_DESCRIPTIONS,
+    known_scopes: scopes,
+    scope_descriptions: Object.fromEntries(scopes.map(s => [s, SCOPE_DESCRIPTIONS[s]]).filter(([, d]) => d)),
     // Surface MCP flag state so the UI can show admins whether a token
     // holding mcp:write / mcp:destroy will actually work on this server.
     // Flags are captured at boot (env vars); change needs a restart.
-    mcp_state: {
-      enabled: _envFlag(process.env.MCP_ENABLED),
-      write:   _envFlag(process.env.MCP_WRITE_ENABLED),
-      destroy: _envFlag(process.env.MCP_DESTROY_ENABLED),
-    },
+    ...(_isAdmin(req) ? {
+      mcp_state: {
+        enabled: _envFlag(process.env.MCP_ENABLED),
+        write:   _envFlag(process.env.MCP_WRITE_ENABLED),
+        destroy: _envFlag(process.env.MCP_DESTROY_ENABLED),
+      },
+    } : {}),
   });
 }));
 
 router.post('/', wrap((req, res) => {
   const { name, scopes, expires_at } = req.body || {};
+  const allowed = _scopesFor(req);
+  const refused = (Array.isArray(scopes) ? scopes : []).filter(s => KNOWN_SCOPES.has(String(s)) && !allowed.includes(String(s)));
+  if (refused.length) {
+    return res.status(403).json({ error: `Only an admin can create a token with ${refused.join(', ')}.` });
+  }
   try {
     const { row, raw } = createToken({
       userId: req.user.id,

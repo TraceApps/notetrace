@@ -26,6 +26,7 @@ export const SCOPE_DESCRIPTIONS = {
   'mcp:read':    'MCP: read notes, checklists, and reminders.',
   'mcp:write':   'MCP: create and edit notes, add and check off checklist items, set reminders and labels. Requires MCP_WRITE_ENABLED=1 on the server.',
   'mcp:destroy': 'MCP: move notes to the trash. Requires MCP_DESTROY_ENABLED=1 AND every call to include confirm=true.',
+  'notes:create': 'Public API: add notes and tasks (POST /api/v1/notes), and nothing else: no reading or changing other notes. For an email client, a script or an automation.',
 };
 
 export const KNOWN_SCOPES = new Set([
@@ -43,7 +44,25 @@ export const KNOWN_SCOPES = new Set([
   // mcp:write so an admin can grant "add stuff" without granting
   // "delete stuff".
   'mcp:destroy',
+  // notes:create unlocks POST /api/v1/notes (routes/api-v1.js): another
+  // app adds notes and tasks without being able to read or change any.
+  // No server switch: holding the scope is the opt-in.
+  'notes:create',
 ]);
+
+// The scopes a non-admin may give their own tokens (routes/api-tokens.js).
+// The MCP scopes stay admin-only.
+export const USER_SCOPES = ['notes:create'];
+
+/** An expiry "YYYY-MM-DD HH:MM:SS" (UTC) as epoch ms, or null if it isn't one. */
+function _expiryMs(value) {
+  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  const [y, mo, d, h, mi, sec] = m.slice(1).map(Number);
+  const ms = Date.UTC(y, mo - 1, d, h, mi, sec);
+  // Date.UTC rolls Feb 30 into March; a real time reads back the same.
+  return new Date(ms).toISOString().slice(0, 19) === `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}` ? ms : null;
+}
 
 function _hash(raw) {
   return createHash('sha256').update(raw, 'utf8').digest('hex');
@@ -68,6 +87,11 @@ export function createToken({ userId, name, scopes, expiresAt = null }) {
   if (!userId) throw new Error('userId required');
   const trimmedName = String(name || '').trim().slice(0, 80);
   if (!trimmedName) throw new Error('name required');
+  // Stored the way SQLite writes datetime('now'): "YYYY-MM-DD HH:MM:SS",
+  // UTC. Anything else used to be stored as given and never expire.
+  if (expiresAt != null && _expiryMs(expiresAt) == null) {
+    throw new Error('expires_at must be a UTC time like 2027-01-31 12:00:00');
+  }
 
   // Validate scopes against known list. Drop unknowns silently rather
   // than throwing — forward-compatibility for clients that try to
@@ -124,10 +148,11 @@ export function lookupRawToken(raw) {
   ).get(hash);
   if (!row) return null;
 
-  // Expiry check
+  // Expiry check. A value that can't be read counts as expired: a
+  // token meant to run out must never live on because of a typo.
   if (row.expires_at) {
-    const expiresMs = new Date(row.expires_at + 'Z').getTime();
-    if (Number.isFinite(expiresMs) && expiresMs < Date.now()) return null;
+    const expiresMs = _expiryMs(row.expires_at);
+    if (expiresMs == null || expiresMs < Date.now()) return null;
   }
 
   // Touch last_used_at (best-effort; not in a transaction with the read)

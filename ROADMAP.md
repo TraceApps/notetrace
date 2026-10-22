@@ -14,6 +14,7 @@ Items marked ~~strikethrough~~ have been implemented.
 - ~~Trace AI assistant (multi-provider)~~
 - ~~Push notifications via Apprise, Gotify, ntfy~~
 - ~~API tokens, webhooks, MCP endpoint~~
+- ~~Public REST API for adding notes and tasks from another app, with a token that can do nothing else (#42)~~
 
 ## Core Notes
 

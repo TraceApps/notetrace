@@ -237,7 +237,7 @@
     backup:        ['backup','export','import','restore','json','full backup','reset','danger zone','portable','portable export','clear','clear all data','clear data','data','clear settings','schedule','scheduled backup','retention','auto backup','upload','local backup'],
     users:         ['users','user management','accounts','login','admin','register','invite','strong passwords','password policy','passwords','session','session duration','duration','sign-in','require'],
     auth:          ['authentication','auth','sso','single sign-on','single sign on','oidc','openid','authentik','keycloak','authelia','password login','management','user management','required','admin','admin only','provider','providers','active','allow password login'],
-    apitokens:     ['api tokens','api token','personal access token','pat','mcp','model context protocol','claude desktop','cursor','codex','agent','ai agent','bearer token','scopes','revoke token'],
+    apitokens:     ['api tokens','api token','public api','notes:create','personal access token','pat','mcp','model context protocol','claude desktop','cursor','codex','agent','ai agent','bearer token','scopes','revoke token'],
     webhooks:      ['webhooks','webhook','automation','n8n','home assistant','ifttt','push','event','integration','integrations','http post','callback url','signature','hmac','secret'],
     applock:       ['app lock','lock','biometric','fingerprint','face unlock','pin','privacy','security','unlock','notetrace','lock after','timeout','lock timeout'],
     serverconn:    ['server','connection','sync','connect','disconnect','local mode','offline','standalone','android','native','url','login'],
@@ -476,6 +476,14 @@
     <span>{$_('cooktrace.section')}</span>
     <span class="material-symbols-rounded chevron">expand_more</span>
   </button>
+  <!-- Every signed-in account makes its own tokens; only admins get MCP scopes. -->
+  {#if !isNativeLocal && $userMgmtActive && $currentUser}
+    <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'apitokens')} class:active={currentSection === 'apitokens'} aria-current={currentSection === 'apitokens' ? 'page' : undefined} on:click={() => toggleSection('apitokens')}>
+      <span class="material-symbols-rounded si">key</span>
+      <span>{$_('settings.apitokens.section')}</span>
+      <span class="material-symbols-rounded chevron">expand_more</span>
+    </button>
+  {/if}
 
   <p class="settings-group-label">App</p>
   {#if isNative}
@@ -538,11 +546,6 @@
       </button>
     {/if}
     {#if $userMgmtActive && $currentUser?.role === 'admin'}
-      <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'apitokens')} class:active={currentSection === 'apitokens'} aria-current={currentSection === 'apitokens' ? 'page' : undefined} on:click={() => toggleSection('apitokens')}>
-        <span class="material-symbols-rounded si">key</span>
-        <span>{$_('settings.apitokens.section')}</span>
-        <span class="material-symbols-rounded chevron">expand_more</span>
-      </button>
       <button class="section-toggle" class:hidden={!sectionVisible(settingsQuery, 'webhooks')} class:active={currentSection === 'webhooks'} aria-current={currentSection === 'webhooks' ? 'page' : undefined} on:click={() => toggleSection('webhooks')}>
         <span class="material-symbols-rounded si">webhook</span>
         <span>{$_('settings.webhooks.section')}</span>

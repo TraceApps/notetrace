@@ -1567,6 +1567,7 @@
     "intro_dev":       "and other Model Context Protocol clients",
     "intro_middle":    ") that connect to",
     "intro_see":       "See",
+    "intro_api":       "A token with only notes:create lets another app, such as an email client or a script, add notes and tasks through the public API, and nothing else.",
     "just_created": {
       "title":   "Token created:",
       "warn":    "Copy this now. It won't be shown again.",

@@ -8,7 +8,7 @@ const SAFE_METHODS  = new Set(['GET', 'HEAD', 'OPTIONS']);
 const SKIP_PREFIXES = ['/api/auth/'];
 const SKIP_SUFFIXES = ['/callback'];
 // Signed in by its own API token (middleware/bearer-auth.js), never the cookie.
-const BEARER_ONLY = ['/api/mcp'];
+const BEARER_ONLY = ['/api/mcp', '/api/v1'];
 
 /**
  * CSRF protection for cookie-based (PWA) sessions.
@@ -31,8 +31,8 @@ export function csrfProtect(req, res, next) {
   // A session from the cookie is checked even when the request carries
   // someone else's bearer (a reverse proxy can add one).
   if (req.authVia === 'bearer') return next();
-  // The MCP endpoint signs in by its own API token only, never the cookie,
-  // and its clients send no CSRF token.
+  // The MCP endpoint and the public API sign in by their own API token only,
+  // never the cookie, and their clients send no CSRF token.
   if (BEARER_ONLY.some(p => req.path === p || req.path.startsWith(p + '/')) && req.headers.authorization?.startsWith('Bearer ')) return next();
   if (!req.user?.csrf) return next();                           // old token — skip for now
 
