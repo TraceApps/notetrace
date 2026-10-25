@@ -12,6 +12,10 @@
     "shopping": "Ostuloend"
   },
   "list": {
-    "layout": "Paigutus"
+    "layout": "Paigutus",
+    "view_options": "Vaate valikud",
+    "grid_desc": "Kaardid kõrvuti",
+    "list_desc": "Read, kuis laias vaates on märge selle kõrval",
+    "timeline_desc": "Üks veerg muutmise kuupäeva alusel"
   }
 }
