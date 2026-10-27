@@ -290,8 +290,11 @@ it itself. `close()` won't clean up a note that has one waiting.
 
 ### The installed web app works offline
 
-The service worker precaches the built app and falls back to `index.html` for
-navigations, keeps `/uploads` files (`CacheFirst`, range requests so a cached
+The service worker precaches the built app. Page loads go to the server first
+and fall back to the precached `index.html` offline, after 3 seconds, or on a
+5xx from a proxy, and nothing is stored from them, so a reload after a deploy
+gets the new app and a sign-in proxy can show its page
+(`src/lib/pwa-navigation.js`, #37). It keeps `/uploads` files (`CacheFirst`, range requests so a cached
 recording can be scrubbed), and keeps the last notes, labels, and settings
 (`NetworkFirst`). `logout()` deletes those two caches so an account's notes
 don't outlive its session on a shared computer.

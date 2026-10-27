@@ -3,6 +3,7 @@ import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
 import fs from 'node:fs';
 import path from 'node:path';
+import { isAppPageLoad, treatServerErrorAsOffline, keepNoPageCopy, useCachedAppOnTimeout } from './src/lib/pwa-navigation.js';
 
 // PDF.js reads these at run time: the 14 standard fonts (a PDF that names
 // Helvetica without embedding it), character maps for Asian scripts, and the
@@ -70,6 +71,9 @@ export default defineConfig({
       // under the user with no warning. See src/lib/pwa-update.js
       // for the Svelte-side bridge.
       registerType: 'prompt',
+      // Browsers fetch the manifest without the sign-in proxy's cookie unless
+      // told otherwise, and the proxy answers with its sign-in page (#37).
+      useCredentials: true,
       workbox: {
         // The app itself is cached, so the installed web app opens without a
         // connection and shows the notes, images, and voice notes it has seen.
@@ -77,18 +81,29 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         // Reminder notification clicks and shared photos (public/sw-extras.js).
         importScripts: ['sw-extras.js'],
-        navigateFallback: 'index.html',
-        // Public note links (/n/<token>) come from the server every time: it
-        // writes the preview tags and the <base> the page needs. Same shape
-        // as the server's /n/:token, so a mistyped or cut-off link reaches the
-        // server too, and Workbox tests the path with its query, which chat
-        // apps add (?fbclid=...) (TraceApps/notetrace#22).
-        navigateFallbackDenylist: [/^\/api\//, /^\/uploads\//, /^\/share-target/, /\/n\/[^/?]+\/?(?:\?.*)?$/],
+        // Page loads go to the server first (the first route below), so no
+        // navigateFallback (null, or Vite PWA puts its own back), and '/' isn't
+        // answered from the cache as index.html.
+        navigateFallback: null,
+        directoryIndex: null,
         cleanupOutdatedCaches: true,
         skipWaiting: true,
         clientsClaim: true,
         runtimeCaching: [
           {
+            // The app page: from the server, the cached copy only offline
+            // (src/lib/pwa-navigation.js).
+            urlPattern: isAppPageLoad,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'app-page',
+              networkTimeoutSeconds: 3,
+              precacheFallback: { fallbackURL: 'index.html' },
+              plugins: [{ fetchDidSucceed: treatServerErrorAsOffline, cacheWillUpdate: keepNoPageCopy, cachedResponseWillBeUsed: useCachedAppOnTimeout }],
+            }
+          },
+          {
+            // The API, uploads, the share target and public links, as before.
             urlPattern: ({ request }) => request.mode === 'navigate',
             handler: 'NetworkFirst',
             options: {
