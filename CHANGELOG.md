@@ -13,6 +13,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Uploading an Android app's notes to a server no longer sends a webhook for each note.** When an Android app used without a server connected to one, every note it uploaded sent `note.created` as if written just then, and a reminder that had come due in the last two hours came again from the server. The Upload now sends none, as importing never did, and those reminders don't come twice. This needs the updated app too; an earlier app's Upload still sends them.
 - **NoteTrace installs and updates behind a sign-in proxy** ([#37](https://github.com/TraceApps/notetrace/pull/37), thanks @harikiran-lab). The browser now sends the proxy's cookie when it reads the app's manifest, which a proxy such as VoidAuth, Authelia or Authentik used to turn away. From now on, a reload after an update brings the new version at once, and when the proxy's own session has ended, the installed app opens its sign-in page instead of the saved copy you couldn't sign back in from. Offline, with the server down behind the proxy, or with no answer within 3 seconds, the saved copy opens as before. Under `BASE_URL`, SSO sign-in in an installed browser app reaches the server.
 
 ### Security

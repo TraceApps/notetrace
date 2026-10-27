@@ -62,6 +62,20 @@ function _claim(userId, noteId, occKey) {
   }
 }
 
+/**
+ * A note the Android app's Upload brings (routes/sync.js): the occurrence of
+ * its reminder already due, if any, is claimed as sent, so the next check
+ * doesn't send it again. The phone showed it when it came due; later
+ * occurrences come as usual.
+ */
+export function skipDueReminder(noteId, now = new Date()) {
+  const note = db.prepare(
+    `SELECT id, user_id, reminder_at, reminder_rrule, reminder_tz FROM notes WHERE id = ? AND reminder_at IS NOT NULL`
+  ).get(noteId);
+  const occ = note && dueOccurrence(note, now);
+  if (occ) _claim(note.user_id, note.id, toUtcString(occ));
+}
+
 export async function deliverDueReminders(now = new Date()) {
   const notes = db.prepare(
     `SELECT id, user_id, title, body_md, kind, reminder_at, reminder_rrule, reminder_tz

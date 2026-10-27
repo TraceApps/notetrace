@@ -193,6 +193,24 @@ async function _deliverWithRetry(row, event, data) {
 }
 
 /**
+ * A note that is part of the Android app's Upload (src/lib/migrate.js): a
+ * phone used without a server sending its notes to the server it just
+ * connected to. Upload queues them to go up as new, and the sync sends
+ * them through /api/sync/push, the same route a connected phone's new
+ * notes take. That is history arriving, not a note written now, so it
+ * sends no note.created; before this, every uploaded note sent one.
+ *
+ * The app marks those notes `history_upload: true`, row by row in the push
+ * (servers before this one ignore the field). An app from before this one
+ * sends them as ordinary new notes, with nothing that tells them apart, so
+ * they still send.
+ */
+export function isHistoryUpload(row) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+  return row.history_upload === true;
+}
+
+/**
  * Fire `event` to every enabled webhook this user has subscribed to it.
  * Fire-and-forget: does not await delivery, callers should not await
  * this either (or if they do, only to know dispatch was scheduled, not

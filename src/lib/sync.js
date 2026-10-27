@@ -417,11 +417,20 @@ async function pushChanges({ token = getAuthToken(), signal = null, gen = accoun
   // Until the first full pull since this app gained Read Only, its notes'
   // read_only isn't known here: it stays out of the push (db-native.js).
   const readOnlyUnknown = (await dbGetMeta('read_only_unknown')) === '1';
+  // Notes an Upload queued (migrate.js), up to this id here: they go up
+  // marked history_upload, so the server sends no note.created for them
+  // (server/lib/webhooks.js isHistoryUpload). Done once every one of them
+  // has its server id.
+  let historyThrough = Number(await dbGetMeta('history_upload_through')) || 0;
 
   const tablesToSend = {};
   let total = 0;
   const { getDb } = await import('./db-native.js');
   const db = await getDb();
+  if (historyThrough) {
+    const left = await db.query(`SELECT COUNT(*) AS n FROM notes WHERE server_id IS NULL AND deleted_at IS NULL AND id <= ?`, [historyThrough]);
+    if (!Number(left?.values?.[0]?.n)) { await dbSetMeta('history_upload_through', null); historyThrough = 0; }
+  }
   for (const [table, rows] of Object.entries(pending)) {
     if (!Array.isArray(rows) || rows.length === 0) continue;
     const fks = SYNC_PARENTS[table] || {};
@@ -431,6 +440,7 @@ async function pushChanges({ token = getAuthToken(), signal = null, gen = accoun
       // Every row goes with it: also one whose server id that server no
       // longer has (it goes in as new, once).
       if (install) row.client_key = createKeyOf(install, table, r);
+      if (table === 'notes' && !row.server_id && r.id <= historyThrough) row.history_upload = true;
       delete row.id;
       delete row.sync_status;
       if (table === 'notes' && readOnlyUnknown) delete row.read_only;

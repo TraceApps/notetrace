@@ -64,8 +64,15 @@ export async function uploadLocalToServer({ serverUrl, authToken, onProgress, ke
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
   try {
-    const { getDb } = await import('./db-native.js');
+    const { getDb, dbSetMeta } = await import('./db-native.js');
     const db = await getDb();
+    // Every note here is history, not something written now: the sync
+    // marks the ones that go up as new `history_upload` (sync.js
+    // pushChanges), so the server sends no note.created for them and no
+    // reminder of theirs already due again. Noted before they're queued,
+    // so no push sends them unmarked.
+    const top = await db.query(`SELECT MAX(id) AS n FROM notes`, []);
+    await dbSetMeta('history_upload_through', String(Number(top?.values?.[0]?.n) || 0));
     for (const t of DOMAIN_TABLES) {
       onProgress?.(t, 0, 1);
       // What goes up: everything, or (`keepIds`) only what's new or changed.

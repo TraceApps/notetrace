@@ -65,7 +65,8 @@ import db from '../db.js';
 import { wrap } from '../logger.js';
 import { requireAuth, userMgmtActive } from '../middleware/auth.js';
 import { snapshotVersion, tsMs, noteAccess, restampNote, revokedNoteIds, cleanAttachmentUrl } from '../lib/notes.js';
-import { dispatchWebhookEvent } from '../lib/webhooks.js';
+import { dispatchWebhookEvent, isHistoryUpload } from '../lib/webhooks.js';
+import { skipDueReminder } from '../lib/reminder-delivery.js';
 import { isServerOnlyKey } from '../lib/server-only-keys.js';
 import { cleanCreateKey, findByCreateKey, setCreateKey } from '../lib/create-keys.js';
 
@@ -359,7 +360,13 @@ router.post('/push', wrap((req, res) => {
           setCreateKey(name, serverId, createKey);
           results[name].push({ client_id: row.client_id, server_id: serverId });
           idMaps[name][row.client_id] = serverId;
-          if (name === 'notes' && !translated.deleted_at && u != null) {
+          // A note the app's Upload brings is history (isHistoryUpload): no
+          // note.created, and a reminder of it already due (the phone showed
+          // it) doesn't come again; its later ones do.
+          if (name === 'notes' && !translated.deleted_at && isHistoryUpload(row)) {
+            try { skipDueReminder(serverId); }
+            catch { /* never let it block the sync: at worst the reminder comes again */ }
+          } else if (name === 'notes' && !translated.deleted_at && u != null) {
             try { dispatchWebhookEvent(u, 'note.created', { note_id: serverId, title: translated.title || '', kind: translated.kind || 'text' }); }
             catch { /* never let a webhook failure block the sync */ }
           }

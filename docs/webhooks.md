@@ -37,6 +37,14 @@ signatures on the receiving end and cannot be retrieved again later.
 Imports don't fire `note.created`, so importing a large Google Keep
 export doesn't flood a receiver.
 
+Upload doesn't either: when an Android app used without a server
+connects to one and sends the notes it holds, they send no
+`note.created`, and a reminder of theirs that already came due (the
+phone showed it) doesn't come again, here or through ntfy, Gotify or
+Apprise. Their later reminders come as usual. This needs the server and
+the app from after 1.2.0-dev02; an earlier app's Upload still sends
+`note.created` for each note it brings.
+
 ## Payload
 
 Every delivery is a JSON POST with this envelope:
