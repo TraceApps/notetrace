@@ -45,6 +45,12 @@ Apprise. Their later reminders come as usual. This needs the server and
 the app from after 1.2.0-dev02; an earlier app's Upload still sends
 `note.created` for each note it brings.
 
+The same goes for a local backup restored into an Android app connected
+to a server: its notes that go up as new (all of them, for a backup from
+another account or server; for one from the same account, those the
+server doesn't have, such as notes that never synced) send no
+`note.created`, and a reminder of theirs already due doesn't come again.
+
 ## Payload
 
 Every delivery is a JSON POST with this envelope:

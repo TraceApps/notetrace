@@ -799,6 +799,7 @@ export async function dbClearUserData() {
   // deletes would leave most tables as they were.
   for (const t of _ACCOUNT_TABLES) await db.run(`DELETE FROM ${t}`, []);
   await db.run(`DELETE FROM sync_meta WHERE key = 'last_pull_at'`, []);
+  await db.run(`DELETE FROM sync_meta WHERE key = 'history_upload_through'`, []);
   // Read back: a copy that still holds anything is never shown as cleared
   // (lib/local-account.js shows the error screen instead).
   for (const t of _ACCOUNT_TABLES) {
@@ -806,6 +807,20 @@ export async function dbClearUserData() {
     if (left) throw new Error(`could not clear ${t}`);
   }
   if ((await db.query(`SELECT 1 FROM sync_meta WHERE key = 'last_pull_at'`, []))?.values?.length) throw new Error('could not clear the pull cursor');
+}
+
+/** Every note here now is history, not written now: those of them that go
+ *  up as new go marked `history_upload` (lib/sync.js pushChanges), so the
+ *  server sends no note.created for them and no reminder of theirs already
+ *  due again. Notes made later have higher ids (AUTOINCREMENT), so they
+ *  send as usual. Upload (lib/migrate.js) and a backup restored into a
+ *  connected app (lib/local-account.js afterRestore, dbKeepForNewServer)
+ *  note it before any of the notes can go up. */
+export async function dbMarkHistoryUpload() {
+  if (!isNative) return;
+  const db = await getDb();
+  const top = await db.query(`SELECT MAX(id) AS n FROM notes`, []);
+  await dbSetMeta('history_upload_through', String(Number(top?.values?.[0]?.n) || 0));
 }
 
 /** The pull starts over (back to the account the data came from: what
@@ -824,6 +839,10 @@ export async function dbResetPullCursor() {
 export async function dbKeepForNewServer() {
   if (!isNative) return;
   const db = await getDb();
+  // The notes here are history, not written now (a backup restored into
+  // the connected app, lib/local-account.js afterRestore, or an Upload):
+  // noted before they're queued, so no push sends them unmarked.
+  await dbMarkHistoryUpload();
   // One statement per call (see dbClearUserData).
   for (const t of SYNC_TABLES) {
     if (t !== 'ai_chat_history') await db.run(`DELETE FROM ${t} WHERE deleted_at IS NOT NULL`, []);

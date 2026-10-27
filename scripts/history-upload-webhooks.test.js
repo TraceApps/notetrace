@@ -245,9 +245,17 @@ test('an uploaded reminder already due doesn\'t come again; its next one, and on
   assert.ok(!pushes.some(t => t.includes('Uploaded, already due')), 'ntfy got nothing for the uploaded reminder already due');
 });
 
-test('the app marks an Upload\'s notes as history in the push, and only those', async () => {
+test('the app marks an Upload\'s notes, and a restored backup\'s, as history in the push, and only those', async () => {
   const migrate = readFileSync(new URL('../src/lib/migrate.js', import.meta.url), 'utf8');
-  assert.match(migrate, /dbSetMeta\('history_upload_through'/, 'Upload notes how far its notes go');
+  assert.match(migrate, /await dbMarkHistoryUpload\(\)/, 'Upload notes how far its notes go');
+  const dbn = readFileSync(new URL('../src/lib/db-native.js', import.meta.url), 'utf8');
+  const mark = dbn.slice(dbn.indexOf('export async function dbMarkHistoryUpload'));
+  assert.match(mark.slice(0, mark.indexOf('\n}\n')), /dbSetMeta\('history_upload_through', String\(Number\(top/, 'up to the newest note now');
+  // A backup restored into a connected app (local-account.js afterRestore)
+  // re-queues every note through dbKeepForNewServer: noted before that.
+  const keep = dbn.slice(dbn.indexOf('export async function dbKeepForNewServer'));
+  const body = keep.slice(0, keep.indexOf('\n}\n'));
+  assert.ok(body.indexOf('await dbMarkHistoryUpload()') > -1 && body.indexOf('await dbMarkHistoryUpload()') < body.indexOf("sync_status = 'pending'"), 'noted before the notes are queued');
   const sync = readFileSync(new URL('../src/lib/sync.js', import.meta.url), 'utf8');
   const fn = sync.slice(sync.indexOf('async function pushChanges'), sync.indexOf('function _reportDropped'));
   assert.match(fn, /history_upload = true/, 'the push marks them');

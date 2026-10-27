@@ -34,7 +34,7 @@
  */
 import { writable, get } from 'svelte/store';
 import { getServerUrl, getAuthToken, forgetServerCookies } from './platform.js';
-import { dbGetMeta, dbSetMeta, dbCountUnsynced, dbClearUserData, dbKeepForNewServer, dbResetPullCursor, dbDropSharedIn } from './db-native.js';
+import { dbGetMeta, dbSetMeta, dbCountUnsynced, dbClearUserData, dbKeepForNewServer, dbResetPullCursor, dbDropSharedIn, dbMarkHistoryUpload } from './db-native.js';
 import { resetUserState } from './user-state.js';
 
 const META_KEY = 'account';
@@ -260,6 +260,10 @@ export async function afterRestore(backupTag) {
       && !(t.i && cur.i && t.i !== cur.i)
       && (!t.c || !cur.c || t.c === cur.c));
     if (same) {
+      // Its notes are history too: one that goes up as new (never synced
+      // before the backup, or one the server no longer has) sends no
+      // note.created (db-native.js dbMarkHistoryUpload).
+      await dbMarkHistoryUpload();
       await dbResetPullCursor();
       await dbSetMeta('reconcile_missing', '1');
       return 'same';

@@ -14,6 +14,8 @@
  */
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
+import { createHmac } from 'node:crypto';
+import { createServer as createHttpServer } from 'node:http';
 import { mkdtempSync, rmSync, copyFileSync, readdirSync, readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -39,12 +41,12 @@ const freePort = () => new Promise(res => { const s = createServer(); s.listen(0
 
 // A scratch server with alice (admin), bob and carol.
 const servers = [];
-async function startServer(name) {
+async function startServer(name, extraEnv = {}) {
   const port = await freePort();
   const base = `http://127.0.0.1:${port}`;
   const proc = spawn(process.execPath, ['index.js'], {
     cwd: join(root, 'server'), stdio: 'ignore',
-    env: { ...process.env, PORT: String(port), DB_PATH: join(dir, `${name}.db`), UPLOADS_PATH: join(dir, `${name}-uploads`), JWT_SECRET: `android-sync-${name}-0123456789abcdef`, INSECURE_COOKIES: '1', NODE_ENV: 'test' },
+    env: { ...process.env, PORT: String(port), DB_PATH: join(dir, `${name}.db`), UPLOADS_PATH: join(dir, `${name}-uploads`), JWT_SECRET: `android-sync-${name}-0123456789abcdef`, INSECURE_COOKIES: '1', NODE_ENV: 'test', ...extraEnv },
   });
   for (let i = 0; i < 120; i++) {
     try { if ((await fetch(base + '/api/auth/status')).ok) break; } catch {}
@@ -755,6 +757,141 @@ test("a backup from another account, or with no account, goes up as new once and
   assert.deepEqual(A.q(`SELECT title, body_md, COUNT(*) AS n FROM notes WHERE user_id = (SELECT id FROM users WHERE username = 'carol') AND title = 'B2 alice note' GROUP BY title, body_md`),
     [{ title: 'B2 alice note', body_md: 'edited in the backup', n: 1 }], "once in carol's account, whatever the re-runs");
   assert.deepEqual(A.q(`SELECT id, title, body_md, deleted_at FROM notes n WHERE user_id = (SELECT id FROM users WHERE username = 'alice') ORDER BY id`), aliceBefore, "alice's notes untouched");
+});
+
+// A webhook receiver (POST /hook, each signature checked) and a stand-in
+// ntfy server (a POST anywhere else: the push's title). GET lists both.
+async function hookReceiver() {
+  const got = [], pushes = [], secrets = new Set();
+  const srv = createHttpServer((req, res) => {
+    let raw = '';
+    req.on('data', c => { raw += c; });
+    req.on('end', () => {
+      if (req.method === 'GET') { res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ got, pushes })); return; }
+      if (req.url !== '/hook') {
+        const title = String(req.headers.title || '');
+        const b = title.match(/^=\?UTF-8\?B\?(.*)\?=$/i);
+        pushes.push(b ? Buffer.from(b[1], 'base64').toString('utf8') : title);
+        res.writeHead(200).end('ok');
+        return;
+      }
+      let env = {};
+      try { env = JSON.parse(raw); } catch { /* counted as unsigned */ }
+      const sig = req.headers['x-notetrace-signature'];
+      got.push({ event: env.event, data: env.data, signed: [...secrets].some(x => sig === `sha256=${createHmac('sha256', x).update(raw).digest('hex')}`) });
+      res.writeHead(200).end('ok');
+    });
+  });
+  const port = await freePort();
+  await new Promise(r => srv.listen(port, '127.0.0.1', r));
+  return { url: `http://127.0.0.1:${port}`, got, pushes, secrets, close: () => new Promise(r => srv.close(r)) };
+}
+
+test("a backup from another account restored while connected sends no note.created and no reminder already due again; what's written after still does", { timeout: 300_000 }, async (t) => {
+  if (skip(t)) return;
+  const hooks = await hookReceiver();
+  try {
+    const C = await startServer('hooks', { WEBHOOKS_ENABLED: '1', ALLOW_PRIVATE_WEBHOOK_URLS: '1', API_RATE_LIMIT_PER_MIN: '1000' });
+    const made = await web(C, 'alice', 'POST', '/api/admin/webhooks', { url: `${hooks.url}/hook`, events: ['note.created', 'reminder.fired'] });
+    assert.ok(made.secret, JSON.stringify(made));
+    hooks.secrets.add(made.secret);
+    await web(C, 'alice', 'PUT', '/api/settings/bulk', { settings: { notifPushService: 'ntfy', ntfyUrl: hooks.url, ntfyTopic: 'restore-test' } });
+    // Bob's backup, taken on his phone: three notes, one whose reminder came
+    // due half an hour ago (his phone showed it) and one still to come.
+    const snapFile = join(dir, 'bob-hooks-snapshot.json');
+    phone('hooks-bob', C, `
+      await p.setupSignIn('bob');
+      await p.offline(async () => {
+        for (const n of [1, 2, 3]) await p.NotesNative.createNote({ title: 'Restored ' + n, body_md: 'from the backup' });
+        await p.NotesNative.createNote({ title: 'Restored, already due', reminder_at: new Date(Date.now() - 30 * 60000).toISOString() });
+        await p.NotesNative.createNote({ title: 'Restored, still to come', reminder_at: new Date(Date.now() + 90000).toISOString() });
+      });
+      const { exportLocalSnapshot } = await import(p.SRC + 'lib/local-backup.js');
+      (await import('node:fs')).writeFileSync(${JSON.stringify(snapFile)}, JSON.stringify(await exportLocalSnapshot({ includeImages: false })));
+      p.done(true);`);
+    // What reached the receiver since `from`, once it goes quiet.
+    const created = async (from) => {
+      let last = -1;
+      for (let i = 0; i < 40 && hooks.got.length !== last; i++) { last = hooks.got.length; await sleep(300); }
+      return hooks.got.slice(from).filter(d => d.event === 'note.created').map(d => d.data.title).sort();
+    };
+    // Alice restores it into her connected app.
+    const from = hooks.got.length;
+    const r = phone('hooks-alice', C, `
+      await p.setupSignIn('alice'); await p.sync();
+      const { importLocalSnapshot } = await import(p.SRC + 'lib/local-backup.js');
+      const snap = JSON.parse((await import('node:fs')).readFileSync(${JSON.stringify(snapFile)}, 'utf8'));
+      const as = (await importLocalSnapshot(snap)).as;
+      await p.sync(); await p.sync();
+      p.done({ as, waiting: await p.waiting() });`);
+    assert.deepEqual(r, { as: 'other', waiting: 0 });
+    assert.deepEqual(await created(from), [], 'the restore sent no note.created');
+    // Then, on the same phone, she writes a note, its reminder due half an
+    // hour ago too.
+    const next = hooks.got.length;
+    const w = phone('hooks-alice', C, `
+      await p.loginSignIn('alice');
+      await p.NotesNative.createNote({ title: 'Written now, due', reminder_at: new Date(Date.now() - 30 * 60000).toISOString() });
+      await p.sync();
+      p.done({ waiting: await p.waiting() });`);
+    assert.deepEqual(w, { waiting: 0 });
+    assert.deepEqual(await created(next), ['Written now, due'], 'a note written after it sends one');
+    assert.deepEqual(owners(C, 'Restored 1'), ['alice'], 'the backup went up');
+    // The scheduler looks every minute: wait for the two that should come.
+    const fired = () => hooks.got.filter(d => d.event === 'reminder.fired').map(d => d.data.title);
+    for (let i = 0; i < 400 && !(fired().includes('Written now, due') && fired().includes('Restored, still to come')); i++) await sleep(500);
+    await sleep(1500);
+    assert.deepEqual(fired().sort(), ['Restored, still to come', 'Written now, due']);
+    assert.ok(hooks.pushes.some(x => x.includes('Written now, due')), 'ntfy got the note written now');
+    assert.ok(hooks.pushes.some(x => x.includes('Restored, still to come')), 'ntfy got the restored reminder still to come');
+    assert.ok(!hooks.pushes.some(x => x.includes('Restored, already due')), 'ntfy got nothing for the restored reminder already due');
+    assert.ok(hooks.got.every(d => d.signed), 'every delivery signed');
+  } finally { await hooks.close(); }
+});
+
+test("a backup from this account restored while connected: its notes that go up as new (never synced) send no note.created", { timeout: 120_000 }, async (t) => {
+  if (skip(t)) return;
+  const hooks = await hookReceiver();
+  try {
+    const D = await startServer('hooks-same', { WEBHOOKS_ENABLED: '1', ALLOW_PRIVATE_WEBHOOK_URLS: '1', API_RATE_LIMIT_PER_MIN: '1000' });
+    const made = await web(D, 'alice', 'POST', '/api/admin/webhooks', { url: `${hooks.url}/hook`, events: ['note.created'] });
+    hooks.secrets.add(made.secret);
+    const created = async (from) => {
+      let last = -1;
+      for (let i = 0; i < 40 && hooks.got.length !== last; i++) { last = hooks.got.length; await sleep(300); }
+      return hooks.got.slice(from).filter(d => d.event === 'note.created').map(d => d.data.title).sort();
+    };
+    const snapFile = join(dir, 'alice-same-snapshot.json');
+    const first = hooks.got.length;
+    phone('hooks-same', D, `
+      await p.setupSignIn('alice');
+      await p.NotesNative.createNote({ title: 'Same synced' });
+      await p.sync();
+      await p.offline(async () => { await p.NotesNative.createNote({ title: 'Same never synced' }); });
+      const { exportLocalSnapshot } = await import(p.SRC + 'lib/local-backup.js');
+      (await import('node:fs')).writeFileSync(${JSON.stringify(snapFile)}, JSON.stringify(await exportLocalSnapshot({ includeImages: false })));
+      p.done(true);`);
+    assert.deepEqual(await created(first), ['Same synced'], 'written on the phone while connected: one');
+    const from = hooks.got.length;
+    const r = phone('hooks-same', D, `
+      await p.loginSignIn('alice');
+      const { importLocalSnapshot } = await import(p.SRC + 'lib/local-backup.js');
+      const snap = JSON.parse((await import('node:fs')).readFileSync(${JSON.stringify(snapFile)}, 'utf8'));
+      const as = (await importLocalSnapshot(snap)).as;
+      await p.sync(); await p.sync(); await p.sync();
+      p.done({ as, waiting: await p.waiting() });`);
+    assert.deepEqual(r, { as: 'same', waiting: 0 });
+    assert.deepEqual(owners(D, 'Same synced'), ['alice'], 'still once');
+    assert.deepEqual(owners(D, 'Same never synced'), ['alice'], 'up once');
+    assert.deepEqual(await created(from), [], 'the restore sent no note.created');
+    const next = hooks.got.length;
+    phone('hooks-same', D, `
+      await p.loginSignIn('alice');
+      await p.NotesNative.createNote({ title: 'Same written after' });
+      await p.sync();
+      p.done(true);`);
+    assert.deepEqual(await created(next), ['Same written after'], 'a note written after it sends one');
+  } finally { await hooks.close(); }
 });
 
 test("deleting a note forever on the phone deletes it on the server, quietly, and never brings it back", async (t) => {

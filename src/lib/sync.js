@@ -427,7 +427,9 @@ async function pushChanges({ token = getAuthToken(), signal = null, gen = accoun
   let total = 0;
   const { getDb } = await import('./db-native.js');
   const db = await getDb();
-  if (historyThrough) {
+  // Not while a restored backup's pull is still to say which of its notes
+  // the server no longer has (reconcile_missing): those go up as new next.
+  if (historyThrough && (await dbGetMeta('reconcile_missing')) !== '1') {
     const left = await db.query(`SELECT COUNT(*) AS n FROM notes WHERE server_id IS NULL AND deleted_at IS NULL AND id <= ?`, [historyThrough]);
     if (!Number(left?.values?.[0]?.n)) { await dbSetMeta('history_upload_through', null); historyThrough = 0; }
   }
