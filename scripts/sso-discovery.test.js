@@ -204,7 +204,9 @@ test('Settings options: typing clears them at once, an old answer is dropped, a 
   // And Server Connection uses it.
   const src = read('../src/components/settings/SettingsServerConnection.svelte');
   assert.match(src, /on:input=\{\(\) => signInOptions\.typed\(serverUrl\)\}/);
-  assert.match(src, /on:blur=\{\(\) => signInOptions\.left\(serverUrl\)\}/);
+  // Leaving the field looks the address up, after a plain-HTTP address's warning (TraceApps/nutritrace#194).
+  assert.match(src, /on:blur=\{addressLeft\}/);
+  assert.match(src, /async function addressLeft\(\) \{[\s\S]{0,400}signInOptions\.left\(serverUrl\);/);
   assert.match(src, /on:click=\{\(\) => signInOptions\.retry\(\)\}/);
 });
 
@@ -268,7 +270,8 @@ test('the sign-in page says when its options can\'t be read, and a web page in p
 test('a second tap on an SSO button doesn\'t open a second sign-in', () => {
   // Each would replace the code's secret, and the first hand-off would fail.
   const settings = read('../src/components/settings/SettingsServerConnection.svelte');
-  assert.match(settings, /async function connectWithSso\(providerId\) \{\n(\s*\/\/[^\n]*\n)*\s*if \(busy\) return;\n[^\n]*\n\s*busy = true;/);
+  // (The plain-HTTP warning, TraceApps/nutritrace#194, is one sheet at a time: a second tap is answered no.)
+  assert.match(settings, /async function connectWithSso\(providerId\) \{\n(\s*\/\/[^\n]*\n)*\s*if \(busy\) return;\n[^\n]*\n(\s*if \(!\(await _plainHttpOk\(url\)\)\) return;\n)?\s*busy = true;/);
   assert.match(settings, /on:click=\{\(\) => connectWithSso\(p\.id\)\} disabled=\{busy\}/);
   const setup = read('../src/routes/NativeSetup.svelte');
   const oidc = setup.slice(setup.indexOf('async function loginWithOidc'), setup.indexOf('function backToChoose'));

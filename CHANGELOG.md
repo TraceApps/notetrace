@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **The Android app connects over plain HTTP to a server on your own network** (from [nutritrace#194](https://github.com/TraceApps/nutritrace/issues/194)). Enter an `http://` address such as `http://192.168.1.20:3004` or `http://notetrace.local:3004`, read the warning that the connection isn't encrypted, and choose Connect Anyway; the answer is kept for that server, and Settings > Server Connection shows Not Encrypted. Only private, Tailscale, loopback and link-local addresses, one-word names, and names ending in `.local`, `.home.arpa`, `.internal` or `.lan` qualify; any other `http://` address is refused before anything is sent. HTTPS works as before. The watch uses plain HTTP only to the server the phone confirmed, once both the phone and the watch app are updated and the phone app has opened. Coming from a debug build that used plain HTTP, the app asks before it contacts the server. Debug builds now follow the same rule. Everything else the app reaches directly (update checks, ntfy, Gotify, Apprise, AI providers, pictures from elsewhere) is still HTTPS-only, as before. [Guide](https://traceapps.github.io/docs/getting-started/lan-http/)
+
 ### Security
 
 - **The server log no longer shows a key or password from an address when a lookup fails.** The server logged the full address of a failed lookup through its proxy, a USDA key included. Keys, tokens, passwords and a `user:password@` part in it are now shown as `***`.

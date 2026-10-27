@@ -3,6 +3,9 @@
   import { setNativeMode, setServerUrl, setAuthToken, forgetServerCookies, resolveAssetUrl, iconUrl, explainConnectError, healthNeedsSetup } from '../lib/platform.js';
   import { showError, showSuccess } from '../stores/toast.js';
   import { DB } from '../lib/db.js';
+  import { NativeHttp } from '../lib/native-http.js';
+  import { serverAddressCheck, confirmPlainHttp } from '../lib/plain-http.js';
+  import { askPlainHttp } from '../stores/plainHttp.js';
   import { checkHealth, discoverSignIn, passwordSignIn, ssoSignInUrl } from '../lib/server-signin.js';
 
   // State machine:
@@ -45,21 +48,31 @@
   }
 
   // Step 1 → step 2: validate server reachability + discover which auth
-  // methods the server supports. Uses CapacitorHttp to bypass WebView CORS.
+  // methods the server supports. Uses CapacitorHttp to bypass WebView CORS,
+  // through lib/native-http.js.
   async function validateAndNext() {
     if (!serverUrl.trim()) { showError($_('native_setup_ct.toast.enter_url')); return; }
     const url = serverUrl.trim().replace(/\/$/, '');
+    // Plain http:// (from TraceApps/nutritrace#194): refused unless the server
+    // is on your own network, and then only after the warning. Nothing is
+    // sent before this.
+    const plain = serverAddressCheck(url);
+    if (plain === 'invalid') { showError($_('plain_http.invalid_address')); return; }
+    if (plain === 'refuse') { await askPlainHttp(url, { kind: 'refuse' }); return; }
+    if (plain === 'ask') {
+      if (!(await askPlainHttp(url))) return;
+      confirmPlainHttp(url);
+    }
     connecting = true;
     try {
-      const { CapacitorHttp } = await import('@capacitor/core');
-      const healthRes = await CapacitorHttp.get({ url: `${url}/api/health` });
+      const healthRes = await NativeHttp.get({ url: `${url}/api/health` });
       if (healthNeedsSetup(healthRes)) { showError($_('native_setup_ct.toast.server_needs_setup')); return; }
       checkHealth(healthRes); // a sign-in proxy's web page isn't the server (#36)
       validatedUrl = url;
       await loadSignInOptions();
       step = 'server-auth';
     } catch (e) {
-      showError(explainConnectError(e, url));
+      showError(explainConnectError(e, url, $_));
     } finally {
       connecting = false;
     }
@@ -102,7 +115,7 @@
       showSuccess($_('native_setup_ct.toast.connected_to_server'));
       window.location.reload();
     } catch (e) {
-      showError(explainConnectError(e, validatedUrl));
+      showError(explainConnectError(e, validatedUrl, $_));
     } finally {
       connecting = false;
     }

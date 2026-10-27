@@ -15,7 +15,23 @@ import './styles/fold.css';
 import App from './App.svelte';
 import { DB } from './lib/db.js';
 import { initI18n } from './i18n/index.js';
+import { Capacitor } from '@capacitor/core';
+import { installPlainHttpGuard } from './lib/plain-http-guard.js';
+import { mediaPolicy } from './lib/plain-http.js';
 import { publicNoteToken } from './lib/platform.js';
+
+// Android app: plain http:// only to a confirmed server on your own network
+// (lib/plain-http.js, from TraceApps/nutritrace#194). The fetch and
+// XMLHttpRequest guard goes in before the app starts (no module keeps its own
+// copy of fetch when it loads); images, audio, video and frames get the same
+// rule as a Content-Security-Policy.
+if (Capacitor.isNativePlatform()) {
+  installPlainHttpGuard();
+  const csp = document.createElement('meta');
+  csp.httpEquiv = 'Content-Security-Policy';
+  csp.content = mediaPolicy();
+  document.head.prepend(csp);
+}
 
 initI18n();
 

@@ -11,6 +11,9 @@ globalThis.localStorage = {
   removeItem: k => store.delete(k), clear: () => store.clear(), key: i => [...store.keys()][i] ?? null,
   get length() { return store.size; },
 };
+// The person said Connect Anyway to their server (src/lib/plain-http.js, from
+// TraceApps/nutritrace#194): the test server is plain HTTP on this machine.
+try { store.set('note:plainHttpOk', JSON.stringify([new URL(process.env.NOTE_SERVER).origin])); } catch { /* no server */ }
 const et = new EventTarget();
 globalThis.window = globalThis;
 globalThis.addEventListener = et.addEventListener.bind(et);

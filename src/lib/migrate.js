@@ -14,7 +14,7 @@
  * reload inserts them server-side. Settings go through the bulk endpoint.
  */
 
-import { CapacitorHttp } from '@capacitor/core';
+import { NativeHttp } from './native-http.js';
 import { isNative } from './platform.js';
 
 // Parents before children. Every row is re-queued with server_id NULL so
@@ -152,9 +152,10 @@ function _empty() {
 }
 
 async function _put(url, headers, body)  { return _request('PUT',  url, headers, body); }
-// CapacitorHttp bypasses WebView CORS for the external server origin.
+// CapacitorHttp bypasses WebView CORS for the external server origin, through
+// lib/native-http.js: plain http:// only to a confirmed local server.
 async function _request(method, url, headers, body) {
-  const res = await CapacitorHttp.request({
+  const res = await NativeHttp.request({
     method, url, headers,
     data: body || {},
   });
