@@ -78,3 +78,23 @@ test('page loads are never stored, so a sign-in page never stands in for the app
     assert.equal(await keep({ response: { status: 200 } }), null);
   }
 });
+
+test('page loads the server answers itself are never kept', () => {
+  const routes = vite.slice(vite.indexOf('runtimeCaching: ['));
+  assert.doesNotMatch(vite, /cacheName: 'pages-cache'/);
+  const rest = routes.slice(routes.indexOf("urlPattern: ({ request }) => request.mode === 'navigate'"));
+  assert.match(rest.slice(0, rest.indexOf('\n          },')), /handler: 'NetworkOnly'/);
+});
+
+test('the old page cache, with API and upload page loads in it, is deleted on update', async () => {
+  assert.match(vite, /importScripts: \[[^\]]*'sw-retired-caches\.js'/);
+  const code = readFileSync(new URL('../public/sw-retired-caches.js', import.meta.url), 'utf8');
+  const listeners = {}, deleted = [], waited = [];
+  vm.runInNewContext(code, {
+    self: { addEventListener: (type, fn) => { listeners[type] = fn; } },
+    caches: { delete: async name => { deleted.push(name); return true; } },
+  });
+  listeners.activate({ waitUntil: p => waited.push(p) });
+  await Promise.all(waited);
+  assert.deepEqual(deleted, ['pages-cache']);
+});

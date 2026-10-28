@@ -27,6 +27,7 @@ import {
 // no copy of it. This is what "Failed to fetch dynamically imported module"
 // looked like from the outside.
 import { embeddableDataUrl } from './image-embed.js';
+import { readDeadlineFor, queueUnsent, noteAnswered, sendingChange } from './request-deadline.js';
 
 // Retries while the server can't be reached: 3 s, doubling up to 30 s.
 const RETRY_MIN_MS = 3_000;
@@ -44,6 +45,23 @@ const NEEDS_SERVER = new Set([
   'getMembers', 'addMember', 'updateMember', 'removeMember',
   'getPublicLink', 'createPublicLink', 'removePublicLink',
 ]);
+
+// How long a read waits for a server that doesn't answer before it counts as
+// no connection (request-deadline.js): the kept notes and labels answer, or
+// it says it needs a connection, as with none. Reads the server answers by
+// asking another service (Trace, a link's preview, the CookTrace list, update
+// checks) or that carry a whole account wait as long as they take; the whole
+// notes list and its titles get longer, for a small server with many notes.
+// A change that is sent waits as long as it takes.
+const _SLOW_READS = /^\/api\/(ai(?!\/history)|integrations|link-preview|upload|proxy|updates|data|full-backup)(\/|\?|$)/;
+const _HEAVY_READS = /^\/api\/notes(\/titles)?(\?|$)/;
+/** How long a request may wait for the server, or null to wait as long as it takes. */
+export function offlineDeadlineMs(method, path) {
+  const p = String(path || '');
+  const m = String(method || 'GET').toUpperCase();
+  if (m !== 'GET') return null;
+  return readDeadlineFor(_SLOW_READS.test(p) ? 'slow' : _HEAVY_READS.test(p) ? 'heavy' : 'read');
+}
 
 /** { online, pending, syncing, error } for the sidebar and the offline bar. */
 export const offlineState = writable({ online: typeof navigator === 'undefined' ? true : navigator.onLine !== false, pending: 0, syncing: false, error: null });
@@ -410,6 +428,7 @@ async function _flushOnce() {
 
   const noteOps = (await _loadOps()).filter(o => o.type !== 'request');
   if (!noteOps.length) {
+    noteAnswered();
     _publish({ syncing: false, error: null, online: true });
     _channel?.postMessage({ type: 'outbox', synced: true });
     // A picture waiting on a note that has just gone up goes next.
@@ -462,6 +481,7 @@ async function _flushOnce() {
     catch { /* gone on the server: the next list refresh drops it */ }
   }
   _retryMs = RETRY_MIN_MS;
+  noteAnswered();
   _publish({ syncing: false, error: null, online: true });
   const detail = { created };
   _channel?.postMessage({ type: 'outbox', synced: detail });
@@ -504,7 +524,7 @@ export async function pendingCount() {
 export function createOfflineApi(http) {
   _http = http;
   if (typeof window !== 'undefined') {
-    window.addEventListener('online', () => { _retryMs = RETRY_MIN_MS; offlineState.update(s => ({ ...s, online: true })); _scheduleFlush(); });
+    window.addEventListener('online', () => { _retryMs = RETRY_MIN_MS; noteAnswered(); offlineState.update(s => ({ ...s, online: true })); _scheduleFlush(); });
     // Coming back to the tab is a good moment to try again.
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && _ops?.length) _scheduleFlush(); });
     window.addEventListener('offline', () => offlineState.update(s => ({ ...s, online: false })));
@@ -538,10 +558,11 @@ export function createOfflineApi(http) {
       await remember(result);
       return result;
     };
-    const tried = !ops.length && _online();
+    // A server that has just gone quiet isn't waited on again: the outbox.
+    const tried = !ops.length && _online() && !queueUnsent();
     if (tried) {
       try {
-        return await direct();
+        return await sendingChange(direct);
       } catch (err) {
         if (!isUnavailableError(err)) throw err;
         if (isOfflineError(err)) offlineState.update(s => ({ ...s, online: false }));
@@ -618,7 +639,7 @@ export function createOfflineApi(http) {
       const tried = _online() && !(await _loadOps()).length && !!direct;
       if (tried) {
         try {
-          return await direct();
+          return await sendingChange(direct);
         } catch (err) {
           if (!isUnavailableError(err)) throw err;
           if (isOfflineError(err)) _publish({ online: false });

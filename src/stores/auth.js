@@ -1,6 +1,7 @@
 import { writable, get as getStore } from 'svelte/store';
 import { loadServerSettings } from './settings.js';
 import { isNative, getServerUrl, getAuthToken, apiUrl as _apiUrl, forgetServerCookies } from '../lib/platform.js';
+import { deadlineSignal, isDeadlineError, noteQuiet, noteAnswered, SIGN_IN_CHECK_MS } from '../lib/request-deadline.js';
 
 function _authHeaders() {
   const h = {};
@@ -124,20 +125,27 @@ export async function loadAuthState() {
     return;
   }
 
-  // PWA: fetch from server (blocking — no cache to fall back on initially)
-  await _fetchAuthFromServer();
+  // PWA: fetch from server (blocking: no cache to fall back on initially).
+  // With an account kept here to open with, a server that doesn't answer
+  // isn't waited on long: the app opens as it does offline
+  // (request-deadline.js).
+  const kept = localStorage.getItem('note:cachedUser') || localStorage.getItem('note:cachedUserMgmt') === '0';
+  await _fetchAuthFromServer({ waitMs: kept ? SIGN_IN_CHECK_MS : 8000 });
 }
 
 /** Fetch auth state from server — used by PWA (blocking) and as background refresh for native */
-async function _fetchAuthFromServer() {
+async function _fetchAuthFromServer({ waitMs = 8000 } = {}) {
   try {
     // The server never redirects these: on the web a redirect is a sign-in
     // proxy's, to its own domain as often as not, which fetch would only
     // report as a failed request. Not followed, it shows as one.
     const ask = (path) => fetch(_apiUrl(path), {
-      credentials: 'include', headers: _authHeaders(), signal: AbortSignal.timeout(8000),
+      credentials: 'include', headers: _authHeaders(), signal: deadlineSignal(waitMs),
       ...(isNative ? {} : { redirect: 'manual' }),
-    }).catch((err) => { throw Object.assign(err, { network: true }); });
+    }).then((res) => { noteAnswered(); return res; }, (err) => {
+      if (isDeadlineError(err)) noteQuiet();
+      throw Object.assign(err, { network: true });
+    });
     const [statusRes, meRes] = await Promise.all([ask('/api/auth/status'), ask('/api/auth/me')]);
     // Only the server's own answers count: a sign-in proxy's page or a
     // gateway's error page while the server restarts is no answer.

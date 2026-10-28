@@ -271,3 +271,14 @@ test('Android with a server sends the profile through the HTTP API, and Profile 
   const en = JSON.parse(readFileSync(new URL('../src/i18n/en.json', import.meta.url), 'utf8'));
   assert.ok(en.offline.not_kept && en.profile.errors.needs_connection);
 });
+
+test('a server known to be quiet: a new note goes into the outbox without being sent', async () => {
+  const deadline = await import('../src/lib/request-deadline.js');
+  const { api, http, env } = await page();
+  deadline.noteQuiet();
+  const note = await api.createNote({ title: 'Quiet' });
+  assert.deepEqual(names(http), [], 'not sent');
+  assert.equal(env.outbox().length, 1, 'waiting in the outbox');
+  assert.equal(note.title, 'Quiet');
+  deadline.noteAnswered();
+});

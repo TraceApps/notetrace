@@ -8,6 +8,7 @@
  */
 
 import { isNative, getServerUrl, getAuthToken, resolveAssetUrl, apiUrl } from './platform.js';
+import { fetchWithDeadline } from './request-deadline.js';
 
 // Build the auth-related headers a mutating request needs. Callers
 // that bypass NoteApi._fetch (multipart FormData uploads via a raw
@@ -41,13 +42,15 @@ const _NoteApiHttp = {
       if (csrf) headers['X-CSRF-Token'] = csrf;
     }
 
-    const res = await fetch(apiUrl(path), {
+    // On the web, a request with an offline answer stops waiting for a server
+    // that doesn't answer, and the answer takes over (request-deadline.js).
+    const res = await fetchWithDeadline((u, i) => fetch(u, i), apiUrl(path), {
       method,
       headers,
       credentials: 'include',
       cache: 'no-store',
       body: isUpload ? body : body != null ? JSON.stringify(body) : undefined,
-    });
+    }, !isNative && !isUpload ? offlineDeadlineMs(method, path) : null);
     if (!res.ok) {
       const e = await res.json().catch(() => ({}));
       const err = new Error(e.error || `API error ${res.status}`);
@@ -261,7 +264,7 @@ const _NoteApiHttp = {
 
 import { NoteApiNative } from './api-native.js';
 import { NoteApiCached } from './api-cached.js';
-import { createOfflineApi } from './offline-api.js';
+import { createOfflineApi, offlineDeadlineMs } from './offline-api.js';
 
 // The web app: the server, with note edits kept and sent later when it can't be reached.
 const _NoteApiWeb = isNative ? null : createOfflineApi(_NoteApiHttp);

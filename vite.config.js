@@ -80,7 +80,7 @@ export default defineConfig({
         globPatterns: ['**/*.{js,mjs,css,html,woff2,woff,png,svg,ico,webmanifest}'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         // Reminder notification clicks and shared photos (public/sw-extras.js).
-        importScripts: ['sw-extras.js'],
+        importScripts: ['sw-extras.js', 'sw-retired-caches.js'],
         // Page loads go to the server first (the first route below), so no
         // navigateFallback (null, or Vite PWA puts its own back), and '/' isn't
         // answered from the cache as index.html.
@@ -103,13 +103,10 @@ export default defineConfig({
             }
           },
           {
-            // The API, uploads, the share target and public links, as before.
+            // The API, uploads, the share target and public note links opened as a page:
+            // never kept, so an export or a backup can't outlive the session.
             urlPattern: ({ request }) => request.mode === 'navigate',
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'pages-cache',
-              networkTimeoutSeconds: 3,
-            }
+            handler: 'NetworkOnly',
           },
           {
             // Images and voice notes: kept after the first play or view, and

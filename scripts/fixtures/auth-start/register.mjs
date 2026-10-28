@@ -1,7 +1,8 @@
 // Runs stores/auth.js in Node as the web app (AUTH_PHONE unset) or the
 // Android app (AUTH_PHONE=1), starting with the localStorage in AUTH_STORE
 // (JSON) and answering fetch from AUTH_REPLIES (JSON: path -> reply, "drop"
-// for a connection that fails, or "redirect" for a redirect not followed).
+// for a connection that fails, "redirect" for a redirect not followed, or
+// "hang" for a server that takes the request and never answers).
 // Used by scripts/auth-start.test.js.
 import { register } from 'node:module';
 const store = new Map(Object.entries(JSON.parse(process.env.AUTH_STORE || '{}')));
@@ -18,10 +19,12 @@ globalThis.dispatchEvent = et.dispatchEvent.bind(et);
 globalThis.location = { origin: 'https://notes.example.com', href: 'https://notes.example.com/', pathname: '/', search: '', hash: '' };
 globalThis.document = { hidden: false, addEventListener() {}, removeEventListener() {}, visibilityState: 'visible', documentElement: { classList: { add() {}, remove() {}, toggle() {} } } };
 const replies = JSON.parse(process.env.AUTH_REPLIES || '{}');
-globalThis.fetch = async (url) => {
+globalThis.fetch = async (url, init = {}) => {
   const path = new URL(String(url), 'https://notes.example.com').pathname;
   const r = replies[path] ?? replies['*'] ?? 'drop';
   if (r === 'drop') throw new TypeError('Failed to fetch');
+  // Waits until the request gives up, as a browser does for a silent server.
+  if (r === 'hang') return new Promise((_, reject) => init.signal?.addEventListener('abort', () => reject(init.signal.reason)));
   // A redirect not followed (redirect: 'manual'), as a browser hands it back.
   if (r === 'redirect') return { type: 'opaqueredirect', ok: false, status: 0, headers: new Headers(), text: async () => '' };
   const body = typeof r.body === 'string' ? r.body : JSON.stringify(r.body ?? {});
