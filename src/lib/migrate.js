@@ -16,6 +16,7 @@
 
 import { NativeHttp } from './native-http.js';
 import { isNative } from './platform.js';
+import { SYNC_FIELDS } from '../../server/lib/sync-fields.js';
 
 // Parents before children. Every row is re-queued with server_id NULL so
 // it inserts on the new server.
@@ -79,7 +80,7 @@ export async function uploadLocalToServer({ serverUrl, authToken, onProgress, ke
       // Back to the account the data came from (`keepIds`,
       // lib/local-account.js cameFromThisAccount): rows it already has keep
       // their ids there; only rows made since go up, as new, once.
-      if (!keepIds) await db.run(`UPDATE ${t} SET server_id = NULL, sync_status = 'pending'`, []);
+      if (!keepIds) await db.run(`UPDATE ${t} SET server_id = NULL${SYNC_FIELDS[t] ? ', server_base = NULL' : ''}, sync_status = 'pending'`, []);
       if (t in summary.success) summary.success[t] = r?.values?.[0]?.n || 0;
       onProgress?.(t, 1, 1);
     }

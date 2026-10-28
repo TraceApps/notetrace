@@ -21,8 +21,10 @@ import {
   dbGetMeta, dbSetMeta, dbMarkSettingsSynced, dbMarkTableSynced,
   dbCountUnsynced, dbInstallId, createKeyOf,
   dbDropRows, dbParentGoneOnServer, dbNewUuid, dbOrphansOfDeletedNotes, dbServerIdsMissingFromPull,
-  SYNC_PARENTS,
+  SYNC_PARENTS, dbBaseOf, dbFillServerBases, dbEditTimes,
 } from './db-native.js';
+import { rowChanges } from './field-sync.js';
+import { SYNC_FIELDS, SYNC_JSON } from '../../server/lib/sync-fields.js';
 import { localDataIsThisAccount, accountGeneration } from './local-account.js';
 
 let _syncInFlight = null;
@@ -437,6 +439,8 @@ async function pushChanges({ token = getAuthToken(), signal = null, gen = accoun
     if (!Array.isArray(rows) || rows.length === 0) continue;
     const fks = SYNC_PARENTS[table] || {};
     const out = [];
+    // When each field was changed here (edit_times), for field_edits.
+    const editTimes = SYNC_FIELDS[table] ? await dbEditTimes(table).catch(() => new Map()) : new Map();
     for (const r of rows) {
       const row = { ...r, client_id: r.id, server_id: r.server_id || null };
       // Every row goes with it: also one whose server id that server no
@@ -445,6 +449,23 @@ async function pushChanges({ token = getAuthToken(), signal = null, gen = accoun
       if (table === 'notes' && !row.server_id && r.id <= historyThrough) row.history_upload = true;
       delete row.id;
       delete row.sync_status;
+      // Which fields this phone changed since the copy the server has: only
+      // those count as its edit (server/lib/field-sync.js). A row with no
+      // such copy, or none on this server, goes up whole, as before.
+      delete row.server_base;
+      if (row.server_id && SYNC_FIELDS[table]) {
+        const t = editTimes.get(r.id) || {};
+        // What differs from the server's copy, and what was changed here and
+        // isn't sent yet even if it's back to the server's value.
+        const diff = rowChanges(SYNC_FIELDS[table], r, r.server_base, SYNC_JSON[table]);
+        const changed = diff && [...new Set([...diff, ...Object.keys(t).filter(f => SYNC_FIELDS[table].includes(f))])];
+        if (changed) {
+          row.changed_fields = changed;
+          // Each with when it was changed here, where that's known.
+          const edits = Object.fromEntries(changed.filter(f => typeof t[f] === 'string').map(f => [f, t[f]]));
+          if (Object.keys(edits).length) row.field_edits = edits;
+        }
+      }
       if (table === 'notes' && readOnlyUnknown) delete row.read_only;
       // Local FK ids become server ids. A parent with no server id yet is
       // pending in this same push, so its local id goes through and is
@@ -490,13 +511,16 @@ async function pushChanges({ token = getAuthToken(), signal = null, gen = accoun
   // the push snapshot and now, updated_at moved forward and the row
   // stays pending so the next sync re-pushes the fresh value.
   const snapshotByTable = {};
+  // And each row as it went up: once marked synced, the server's copy.
+  const baseByTable = {};
   for (const [table, rows] of Object.entries(pending)) {
     if (!Array.isArray(rows)) continue;
     const m = new Map();
+    const b = new Map();
     for (const r of rows) {
-      if (r.id != null) m.set(r.id, r.updated_at);
+      if (r.id != null) { m.set(r.id, r.updated_at); b.set(r.id, dbBaseOf(table, r)); }
     }
-    if (m.size) snapshotByTable[table] = m;
+    if (m.size) { snapshotByTable[table] = m; baseByTable[table] = b; }
   }
 
   // Rows the server answered `deleted` (deleted elsewhere after this
@@ -518,12 +542,12 @@ async function pushChanges({ token = getAuthToken(), signal = null, gen = accoun
       if (r.client_id && r.server_id) {
         // Newly-created row: server assigned a server_id. Stamp it +
         // mark synced gated on updated_at.
-        await dbSetServerId(table, r.client_id, r.server_id, snap?.get(r.client_id) || null);
+        await dbSetServerId(table, r.client_id, r.server_id, snap?.get(r.client_id) || null, baseByTable[table]?.get(r.client_id) ?? null);
       } else if (r.client_id) {
         // Update of an existing server_id row: server didn't need to
         // assign anything. Still mark synced gated on updated_at.
         const updatedAt = snap?.get(r.client_id);
-        if (updatedAt) updatedRowsForBulkMark.push({ id: r.client_id, updated_at: updatedAt });
+        if (updatedAt) updatedRowsForBulkMark.push({ id: r.client_id, updated_at: updatedAt, base: baseByTable[table]?.get(r.client_id) ?? null });
       }
     }
     if (updatedRowsForBulkMark.length) {
@@ -546,7 +570,8 @@ async function pushChanges({ token = getAuthToken(), signal = null, gen = accoun
     if (!Array.isArray(body.tables?.[table])) continue; // that table failed there: next sync
     for (const r of pending[table] || []) {
       if (r.server_id && !answered.has(`${table}:${r.id}`) && live()) {
-        await db.run(`UPDATE ${table} SET server_id = NULL WHERE id = ? AND server_id = ?`, [r.id, r.server_id]);
+        await db.run(`UPDATE ${table} SET server_id = NULL${SYNC_FIELDS[table] ? ', server_base = NULL' : ''} WHERE id = ? AND server_id = ?`, [r.id, r.server_id]);
+        await db.run(`DELETE FROM edit_times WHERE tbl = ? AND row_id = ?`, [table, r.id]);
       }
     }
   }
@@ -612,6 +637,8 @@ async function pullChanges({ token = getAuthToken(), signal = null, gen = accoun
     await dbSetMeta('read_only_unknown', null);
   }
   await dbSetMeta(LAST_PULL_KEY, body.now || new Date().toISOString());
+  // Rows from before server_base, a few at a time (dbFillServerBases).
+  try { await dbFillServerBases({ live }); } catch (e) { console.warn('[sync] server copies wait for the next pull:', e?.message || e); }
   let pulled = 0;
   for (const arr of Object.values(body.tables || {})) {
     if (Array.isArray(arr)) pulled += arr.length;

@@ -151,7 +151,8 @@ test('the push sends only what changed, stamped when it changed', () => {
   const { tables } = buildPush(ops, baseMap, applyOps(base, ops));
 
   const n1 = tables.notes.find(r => r.server_id === 1);
-  assert.deepEqual(Object.keys(n1).sort(), ['client_id', 'pinned', 'server_id', 'updated_at']);
+  assert.deepEqual(Object.keys(n1).sort(), ['client_id', 'field_edits', 'pinned', 'server_id', 'updated_at']);
+  assert.deepEqual(n1.field_edits, { pinned: stamp(T0) }, 'each field with when it changed');
   assert.equal(n1.updated_at, stamp(T0 + 4000));
   const n2 = tables.notes.find(r => r.server_id === 2);
   assert.ok(n2.trashed_at);

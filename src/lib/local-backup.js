@@ -34,7 +34,9 @@ const TABLES = ['notes', 'labels', 'checklist_items', 'note_labels', 'note_attac
 
 async function _selectAll(db, table) {
   const r = await db.query(`SELECT * FROM ${table}`, []);
-  return r?.values || [];
+  // server_base is this device's sync bookkeeping (the server's copy of a
+  // row), not data: left out, so a backup restores into an app without it.
+  return (r?.values || []).map(({ server_base, ...row }) => row);
 }
 
 /**

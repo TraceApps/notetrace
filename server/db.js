@@ -1,6 +1,8 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import { fieldTimesSql } from './lib/field-sync.js';
+import { SYNC_FIELDS } from './lib/sync-fields.js';
 
 const dbPath = process.env.DB_PATH || './notetrace.db';
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
@@ -462,6 +464,21 @@ for (const t of ['notes', 'labels', 'checklist_items', 'note_labels', 'note_atta
     CREATE TRIGGER IF NOT EXISTS trg_user_settings_synced_upd AFTER UPDATE ON user_settings
     BEGIN UPDATE user_settings SET synced_at = ${STAMP} WHERE user_id IS NEW.user_id AND key = NEW.key; END;
   `);
+}
+
+// ── When each field of a synced row last changed ───────────────────────────
+// field_times: { field: time, _base: time } (lib/field-sync.js). Two edits
+// of one row meet field by field: the newer edit of each field stays
+// (routes/sync.js). Triggers stamp every write that changes a field (REST
+// routes, Trace, imports, restore), unless the write stamps its own (a
+// merged sync edit, at its edit time). Rows from before count from their
+// updated_at until their first write; starting the times writes no row, so
+// no sync cursor (synced_at) moves. A delete, or a row brought back, stamps
+// deleted_at: a delete loses to a later one of either. Server only: never
+// in a pull (older apps store every column they get).
+for (const [t, fields] of Object.entries(SYNC_FIELDS)) {
+  if (!columnExists(t, 'field_times')) db.exec(`ALTER TABLE ${t} ADD COLUMN field_times TEXT`);
+  db.exec(fieldTimesSql(t, [...fields, 'deleted_at']));
 }
 
 // ── Notification de-dupe log ───────────────────────────────────────────────

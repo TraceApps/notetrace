@@ -21,6 +21,15 @@
  *     client_now (the phone's clock when it sent this) puts the phone's edit
  *     times on the server's clock for the rule below.
  *
+ *   Two edits of one row meet field by field (lib/field-sync.js, fields and
+ *   groups in lib/sync-fields.js): the newer edit of each field stays, by
+ *   when it was made on the server's clock. A row may list the fields it
+ *   changed (changed_fields, the Android app since it kept the server's
+ *   copy); one that doesn't changed every field it sends (older apps send
+ *   whole rows; the web's outbox sends only what it changed). A note's title
+ *   or text that lost is kept as an earlier version. A row that ends up
+ *   other than the device sent it is restamped, so its next pull brings it.
+ *
  *   Deleted here, edited there (newer edit wins, by the server's clock):
  *     an edit made after the row was deleted brings it back (a note with
  *     the items, pictures and labels its delete took); an edit made before
@@ -69,6 +78,8 @@ import { dispatchWebhookEvent, isHistoryUpload } from '../lib/webhooks.js';
 import { skipDueReminder } from '../lib/reminder-delivery.js';
 import { isServerOnlyKey } from '../lib/server-only-keys.js';
 import { cleanCreateKey, findByCreateKey, setCreateKey } from '../lib/create-keys.js';
+import { mergeEdit, deleteLoses, editRevives, stampTimes, createdTimes, laterThan, rowTimes } from '../lib/field-sync.js';
+import { SYNC_FIELDS, SYNC_GROUPS, SYNC_JSON } from '../lib/sync-fields.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -150,17 +161,35 @@ router.post('/push', wrap((req, res) => {
   const arrived = req.receivedAt || Date.now();
   const skew = newApp && Math.abs(arrived - clientNow) < 366 * 86400000 ? arrived - clientNow : 0;
   const editMs = r => tsMs(r?.updated_at) + skew;
+  // When a row's edit was made, on the server's clock: never later than it
+  // arrived (a clock running fast would otherwise beat every later edit);
+  // one with no time it can read was made now.
+  const editAt = r => { const ms = editMs(r); return Number.isFinite(ms) ? Math.min(ms, arrived) : arrived; };
+  // When each field was changed on the phone (field_edits: { field: time }),
+  // on the server's clock: a field changed before a later change of another
+  // keeps its own time (lib/field-sync.js mergeEdit fieldAt).
+  const editsAt = map => {
+    if (!map || typeof map !== 'object' || Array.isArray(map)) return null;
+    const out = {};
+    for (const [k, v] of Object.entries(map)) { const ms = editMs({ updated_at: v }); if (Number.isFinite(ms)) out[k] = Math.min(ms, arrived); }
+    return out;
+  };
   const serverTime = t => { const ms = tsMs(t) + skew; return Number.isFinite(ms) ? new Date(ms).toISOString().replace('T', ' ').slice(0, 19) : t; };
   // The newest edit of each existing note's items, pictures and labels in
   // this push (tombstones aside): an edit of what's in a note is an edit of
   // the note, when it meets the note's delete.
   const childEdit = new Map();
+  // Notes whose delete in this push lost (to a later edit here): note id to
+  // its deleted_at as pushed (on the server's clock).
+  const lostNoteDeletes = new Map();
   for (const t of ['checklist_items', 'note_attachments', 'note_labels']) {
     for (const r of Array.isArray(tables[t]) ? tables[t] : []) {
       const local = Array.isArray(r._local_fks) && r._local_fks.includes('note_id');
       if (r.note_id == null || local || r.deleted_at) continue;
-      const at = editMs(r);
-      if (Number.isFinite(at) && !(childEdit.get(r.note_id) >= at)) childEdit.set(r.note_id, at);
+      const ms = editMs(r);
+      if (!Number.isFinite(ms)) continue;
+      const at = Math.min(ms, arrived);
+      if (!(childEdit.get(r.note_id) >= at)) childEdit.set(r.note_id, at);
     }
   }
 
@@ -184,7 +213,8 @@ router.post('/push', wrap((req, res) => {
 
     const txn = db.transaction(() => {
       for (const row of rows) {
-        const translated = _translateParents(row, spec, idMaps, u, editMs(row), childEdit, sentAs);
+        const rowMs = editMs(row);
+        const translated = _translateParents(row, spec, idMaps, u, Number.isFinite(rowMs) ? Math.min(rowMs, arrived) : rowMs, childEdit, sentAs);
         if (!translated) continue; // a parent in this same push didn't go in: next sync
         if (translated.__drop) {
           // Its note was deleted before this edit, or this account can't
@@ -271,7 +301,7 @@ router.post('/push', wrap((req, res) => {
             else results[name].push({ client_id: row.client_id, server_id: existing.id });
             continue;
           }
-          _pushSharedNote(u, existing, translated);
+          _pushSharedNote(u, existing, translated, editAt(translated), Array.isArray(row.changed_fields) ? row.changed_fields.map(String) : null, editsAt(row.field_edits));
           results[name].push({ client_id: row.client_id, server_id: existing.id });
           idMaps[name][row.client_id] = existing.id;
           continue;
@@ -301,11 +331,15 @@ router.post('/push', wrap((req, res) => {
         // Deleted here, edited there: the newer one wins, on the server's
         // clock (a note counts the newest edit of its items, pictures and
         // labels in this same push too). A tie keeps the delete.
+        const at = editAt(translated);
         if (existing && spec.softDelete && existing.deleted_at && !translated.deleted_at) {
-          const at = Math.max(editMs(translated), name === 'notes' ? (childEdit.get(existing.id) ?? -Infinity) : -Infinity);
-          if (at > tsMs(existing.deleted_at)) {
+          const childAt = name === 'notes' ? (childEdit.get(existing.id) ?? -Infinity) : -Infinity;
+          if (editRevives({ existing, at: Math.max(at, childAt) })) {
             if (name === 'notes') _reviveNote(existing);
             else db.prepare(`UPDATE ${name} SET deleted_at = NULL WHERE id = ?`).run(existing.id);
+            // Brought back when the edit was made, not when it arrived.
+            db.prepare(`UPDATE ${name} SET field_times = ? WHERE id = ?`)
+              .run(JSON.stringify(stampTimes(db.prepare(`SELECT field_times FROM ${name} WHERE id = ?`).get(existing.id)?.field_times, ['deleted_at'], Math.max(at, childAt))), existing.id);
             existing = db.prepare(`SELECT * FROM ${name} WHERE id = ?`).get(existing.id);
             revived = true;
           } else {
@@ -321,28 +355,51 @@ router.post('/push', wrap((req, res) => {
           idMaps[name][row.client_id] = existing.id;
           continue;
         }
-        if (existing) {
-          const incomingMs = tsMs(translated.updated_at);
-          const serverMs = tsMs(existing.updated_at);
-          const serverIsNewer = !revived && Number.isFinite(incomingMs) && Number.isFinite(serverMs) && serverMs > incomingMs;
-          if (name === 'notes') _noteVersioning(existing, translated, serverIsNewer);
-          if (serverIsNewer) {
-            // Re-stamp the winning row so this device's next pull sends it
-            // back down and replaces the stale local copy.
-            db.prepare(`UPDATE ${name} SET synced_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE id = ?`).run(existing.id);
+        if (existing && spec.softDelete && translated.deleted_at) {
+          // A delete: it loses to anything in the row (a note: also in its
+          // items, pictures and labels) changed here after it was made, and
+          // the device gets the row back with its next pull. A tie goes to
+          // the delete.
+          // An item, label or picture deleted with its note (the same
+          // delete, deleted_at the note's) stays when the note's delete lost.
+          const withNote = name !== 'notes' && translated.note_id != null
+            && lostNoteDeletes.get(String(translated.note_id)) === translated.deleted_at;
+          if (withNote || _changedAfter(name, existing, at)) {
+            _restamp(name, existing.id);
+            if (name === 'notes') lostNoteDeletes.set(String(existing.id), translated.deleted_at);
           } else {
-            // Columns the client didn't send keep their server value.
-            const present = spec.cols.filter(c => translated[c] !== undefined);
-            db.prepare(_buildUpdateSql(name, spec, present)).run(
-              ...present.map(c => _coerce(translated[c])),
-              translated.updated_at || _now(),
-              // Only tables that have deleted_at (chat doesn't) take one.
-              ...(spec.softDelete ? [translated.deleted_at ?? null] : []),
-              existing.id
-            );
+            db.prepare(`UPDATE ${name} SET deleted_at = ?, updated_at = ?, field_times = ? WHERE id = ?`)
+              .run(translated.deleted_at, _laterTime(existing.updated_at, translated.updated_at, at), JSON.stringify(stampTimes(rowTimes(existing), ['deleted_at'], at)), existing.id);
           }
-          // Acked either way: when the server copy is newer the client
-          // marks its row synced and the pull brings the newer copy down.
+          results[name].push({ client_id: row.client_id, server_id: existing.id });
+          idMaps[name][row.client_id] = existing.id;
+          continue;
+        }
+        if (existing) {
+          // The newer edit of each field stays (lib/field-sync.js).
+          const fields = SYNC_FIELDS[name] || [];
+          const values = {};
+          for (const f of fields) if (spec.cols.includes(f) && translated[f] !== undefined) values[f] = _coerce(translated[f]);
+          const changed = Array.isArray(row.changed_fields) ? row.changed_fields.map(String) : null;
+          const m = mergeEdit({ existing, values, fields, groups: SYNC_GROUPS[name], json: SYNC_JSON[name], changed, at, fieldAt: editsAt(row.field_edits) });
+          if (name === 'notes') _noteVersioning(existing, translated, m);
+          const sets = m.applied.filter(f => spec.cols.includes(f));
+          const args = sets.map(f => m.row[f]);
+          // A parent (an item's note) is written as before: the server's
+          // stays when the device sends none.
+          for (const fk of Object.keys(spec.parents || {})) {
+            if (fields.includes(fk) || translated[fk] == null || translated[fk] === existing[fk]) continue;
+            sets.push(fk); args.push(translated[fk]);
+          }
+          if (sets.length) {
+            db.prepare(`UPDATE ${name} SET ${sets.map(c => `${c} = ?`).join(', ')}, updated_at = ?, field_times = ? WHERE id = ?`)
+              .run(...args, _laterTime(existing.updated_at, translated.updated_at, at), JSON.stringify(m.times), existing.id);
+          } else if (m.differs) {
+            // Nothing of this edit stayed: the device gets the row as it is.
+            _restamp(name, existing.id);
+          }
+          // Acked either way: when what stays isn't all the device sent, it
+          // marks its row synced and the pull brings the row down.
           results[name].push({ client_id: row.client_id, server_id: existing.id });
           idMaps[name][row.client_id] = existing.id;
         } else {
@@ -350,11 +407,15 @@ router.post('/push', wrap((req, res) => {
           // columns fall back to their schema DEFAULTs instead of
           // tripping NOT NULL constraints.
           const present = spec.cols.filter(c => translated[c] !== undefined);
-          const info = db.prepare(_buildInsertSql(name, spec, present)).run(
+          // Made when the device made it (offline, maybe long before it got
+          // here): the time each field counts from until it changes.
+          const made = SYNC_FIELDS[name] && Number.isFinite(tsMs(translated.updated_at)) ? JSON.stringify(createdTimes(at)) : null;
+          const info = db.prepare(_buildInsertSql(name, spec, present, made != null)).run(
             rowOwner(),
             ...present.map(c => _coerce(translated[c])),
             translated.updated_at || _now(),
-            ...(spec.softDelete ? [translated.deleted_at ?? null] : [])
+            ...(spec.softDelete ? [translated.deleted_at ?? null] : []),
+            ...(made != null ? [made] : [])
           );
           const serverId = Number(info.lastInsertRowid);
           setCreateKey(name, serverId, createKey);
@@ -378,6 +439,9 @@ router.post('/push', wrap((req, res) => {
   }
 
   // ── user_settings: key-value, server-side already has its own table.
+  // A setting is one field: the newer edit of it stays (its updated_at is
+  // when it was last changed). One older than the value here changes
+  // nothing, and is restamped so the device's next pull brings the newer.
   if (Array.isArray(req.body?.settings)) {
     const ins = db.prepare(
       `INSERT INTO user_settings (user_id, key, value, updated_at)
@@ -386,10 +450,16 @@ router.post('/push', wrap((req, res) => {
          value = excluded.value,
          updated_at = excluded.updated_at`
     );
+    const here = db.prepare(`SELECT updated_at, deleted_at FROM user_settings WHERE ${userClause(u)} AND key = ?`);
+    const restamp = db.prepare(`UPDATE user_settings SET synced_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE ${userClause(u)} AND key = ?`);
     const txn = db.transaction(() => {
       for (const s of req.body.settings) {
         if (!s?.key || isServerOnlyKey(s.key)) continue;
-        ins.run(u, s.key, typeof s.value === 'string' ? s.value : JSON.stringify(s.value), s.updated_at || _now());
+        const cur = here.get(...userArgs(u), s.key);
+        if (cur && !cur.deleted_at && laterThan(cur.updated_at, editAt(s))) { restamp.run(...userArgs(u), s.key); continue; }
+        // Kept at the time it was compared by (on the server's clock, never
+        // ahead of now), so a phone's fast clock can't hold a setting.
+        ins.run(u, s.key, typeof s.value === 'string' ? s.value : JSON.stringify(s.value), _sqlTime(editAt(s)));
       }
     });
     try { txn(); } catch {}
@@ -549,7 +619,7 @@ function _translateParents(row, spec, idMaps, u, editAt = NaN, childEdit = new M
         // An edit of what's in a note made after the note's delete brings
         // it back; one made before is dropped (with the note's).
         const at = Math.max(editAt, childEdit.get(raw) ?? -Infinity);
-        if (Number.isFinite(at) && at > tsMs(note.deleted_at)) { _reviveNote(note); continue; }
+        if (Number.isFinite(at) && editRevives({ existing: note, at })) { _reviveNote(note); continue; }
         return { __drop: 'deleted', __ownId: ownId() };
       }
       return { __drop: 'access', __ownId: ownId() }; // shared once, not any more (or trashed by its owner)
@@ -597,7 +667,7 @@ function _pullNotes(u, since, withKeys = false, withOptional = false) {
 // A member pushing a shared note. Anything they may not change is
 // dropped, and the note is re-stamped so their next pull restores the
 // server copy over their local one.
-function _pushSharedNote(u, existing, incoming) {
+function _pushSharedNote(u, existing, incoming, at = Date.now(), changed = null, fieldAt = null) {
   const access = noteAccess(u, existing.id);
   if (!access || access.role === 'owner') return; // revoked: the pull's revoked_notes cleans up
   let rejected = !!(incoming.trashed_at || incoming.deleted_at);
@@ -614,65 +684,75 @@ function _pushSharedNote(u, existing, incoming) {
       .run(...mineArgs, access.member.id);
   }
 
-  const contentCols = ['title', 'body_md', 'kind', 'color', 'read_only'].filter(c => incoming[c] !== undefined && incoming[c] !== existing[c]);
-  if (contentCols.length) {
+  // What an 'edit' member may change: the newer edit of each field stays,
+  // as for the owner's own devices.
+  const fields = ['title', 'body_md', 'kind', 'color', 'read_only'];
+  const values = {};
+  for (const f of fields) if (incoming[f] !== undefined) values[f] = _coerce(incoming[f]);
+  const m = mergeEdit({ existing, values, fields, groups: SYNC_GROUPS.notes, changed, at, fieldAt });
+  if (m.applied.length || m.lost.length) {
     if (access.role !== 'edit') rejected = true;
     else {
-      const incomingMs = tsMs(incoming.updated_at);
-      const serverMs = tsMs(existing.updated_at);
-      const serverIsNewer = Number.isFinite(incomingMs) && Number.isFinite(serverMs) && serverMs > incomingMs;
-      _noteVersioning(existing, incoming, serverIsNewer);
-      if (serverIsNewer) rejected = true;
-      else {
-        db.prepare(`UPDATE notes SET ${contentCols.map(c => `${c} = ?`).join(', ')}, updated_at = ? WHERE id = ?`)
-          .run(...contentCols.map(c => _coerce(incoming[c])), incoming.updated_at || _now(), existing.id);
+      _noteVersioning(existing, incoming, m);
+      if (m.differs) rejected = true;
+      if (m.applied.length) {
+        db.prepare(`UPDATE notes SET ${m.applied.map(c => `${c} = ?`).join(', ')}, updated_at = ?, field_times = ? WHERE id = ?`)
+          .run(...m.applied.map(c => m.row[c]), _laterTime(existing.updated_at, incoming.updated_at, at), JSON.stringify(m.times), existing.id);
       }
     }
   }
   if (rejected || mine.length) restampNote(existing.id);
 }
 
-// Notes never lose an edit to sync. When the server copy is newer, the
-// incoming content is kept as a 'conflict' version; when the incoming
-// copy wins, the server's previous content is snapshotted first.
-function _noteVersioning(existing, incoming, serverIsNewer) {
-  const changed = (incoming.title !== undefined && incoming.title !== existing.title)
-    || (incoming.body_md !== undefined && incoming.body_md !== existing.body_md);
-  if (!changed) return;
-  if (serverIsNewer) {
+// Notes never lose an edit to sync. `m` is how the edit met the note
+// (lib/field-sync.js mergeEdit): a title or text it changed that lost to a
+// newer one here is kept as a 'conflict' version (the device's copy); one
+// that went in snapshots the note's content before it first.
+function _noteVersioning(existing, incoming, m) {
+  const content = f => f === 'title' || f === 'body_md';
+  if (m.lost.some(content)) {
     snapshotVersion(existing, 'conflict', {
       title: incoming.title ?? existing.title,
       body_md: incoming.body_md ?? existing.body_md,
       kind: incoming.kind ?? existing.kind,
     });
-  } else {
-    snapshotVersion(existing, 'edit');
   }
+  if (m.applied.some(content)) snapshotVersion(existing, 'edit');
 }
 
-function _buildInsertSql(table, spec, present = spec.cols) {
+// The row's updated_at after an edit made at `at` (ms): the edit's own time
+// as sent, unless the row's is later. It never goes back.
+function _laterTime(current, sent, at) {
+  // As sent, unless that isn't when it was made on the server's clock (a
+  // clock off, or ahead of now): then that time.
+  const made = sent && Math.abs(tsMs(sent) - at) < 1000 ? sent : _sqlTime(at);
+  if (!Number.isFinite(tsMs(current))) return made;
+  return laterThan(current, at) ? current : made;
+}
+
+function _sqlTime(ms) { return new Date(Number.isFinite(ms) ? ms : Date.now()).toISOString().replace('T', ' ').slice(0, 19); }
+
+// Whether anything in a row changed here after `at` (ms), for a delete made
+// then: its fields and its own delete or undelete (lib/sync-fields.js); a
+// note also counts its items, pictures and labels.
+function _changedAfter(name, existing, at) {
+  const own = r => deleteLoses({ existing: r, fields: [...(SYNC_FIELDS[name] || []), 'deleted_at'], at }) != null;
+  if (own(existing)) return true;
+  if (name !== 'notes') return false;
+  for (const t of ['checklist_items', 'note_attachments', 'note_labels']) {
+    for (const r of db.prepare(`SELECT field_times, updated_at FROM ${t} WHERE note_id = ?`).all(existing.id)) {
+      if (deleteLoses({ existing: r, fields: [...SYNC_FIELDS[t], 'deleted_at'], at }) != null) return true;
+    }
+  }
+  return false;
+}
+
+function _buildInsertSql(table, spec, present = spec.cols, withTimes = false) {
   const cols = ['user_id', ...present, 'updated_at'];
   if (spec.softDelete) cols.push('deleted_at');
+  if (withTimes) cols.push('field_times');
   const ph = cols.map(() => '?').join(', ');
   return `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${ph})`;
-}
-
-function _buildUpdateSql(table, spec, present = spec.cols) {
-  // FK columns keep the server's value when the client pushes NULL.
-  // The client always sends its full row (SELECT * on pending rows),
-  // so a mobile push whose local row hasn't yet picked up a PWA-side
-  // attach would clobber the server's newly-set FK with NULL. COALESCE
-  // preserves the server's value unless the client explicitly sends a
-  // non-null. Detaches still go through the explicit PUT route
-  // routes, which use body.X !== undefined
-  // semantics and correctly writes NULL when asked.
-  const fkCols = new Set(Object.keys(spec.parents || {}));
-  const setCols = present.map(c => (
-    fkCols.has(c) ? `${c} = COALESCE(?, ${c})` : `${c} = ?`
-  ));
-  setCols.push('updated_at = ?');
-  if (spec.softDelete) setCols.push('deleted_at = ?');
-  return `UPDATE ${table} SET ${setCols.join(', ')} WHERE id = ?`;
 }
 
 export default router;

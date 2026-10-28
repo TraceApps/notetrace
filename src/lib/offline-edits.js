@@ -6,17 +6,21 @@
  * over the mirror, or over what the server sends before they've gone up, so
  * the screen always shows them. Back online, the outbox becomes one sync push
  * (POST /api/sync/push), the same path the Android app uses, so the server's
- * merge rules decide: the newer edit of a note wins and a losing title or text
- * is kept in version history, checklist items merge one by one, and labels
- * are added or removed individually.
+ * merge rules decide: only the fields an op changed go up, the newer edit of
+ * each field wins (server/lib/field-sync.js) and a losing title or text is
+ * kept in version history, checklist items merge one by one, and labels are
+ * added or removed individually.
  *
  * Everything here is plain data in, plain data out; offline-api.js does the
  * storage and the network.
  */
 import { itemAfterPatch } from '../../server/lib/task-rules.js';
+import { sameValue } from './field-sync.js';
 
 /** Note fields an offline edit may change. */
 export const NOTE_FIELDS = ['title', 'body_md', 'color', 'pinned', 'archived', 'in_tasks', 'read_only', 'reminder_at', 'reminder_rrule', 'reminder_tz'];
+// A checklist item's fields, as a push sends them.
+const ITEM_FIELDS = ['text', 'checked', 'position', 'due_date', 'due_repeat', 'checked_at'];
 
 /** A server-style timestamp (UTC, no zone), as the sync push expects. */
 export const stamp = (ms = Date.now()) => new Date(ms).toISOString().replace('T', ' ').replace('Z', '');
@@ -214,6 +218,12 @@ export function buildPush(ops, base, final) {
   const lastAt = new Map();
   const noteFields = new Map();
   const itemAt = new Map();
+  // When each field was last changed here (field_edits): a note's, and each
+  // item's (uuid), so a field changed before a later change of another
+  // keeps its own time.
+  const noteFieldAt = new Map();
+  const itemFieldAt = new Map();
+  const mark = (map, key, fields, at) => { const m = map.get(key) || {}; for (const f of fields) m[f] = at; map.set(key, m); };
   for (const op of ops) {
     const at = stamp(op.at);
     lastAt.set(op.id, at);
@@ -222,6 +232,16 @@ export function buildPush(ops, base, final) {
     if (op.type === 'trash') { fields.add('trashed_at'); fields.add('pinned'); }
     if (op.type === 'restore') fields.add('trashed_at');
     noteFields.set(op.id, fields);
+    if (op.type === 'update') mark(noteFieldAt, op.id, Object.keys(op.patch || {}).filter(k => NOTE_FIELDS.includes(k)), at);
+    if (op.type === 'trash') mark(noteFieldAt, op.id, ['trashed_at', 'pinned'], at);
+    if (op.type === 'restore') mark(noteFieldAt, op.id, ['trashed_at'], at);
+    if (op.type === 'updateItem') {
+      const keys = Object.keys(op.patch || {}).filter(k => ITEM_FIELDS.includes(k));
+      if (keys.includes('checked')) keys.push('checked_at');
+      if (keys.includes('due_date')) keys.push('due_repeat');
+      mark(itemFieldAt, op.uuid, keys, at);
+    }
+    if (op.type === 'reorderItems') for (const u of op.uuids || []) mark(itemFieldAt, u, ['position'], at);
     const items = itemAt.get(op.id) || new Map();
     if (op.type === 'addItem' && op.item?.uuid) items.set(op.item.uuid, at);
     if (op.type === 'updateItem' || op.type === 'deleteItem') items.set(op.uuid, at);
@@ -247,6 +267,8 @@ export function buildPush(ops, base, final) {
     } else if (noteFields.get(id)?.size) {
       const row = { client_id: id, server_id: id, updated_at: at };
       for (const k of noteFields.get(id)) row[k] = _sql(after[k]);
+      const t = noteFieldAt.get(id);
+      if (t && Object.keys(t).length) row.field_edits = t;
       tables.notes.push(row);
     }
 
@@ -259,11 +281,22 @@ export function buildPush(ops, base, final) {
         tables.checklist_items.push({ client_id: uuid, uuid, ...noteRef, text: old.text, checked: _sql(!!old.checked), position: old.position, updated_at: itemStamp, deleted_at: itemStamp });
         continue;
       }
-      tables.checklist_items.push({
+      const row = {
         client_id: uuid, uuid, ...noteRef, text: item.text, checked: _sql(!!item.checked), position: item.position,
         due_date: item.due_date ?? null, due_repeat: item.due_repeat ?? null, checked_at: item.checked_at ?? null,
         updated_at: itemStamp, deleted_at: null,
-      });
+      };
+      // An item the server had: only what changed in it here goes up as
+      // changed, so a rename made elsewhere isn't put back by a tick here.
+      const prior = existed ? before.items.find(x => x.uuid === uuid) : null;
+      if (prior) {
+        const was = { text: prior.text, checked: _sql(!!prior.checked), position: prior.position, due_date: prior.due_date ?? null, due_repeat: prior.due_repeat ?? null, checked_at: prior.checked_at ?? null };
+        row.changed_fields = ITEM_FIELDS.filter(f => !sameValue(was[f], row[f]));
+        const t = itemFieldAt.get(uuid) || {};
+        const edits = Object.fromEntries(row.changed_fields.filter(f => t[f]).map(f => [f, t[f]]));
+        if (Object.keys(edits).length) row.field_edits = edits;
+      }
+      tables.checklist_items.push(row);
     }
 
     const had = new Set(before?.labels || []);

@@ -150,6 +150,8 @@ test('an older app\'s copy without the column applies the pull it asks for, and 
   const newPull = await web('carol', 'GET', `/api/sync/pull?since=${since}&keys=1&ro=1`);
   const r = phone('old-copy', `
     await p.setupSignIn('carol');
+    // As an older app's database: no read_only, nor the newer app's triggers on it.
+    await p.db.run('DROP TRIGGER IF EXISTS et_notes_read_only', []);
     await p.db.run('ALTER TABLE notes DROP COLUMN read_only', []);
     const old = ${JSON.stringify(oldPull)};
     const neu = ${JSON.stringify(newPull)};
@@ -170,6 +172,8 @@ test('an app updated to know Read Only never turns it off: it pulls every note a
     await p.setupSignIn('alice');
     await p.sync();
     // As the app before Read Only left its copy: no column, and pulled up to now.
+    // As an older app's database: no read_only, nor the newer app's triggers on it.
+    await p.db.run('DROP TRIGGER IF EXISTS et_notes_read_only', []);
     await p.db.run('ALTER TABLE notes DROP COLUMN read_only', []);
     const cursorBefore = await p.dbn.dbGetMeta('last_pull_at');
     p.done({ cursorBefore: !!cursorBefore });`);
@@ -255,7 +259,7 @@ test('turned on or off without a connection in the browser, it goes up with the 
   const before = { id: 5, title: 'T', body_md: '', kind: 'text', read_only: false, items: [], labels: [] };
   const after = { ...before, read_only: true };
   const push = buildPush([{ type: 'update', id: 5, patch: { read_only: true }, at: Date.parse('2026-10-18T10:00:00Z') }], new Map([[5, before]]), new Map([[5, after]]));
-  assert.deepEqual(push.tables.notes, [{ client_id: 5, server_id: 5, updated_at: '2026-10-18 10:00:00.000', read_only: 1 }]);
+  assert.deepEqual(push.tables.notes, [{ client_id: 5, server_id: 5, updated_at: '2026-10-18 10:00:00.000', read_only: 1, field_edits: { read_only: '2026-10-18 10:00:00.000' } }]);
 });
 
 test('the note opens for reading: content guarded, ticking and color kept, Edit for one visit', () => {

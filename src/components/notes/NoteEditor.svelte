@@ -80,6 +80,11 @@
   let title = note?.title ?? prefill?.title ?? '';
   const openedTitle = note?.title ?? '';
   let body = note?.body_md ?? prefill?.body_md ?? '';
+  // The title and text as the server last had them from this editor: a save
+  // sends only what changed since, so a title or text changed on another
+  // device meanwhile isn't put back by a save of the other one.
+  let sentTitle = note?.title ?? '';
+  let sentBody = note?.body_md ?? '';
   let kind = note?.kind ?? prefill?.kind ?? initialKind;
   let color = note?.color ?? prefill?.color ?? null;
   let pinned = !!note?.pinned;
@@ -186,14 +191,16 @@
   /** Create the note on first content. Resolves to its id. */
   async function ensureNote() {
     if (noteId) return noteId;
+    const madeTitle = title, madeBody = kind === 'text' ? body : '';
     const created = await NoteApi.createNote({
-      title, body_md: kind === 'text' ? body : '', kind, color, pinned, in_tasks: kind === 'checklist' && inTasks,
+      title: madeTitle, body_md: madeBody, kind, color, pinned, in_tasks: kind === 'checklist' && inTasks,
       reminder_at: reminderAt, reminder_rrule: reminderRepeat, reminder_tz: reminderTz,
       labels: noteLabels,
       attachments,
       items: kind === 'checklist' ? items.map((i, idx) => ({ uuid: i.uuid, text: i.text, checked: i.checked, position: i.position ?? idx + 1 })) : [],
     });
     apply(created);
+    sentTitle = madeTitle; sentBody = madeBody;
     return noteId;
   }
 
@@ -212,8 +219,15 @@
         await ensureNote();
         return;
       }
-      // Links follow a rename once, on close, not through every half-typed title.
-      apply(await NoteApi.updateNote(noteId, kind === 'text' ? { title, body_md: body, rename_links: false } : { title, rename_links: false }));
+      // Only what changed since the last save goes (sentTitle). Links follow
+      // a rename once, on close, not through every half-typed title.
+      const p = {};
+      if (title !== sentTitle) p.title = title;
+      if (kind === 'text' && body !== sentBody) p.body_md = body;
+      if (!Object.keys(p).length) return;
+      apply(await NoteApi.updateNote(noteId, { ...p, rename_links: false }));
+      if ('title' in p) sentTitle = p.title;
+      if ('body_md' in p) sentBody = p.body_md;
     });
   }
 
@@ -764,7 +778,11 @@
     editorKey++;
     await enqueue(async () => {
       if (!noteId) { await ensureNote(); return; }
-      apply(await NoteApi.updateNote(noteId, { title, body_md: body, snapshot: 'restore' }));
+      const p = { body_md: body };
+      if (title !== sentTitle) p.title = title;
+      apply(await NoteApi.updateNote(noteId, { ...p, snapshot: 'restore' }));
+      if ('title' in p) sentTitle = p.title;
+      sentBody = p.body_md;
     });
   }
   async function applyTraceChecklist(lines) {
@@ -861,6 +879,7 @@
       apply(n);
       kind = n.kind;
       body = n.body_md;
+      sentBody = n.body_md ?? '';
       items = (n.items || []).map(i => ({ ...i }));
     });
     editorKey++;
@@ -878,6 +897,7 @@
       if (!noteId) return;
       if (before.kind === 'text') {
         apply(await NoteApi.updateNote(noteId, { body_md: before.body }));
+        sentBody = before.body;
       } else {
         const n = await NoteApi.getNote(noteId);
         for (const it of n.items || []) await NoteApi.deleteItem(noteId, it.uuid);
@@ -925,6 +945,7 @@
     const n = e.detail;
     apply(n);
     title = n.title; body = n.body_md; kind = n.kind;
+    sentTitle = n.title ?? ''; sentBody = n.body_md ?? '';
     items = (n.items || []).map(i => ({ ...i }));
     editorKey++;
     showHistory = false;

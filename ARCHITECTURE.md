@@ -79,10 +79,31 @@ works on readable text.
 
 ### Nothing is silently lost on conflict
 
-Two devices editing the same note body resolve by last write, and the
-losing version is kept in version history rather than dropped.
-Checklist items merge per item (a stable uuid plus tombstones for
-deletes), so a device with a stale list can never wipe items another
+Two edits of one row meet field by field: the newer edit of each field
+stays, by when it was made (on the server's clock), and fields that only
+mean something together merge as one (a note's text and kind, its
+reminder's time, repeat and zone; an item's tick and when; a picture's
+file and what describes it). `server/lib/field-sync.js` is the rule,
+byte-identical with the other Trace apps that use it and pinned by hash
+in `scripts/field-sync.test.js`; `server/lib/sync-fields.js` lists each
+table's fields and groups. Every synced row keeps `field_times` (when each
+field last changed), stamped by triggers on every write (db.js) unless a
+merged sync edit stamps its own; it never goes out in a pull. The Android
+app keeps each row's `server_base` (the copy the server has; rows from
+before get one after a pull, a few hundred at a time) and pushes
+`changed_fields`, so a whole row from the phone changes only what was
+changed there, with `field_edits`, each field's own edit time (kept by
+triggers in its `edit_times` table), so a field changed before a later
+change of another keeps its time. The web's offline outbox sends the same
+for notes and items. A row without them (older apps) counts every field it
+sends as edited at its `updated_at`. A delete loses to a later edit of the row
+(for a note, also of its items, pictures and labels), and an edit made
+before a delete doesn't bring the row back; ties go to the delete. A
+setting is one field, the newer value wins. A note title or text that
+loses is kept in version history rather than dropped. The note editor
+saves only the title or text it changed, so a save of one never puts the
+other back. Checklist items merge per item (a stable uuid plus tombstones
+for deletes), so a device with a stale list can never wipe items another
 device added.
 
 ### Shared notes keep one owner

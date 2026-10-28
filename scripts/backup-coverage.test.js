@@ -28,6 +28,7 @@ const SERVER_SKIP = {
 const LOCAL_SKIP = {
   sync_log: 'what this device still owes the server',
   sync_meta: 'this device\'s sync bookkeeping',
+  edit_times: 'when fields were changed here and not sent yet: this device\'s sync bookkeeping',
 };
 
 test('the server backup covers every table it should', () => {

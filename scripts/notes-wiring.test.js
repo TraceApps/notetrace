@@ -52,8 +52,9 @@ test('sync checks that a pushed parent id belongs to the same owner', () => {
   assert.match(syncJs, /if \(!parent \|\| !own\(parent\)\) return \{ __missingParent: fk \};/);
 });
 
-test('sync never lets an older device copy overwrite a newer server row', () => {
-  assert.match(syncJs, /serverIsNewer/);
+test('sync never lets an older edit of a field overwrite a newer one, and keeps a losing title or text', () => {
+  // Field by field (scripts/field-sync-push.test.js proves it on a server).
+  assert.match(syncJs, /const m = mergeEdit\(\{ existing, values, fields, groups: SYNC_GROUPS\[name\], json: SYNC_JSON\[name\], changed, at, fieldAt: editsAt\(row\.field_edits\) \}\);/);
   assert.match(syncJs, /snapshotVersion\(existing, 'conflict'/);
 });
 
@@ -81,8 +82,9 @@ test('pulls use the server-stamped synced_at cursor, never device updated_at', (
   assert.match(dbJs, /trg_\$\{t\}_synced_upd AFTER UPDATE/);
 });
 
-test('a rejected stale push re-stamps the winning row so the device pulls it back', () => {
-  assert.match(syncJs, /if \(serverIsNewer\) \{[\s\S]{0,300}SET synced_at = /);
+test('a push that loses a field re-stamps the row so the device pulls it back', () => {
+  assert.match(syncJs, /\} else if \(m\.differs\) \{[\s\S]{0,200}_restamp\(name, existing\.id\)/);
+  assert.match(syncJs, /function _restamp\(name, id\) \{\n  db\.prepare\(`UPDATE \$\{name\} SET synced_at = /);
 });
 
 test('Android reminders are native exact alarms, re-armed after reboot', () => {

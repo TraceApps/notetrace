@@ -18,6 +18,8 @@
 
 import { CapacitorSQLite, SQLiteConnection } from '@capacitor-community/sqlite';
 import { isNative } from './platform.js';
+import { rowBase } from './field-sync.js';
+import { SYNC_FIELDS, SYNC_JSON } from '../../server/lib/sync-fields.js';
 
 export const LOCAL_USER_ID = 1;
 const DB_NAME = 'notetrace_local';
@@ -56,6 +58,7 @@ const SCHEMA = `
     created_at     TEXT DEFAULT (datetime('now')),
     updated_at     TEXT DEFAULT (datetime('now')),
     deleted_at     TEXT DEFAULT NULL,
+    server_base TEXT,
     sync_status    TEXT DEFAULT 'synced'
   );
   CREATE INDEX IF NOT EXISTS idx_notes_user    ON notes(user_id);
@@ -78,6 +81,7 @@ const SCHEMA = `
     created_at  TEXT DEFAULT (datetime('now')),
     updated_at  TEXT DEFAULT (datetime('now')),
     deleted_at  TEXT DEFAULT NULL,
+    server_base TEXT,
     sync_status TEXT DEFAULT 'synced'
   );
   CREATE INDEX IF NOT EXISTS idx_items_note   ON checklist_items(note_id);
@@ -107,6 +111,7 @@ const SCHEMA = `
     created_at  TEXT DEFAULT (datetime('now')),
     updated_at  TEXT DEFAULT (datetime('now')),
     deleted_at  TEXT DEFAULT NULL,
+    server_base TEXT,
     sync_status TEXT DEFAULT 'synced'
   );
   CREATE INDEX IF NOT EXISTS idx_attachments_note   ON note_attachments(note_id);
@@ -124,6 +129,7 @@ const SCHEMA = `
     created_at  TEXT DEFAULT (datetime('now')),
     updated_at  TEXT DEFAULT (datetime('now')),
     deleted_at  TEXT DEFAULT NULL,
+    server_base TEXT,
     sync_status TEXT DEFAULT 'synced'
   );
   CREATE INDEX IF NOT EXISTS idx_labels_server ON labels(server_id);
@@ -138,6 +144,7 @@ const SCHEMA = `
     created_at  TEXT DEFAULT (datetime('now')),
     updated_at  TEXT DEFAULT (datetime('now')),
     deleted_at  TEXT DEFAULT NULL,
+    server_base TEXT,
     sync_status TEXT DEFAULT 'synced',
     UNIQUE (note_id, label_id)
   );
@@ -291,7 +298,47 @@ async function _migrateShareColumns() {
     const labelInfo = await db.query(`PRAGMA table_info(labels)`);
     const labelCols = new Set((labelInfo?.values || []).map(c => c.name));
     if (labelCols.size && !labelCols.has('icon')) await db.run(`ALTER TABLE labels ADD COLUMN icon TEXT`);
+    // The copy of each row the server has (dbBaseOf): what a push says it
+    // changed is told from it. Rows from before have none, and go up whole.
+    for (const t of Object.keys(SYNC_FIELDS)) {
+      const cols = new Set(((await db.query(`PRAGMA table_info(${t})`))?.values || []).map(c => c.name));
+      if (cols.size && !cols.has('server_base')) await db.run(`ALTER TABLE ${t} ADD COLUMN server_base TEXT`);
+    }
+    await _keepEditTimes(db);
   } catch { /* best-effort */ }
+}
+
+// When each field of a row the server has was changed here and not sent
+// yet (edit_times), so a push says each field's own time: a title changed
+// before a later change of the text keeps the time it was changed.
+// Triggers keep it, so every write here counts; a pull's write (synced)
+// doesn't. One statement per call (the Android plugin runs only the first
+// of a script's lines).
+async function _keepEditTimes(db) {
+  await db.run(`CREATE TABLE IF NOT EXISTS edit_times (tbl TEXT NOT NULL, row_id INTEGER NOT NULL, field TEXT NOT NULL, at TEXT, PRIMARY KEY (tbl, row_id, field))`);
+  // Only the ones missing (a new install, a field added since).
+  const have = new Set(((await db.query(`SELECT name FROM sqlite_master WHERE type = 'trigger' AND name GLOB 'et_*'`, []))?.values || []).map(r => r.name));
+  for (const [t, fields] of Object.entries(SYNC_FIELDS)) {
+    const missing = fields.filter(f => !have.has(`et_${t}_${f}`));
+    if (!missing.length) continue;
+    const cols = new Set(((await db.query(`PRAGMA table_info(${t})`))?.values || []).map(c => c.name));
+    for (const f of missing.filter(x => cols.has(x))) {
+      await db.run(`CREATE TRIGGER IF NOT EXISTS et_${t}_${f} AFTER UPDATE OF ${f} ON ${t} FOR EACH ROW WHEN OLD.${f} IS NOT NEW.${f} AND NEW.sync_status = 'pending' AND NEW.server_id IS NOT NULL BEGIN INSERT OR REPLACE INTO edit_times (tbl, row_id, field, at) VALUES ('${t}', NEW.id, '${f}', NEW.updated_at); END`);
+    }
+  }
+}
+
+/** When each field of `table`'s rows was changed here and not sent yet:
+ *  Map of row id to { field: time }. */
+export async function dbEditTimes(table) {
+  if (!isNative) return new Map();
+  const db = await getDb();
+  const out = new Map();
+  for (const r of (await db.query(`SELECT row_id, field, at FROM edit_times WHERE tbl = ?`, [table]))?.values || []) {
+    if (!out.has(r.row_id)) out.set(r.row_id, {});
+    if (r.at) out.get(r.row_id)[r.field] = r.at;
+  }
+  return out;
 }
 
 // Some SQLite versions refuse non-constant DEFAULTs on ALTER ADD
@@ -520,14 +567,17 @@ export async function dbGetPendingSettingsForPush() {
  * unconditionally — but that path is unsafe and should be removed once
  * every caller is updated to pass the snapshot.
  */
-export async function dbSetServerId(table, clientId, serverId, snapshotUpdatedAt = null) {
+export async function dbSetServerId(table, clientId, serverId, snapshotUpdatedAt = null, base = null) {
   if (!isNative || !table || !clientId) return;
   const db = await getDb();
   if (snapshotUpdatedAt) {
-    await db.run(
-      `UPDATE ${table} SET server_id = ?, sync_status = 'synced' WHERE id = ? AND updated_at = ?`,
-      [serverId, clientId, snapshotUpdatedAt]
-    );
+    // What it changed went up with it (not when it changed again meanwhile).
+    await db.run(`DELETE FROM edit_times WHERE tbl = ? AND row_id = ? AND (SELECT updated_at FROM ${table} WHERE id = ?) IS ?`, [table, clientId, clientId, snapshotUpdatedAt]);
+    // `base`: the row as it went up (dbBaseOf), now the server's copy.
+    await db.run(`UPDATE ${table} SET server_id = ?, sync_status = 'synced' WHERE id = ? AND updated_at = ?`, [serverId, clientId, snapshotUpdatedAt]);
+    // `base`: the row as it went up (dbBaseOf), now the server's copy, also
+    // when it changed here meanwhile (that change is told apart from it).
+    if (base != null && SYNC_FIELDS[table]) await db.run(`UPDATE ${table} SET server_base = ? WHERE id = ?`, [base, clientId]);
     // If the row was edited mid-flight, the WHERE didn't match. Still stamp
     // the server_id (caller needs it for future PATCH/PUT routing), but
     // leave sync_status='pending' so the next push picks up the fresh value.
@@ -661,6 +711,8 @@ export async function dbApplyPull(payload, { live = () => true } = {}) {
         continue;
       }
 
+      // The copy the server has, to tell what this phone changes since.
+      if (SYNC_FIELDS[table]) translated.server_base = dbBaseOf(table, translated);
       // Build column list dynamically from the row's keys (minus `id`).
       const cols = Object.keys(translated).filter(k => k !== 'id');
       const values = cols.map(k => {
@@ -766,11 +818,51 @@ export async function dbMarkTableSynced(table, rows) {
   if (!isNative || !rows || !rows.length) return;
   const db = await getDb();
   for (const r of rows) {
+    // What it changed went up with it (not when it changed again meanwhile).
+    await db.run(`DELETE FROM edit_times WHERE tbl = ? AND row_id = ? AND (SELECT updated_at FROM ${table} WHERE id = ?) IS ?`, [table, r.id, r.id, r.updated_at]);
     await db.run(
       `UPDATE ${table} SET sync_status = 'synced' WHERE id = ? AND updated_at = ?`,
       [r.id, r.updated_at]
     );
+    // `base`: the row as it went up (dbBaseOf), now the server's copy, also
+    // when it changed here meanwhile (that change is told apart from it).
+    if (r.base != null && SYNC_FIELDS[table]) await db.run(`UPDATE ${table} SET server_base = ? WHERE id = ?`, [r.base, r.id]);
   }
+}
+
+/** A row's synced fields as the server has them (lib/field-sync.js
+ *  rowBase), kept in server_base: a push says which of them changed since. */
+export function dbBaseOf(table, row) {
+  return SYNC_FIELDS[table] ? rowBase(SYNC_FIELDS[table], row, SYNC_JSON[table]) : null;
+}
+
+/**
+ * Rows this phone had from the server before it kept server_base, and
+ * hasn't changed since (synced): as they are here is the server's copy, so
+ * it's kept as one, a few hundred at a time after each pull. Their next
+ * edit then says what it changed instead of going up whole. Returns how
+ * many it kept.
+ */
+export async function dbFillServerBases({ live = () => true, limit = 300 } = {}) {
+  // Done once a pass finds none: rows that come later get theirs as they
+  // come down or go up.
+  if ((await dbGetMeta('server_bases_done')) === '1') return 0;
+  const db = await getDb();
+  let n = 0;
+  for (const table of Object.keys(SYNC_FIELDS)) {
+    if (n >= limit || !live()) break;
+    const rows = (await db.query(
+      `SELECT * FROM ${table} WHERE server_id IS NOT NULL AND server_base IS NULL AND sync_status = 'synced' LIMIT ?`, [limit - n]))?.values || [];
+    for (const r of rows) {
+      if (!live()) return n;
+      // Only if it's still as read (not changed here meanwhile).
+      await db.run(`UPDATE ${table} SET server_base = ? WHERE id = ? AND server_base IS NULL AND sync_status = 'synced' AND updated_at IS ?`,
+        [dbBaseOf(table, r), r.id, r.updated_at ?? null]);
+      n++;
+    }
+  }
+  if (!n && live()) await dbSetMeta('server_bases_done', '1');
+  return n;
 }
 
 // ── Whose copy (lib/local-account.js) ────────────────────────────────────
@@ -798,6 +890,8 @@ export async function dbClearUserData() {
   // statement of each line it splits a script into, so a script of
   // deletes would leave most tables as they were.
   for (const t of _ACCOUNT_TABLES) await db.run(`DELETE FROM ${t}`, []);
+  await db.run(`DELETE FROM edit_times`, []);
+  await db.run(`DELETE FROM sync_meta WHERE key = 'server_bases_done'`, []);
   await db.run(`DELETE FROM sync_meta WHERE key = 'last_pull_at'`, []);
   await db.run(`DELETE FROM sync_meta WHERE key = 'history_upload_through'`, []);
   // Read back: a copy that still holds anything is never shown as cleared
@@ -846,12 +940,13 @@ export async function dbKeepForNewServer() {
   // One statement per call (see dbClearUserData).
   for (const t of SYNC_TABLES) {
     if (t !== 'ai_chat_history') await db.run(`DELETE FROM ${t} WHERE deleted_at IS NOT NULL`, []);
-    await db.run(`UPDATE ${t} SET server_id = NULL, sync_status = 'pending'`, []);
+    await db.run(`UPDATE ${t} SET server_id = NULL${SYNC_FIELDS[t] ? ', server_base = NULL' : ''}, sync_status = 'pending'`, []);
   }
   // Items and pictures keep their uuid: on a server that already has it
   // for this account it's the same item, and one that is another account's
   // is answered `uuid_taken` and gets a uuid of its own then (dbNewUuid).
   await db.run(`UPDATE user_settings SET sync_status = 'pending'`, []);
+  await db.run(`DELETE FROM edit_times`, []);
   await db.run(`DELETE FROM sync_meta WHERE key = 'last_pull_at'`, []);
 }
 
@@ -918,7 +1013,8 @@ export async function dbParentGoneOnServer(table, id, fk, answered = null) {
   const parent = (await db.query(`SELECT ${fk} AS p FROM ${table} WHERE id = ?`, [id]))?.values?.[0]?.p;
   // A parent this same push answered has its id now: the row goes with it next time.
   if (parent == null || answered?.has(`${parentTable}:${parent}`)) return;
-  await db.run(`UPDATE ${parentTable} SET server_id = NULL, sync_status = 'pending' WHERE id = ?`, [parent]);
+  await db.run(`UPDATE ${parentTable} SET server_id = NULL, server_base = NULL, sync_status = 'pending' WHERE id = ?`, [parent]);
+  await db.run(`DELETE FROM edit_times WHERE tbl = ? AND row_id = ?`, [parentTable, parent]);
 }
 
 /** The row's uuid is another account's on the server: one of its own,
@@ -946,7 +1042,10 @@ export async function dbServerIdsMissingFromPull(payload) {
       : (t === 'checklist_items' || t === 'note_attachments') ? ` AND note_id IN (SELECT id FROM notes WHERE share_role IS NULL OR share_role = 'owner')` : '';
     const rows = (await db.query(`SELECT id, server_id FROM ${t} WHERE server_id IS NOT NULL${ownOnly}`, []))?.values || [];
     for (const r of rows) {
-      if (!sent.has(r.server_id)) await db.run(`UPDATE ${t} SET server_id = NULL, sync_status = 'pending' WHERE id = ?`, [r.id]);
+      if (!sent.has(r.server_id)) {
+        await db.run(`UPDATE ${t} SET server_id = NULL${SYNC_FIELDS[t] ? ', server_base = NULL' : ''}, sync_status = 'pending' WHERE id = ?`, [r.id]);
+        await db.run(`DELETE FROM edit_times WHERE tbl = ? AND row_id = ?`, [t, r.id]);
+      }
     }
   }
 }

@@ -1173,3 +1173,106 @@ test('a sync with nothing new reads little and writes nothing but the pull curso
   assert.deepEqual(r.scans, [], 'every attachment read again');
   assert.ok(r.calls <= 20, `an idle sync costs ${r.calls} database calls`);
 });
+
+// ── Two edits of one row, field by field (server/lib/field-sync.js) ───
+
+test('an offline edit on the phone keeps a later rename on the web, and the phone shows both', async (t) => {
+  if (skip(t)) return;
+  const n = await web(A, 'carol', 'POST', '/api/notes', { title: 'F1 plan', body_md: 'draft' });
+  const r = phone('f1', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const local = (await p.rows()).find(x => x.server_id === ${n.id});
+    await p.offline(async () => {
+      await p.NotesNative.updateNote(local.id, { color: 'sky' });
+      await p.sleep(1100);
+      // Renamed on the web after the phone's edit, before the phone syncs.
+      await p.net.web(p.S + '/api/notes/${n.id}', { method: 'PATCH', headers: { Authorization: 'Bearer ' + p.platform.getAuthToken(), 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'F1 plan for May' }) });
+      await p.sleep(1100);
+      // And the text edited here later still: a later edit of another field.
+      await p.NotesNative.updateNote(local.id, { body_md: 'draft two' });
+    });
+    await p.sync(); await p.sync();
+    const row = (await p.rows()).find(x => x.server_id === ${n.id});
+    p.done({ title: row.title, body: row.body_md, color: row.color, waiting: await p.waiting() });`);
+  assert.deepEqual(r, { title: 'F1 plan for May', body: 'draft two', color: 'sky', waiting: 0 });
+  assert.deepEqual(A.q('SELECT title, body_md, color FROM notes WHERE id = ?', n.id), [{ title: 'F1 plan for May', body_md: 'draft two', color: 'sky' }]);
+});
+
+test('ticking an item on the phone keeps its wording changed on the web; the phone gets the wording', async (t) => {
+  if (skip(t)) return;
+  const n = await web(A, 'carol', 'POST', '/api/notes', { title: 'F2 list', kind: 'checklist', items: [{ uuid: 'f2-eggs', text: 'eggs' }] });
+  const r = phone('f2', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const local = (await p.rows()).find(x => x.server_id === ${n.id});
+    await p.offline(async () => {
+      await p.net.web(p.S + '/api/notes/${n.id}/items/f2-eggs', { method: 'PATCH', headers: { Authorization: 'Bearer ' + p.platform.getAuthToken(), 'Content-Type': 'application/json' }, body: JSON.stringify({ text: 'a dozen eggs' }) });
+      await p.sleep(1100);
+      await p.NotesNative.updateItem(local.id, 'f2-eggs', { checked: true });
+    });
+    await p.sync(); await p.sync();
+    const it = (await p.rows('checklist_items')).find(x => x.uuid === 'f2-eggs');
+    p.done({ text: it.text, checked: it.checked, waiting: await p.waiting() });`);
+  assert.deepEqual(r, { text: 'a dozen eggs', checked: 1, waiting: 0 });
+  assert.deepEqual(A.q(`SELECT text, checked FROM checklist_items WHERE uuid = 'f2-eggs'`), [{ text: 'a dozen eggs', checked: 1 }]);
+});
+
+test('after the update, notes the phone had from before say what their first edit changed', async (t) => {
+  if (skip(t)) return;
+  const n = await web(A, 'carol', 'POST', '/api/notes', { title: 'F3 old', body_md: 'before' });
+  const r = phone('f3', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    // As an app from before left it: synced, no copy of the server's kept.
+    await p.db.run('UPDATE notes SET server_base = NULL', []);
+    await p.db.run("DELETE FROM sync_meta WHERE key = 'server_bases_done'", []);
+    await p.sync();
+    const local = (await p.rows()).find(x => x.server_id === ${n.id});
+    await p.offline(async () => {
+      await p.net.web(p.S + '/api/notes/${n.id}', { method: 'PATCH', headers: { Authorization: 'Bearer ' + p.platform.getAuthToken(), 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'F3 renamed' }) });
+      await p.sleep(1100);
+      await p.NotesNative.updateNote(local.id, { body_md: 'after' });
+    });
+    await p.sync(); await p.sync();
+    const row = (await p.rows()).find(x => x.server_id === ${n.id});
+    p.done({ title: row.title, body: row.body_md });`);
+  assert.deepEqual(r, { title: 'F3 renamed', body: 'after' });
+  assert.deepEqual(A.q('SELECT title, body_md FROM notes WHERE id = ?', n.id), [{ title: 'F3 renamed', body_md: 'after' }]);
+});
+
+test("a title changed offline before a later rename on the web, then the text changed: the web's title stays", async (t) => {
+  if (skip(t)) return;
+  const n = await web(A, 'carol', 'POST', '/api/notes', { title: 'F4 plan', body_md: 'one' });
+  const r = phone('f4', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const local = (await p.rows()).find(x => x.server_id === ${n.id});
+    await p.offline(async () => {
+      await p.NotesNative.updateNote(local.id, { title: 'F4 phone title' });
+      await p.sleep(1100);
+      await p.net.web(p.S + '/api/notes/${n.id}', { method: 'PATCH', headers: { Authorization: 'Bearer ' + p.platform.getAuthToken(), 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'F4 web title' }) });
+      await p.sleep(1100);
+      await p.NotesNative.updateNote(local.id, { body_md: 'one, two' });
+    });
+    await p.sync(); await p.sync();
+    const row = (await p.rows()).find(x => x.server_id === ${n.id});
+    const left = (await p.db.query('SELECT COUNT(*) AS n FROM edit_times', [])).values[0].n;
+    p.done({ title: row.title, body: row.body_md, left });`);
+  assert.deepEqual(r, { title: 'F4 web title', body: 'one, two', left: 0 });
+});
+
+test('an edit undone while its push is out still goes up (it differs from what went up)', async (t) => {
+  if (skip(t)) return;
+  const n = await web(A, 'carol', 'POST', '/api/notes', { title: 'F5 note', body_md: 'A' });
+  const r = phone('f5undo', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const local = (await p.rows()).find(x => x.server_id === ${n.id});
+    await p.sleep(1100);
+    await p.NotesNative.updateNote(local.id, { body_md: 'Ax' });
+    // Undone while the push that carries 'Ax' is out.
+    let hook = async () => { await p.sleep(1100); await p.NotesNative.updateNote(local.id, { body_md: 'A' }); };
+    const f0 = globalThis.fetch;
+    globalThis.fetch = async (u, i) => { const res = await f0(u, i); if (hook && String(u).includes('/api/sync/push')) { const h = hook; hook = null; await h(); } return res; };
+    await p.sync(); await p.sleep(1100); await p.sync(); await p.sync();
+    const row = (await p.rows()).find(x => x.server_id === ${n.id});
+    p.done({ phone: row.body_md });`);
+  const server = A.q('SELECT body_md FROM notes WHERE id = ?', n.id)[0].body_md;
+  assert.deepEqual({ phone: r.phone, server }, { phone: 'A', server: 'A' });
+});
