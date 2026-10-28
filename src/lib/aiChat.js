@@ -24,7 +24,7 @@ import { getOpenAIChatParams, openAIBase } from './openai-chat-params.js';
 import { createToolSupportMemory, sendWithToolFallback } from './tool-support.js';
 import { NOTE_TOOLS } from './trace-note-tools.js';
 import { geminiToolResponse } from './gemini-tool-response.js';
-import { REPLY_MAX_TOKENS, sendWithLengthFallback, stoppedShort, stoppedShortError } from './trace-reply.js';
+import { REPLY_MAX_TOKENS, sendForReply, stoppedShort, stoppedShortError } from './trace-reply.js';
 
 // A reply that stopped short, said in the app's language (trace-reply.js).
 function _inLanguage(e) {
@@ -310,8 +310,9 @@ async function _callClaudeWithTools(apiKey, model, messages, systemPrompt, tools
     if (claudeTools.length) body.tools = claudeTools;
     // The tools stay declared (the history has tool calls in it), but can't be called.
     if (last && claudeTools.length) body.tool_choice = { type: 'none' };
-    // A model that can't write that many is asked again as before (trace-reply.js).
-    const res = await sendWithLengthFallback(body, (b) => _post(cb?.relay, 'https://api.anthropic.com/v1/messages', {
+    // A model that can't write that many is asked again as before, and an
+    // empty reply once more (trace-reply.js).
+    const res = await sendForReply('claude', body, (b) => _post(cb?.relay, 'https://api.anthropic.com/v1/messages', {
       'Content-Type': 'application/json',
       'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
@@ -320,7 +321,8 @@ async function _callClaudeWithTools(apiKey, model, messages, systemPrompt, tools
     const data = res.data;
     if (!res.ok) throw new Error(data.error?.message || `Claude API error ${res.status}`);
     const short = stoppedShort('claude', data);
-    if (short) throw _stoppedShort(short);
+    // Out of rounds, nothing at all is said as before (_finalAnswer), after it was asked for once more.
+    if (short && !(last && short === 'empty')) throw _stoppedShort(short);
 
     const toolUses = (data.content || []).filter(b => b.type === 'tool_use');
     const textBlocks = (data.content || []).filter(b => b.type === 'text');
@@ -380,8 +382,9 @@ async function _callOpenAIWithTools(apiKey, model, messages, systemPrompt, tools
     if (last && openaiTools.length) body.tool_choice = 'none';
     const headers = { 'Content-Type': 'application/json', 'Accept': 'application/json' };
     if (apiKey && apiKey !== 'no-key') headers['Authorization'] = `Bearer ${apiKey}`;
-    // A server that won't take the longer reply is asked again as before.
-    const send = (b) => sendWithLengthFallback(b, (x) => _post(cb?.relay, `${baseUrl}/v1/chat/completions`, headers, x, cb?.signal));
+    // A server that won't take the longer reply is asked again as before,
+    // and an empty reply once more (trace-reply.js).
+    const send = (b) => sendForReply('openai', b, (x) => _post(cb?.relay, `${baseUrl}/v1/chat/completions`, headers, x, cb?.signal));
     // A model that can't use tools gets the request again without them.
     // Through the relay the server may already have done that (it says so
     // with trace_tools_unsupported).
@@ -396,7 +399,8 @@ async function _callOpenAIWithTools(apiKey, model, messages, systemPrompt, tools
     if (toolsDropped || data.trace_tools_unsupported) onToolsUnsupported?.({ routed: toolsRouted || !!data.trace_tools_routed });
     // Cut off, a rewrite would be half a note and a tool call half its arguments.
     const short = stoppedShort('openai', data);
-    if (short) throw _stoppedShort(short);
+    // Out of rounds, nothing at all is said as before (_finalAnswer), after it was asked for once more.
+    if (short && !(last && short === 'empty')) throw _stoppedShort(short);
 
     const choice = data.choices[0];
     const msg = choice.message;
@@ -470,11 +474,13 @@ async function _callGeminiWithTools(apiKey, model, messages, systemPrompt, tools
     };
     if (geminiTools) body.tools = geminiTools;
     if (last && geminiTools) body.toolConfig = { functionCallingConfig: { mode: 'NONE' } };
-    const res = await _post(cb?.relay, url, { 'Content-Type': 'application/json' }, body, cb?.signal);
+    // An empty reply is asked for once more (trace-reply.js).
+    const res = await sendForReply('gemini', body, (b) => _post(cb?.relay, url, { 'Content-Type': 'application/json' }, b, cb?.signal));
     const data = res.data;
     if (!res.ok) throw new Error(data.error?.message || `Gemini API error ${res.status}`);
     const short = stoppedShort('gemini', data);
-    if (short) throw _stoppedShort(short);
+    // Out of rounds, nothing at all is said as before (_finalAnswer), after it was asked for once more.
+    if (short && !(last && short === 'empty')) throw _stoppedShort(short);
     const candidate = data.candidates?.[0];
     const parts = candidate?.content?.parts || [];
     const functionCalls = parts.filter(p => p.functionCall);

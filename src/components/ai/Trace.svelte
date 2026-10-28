@@ -375,10 +375,12 @@ Keep replies short and actionable. When you rewrite or summarize text, return it
             onToolCall: (toolName) => { toolStatus = `Calling ${toolName.replace(/_/g, ' ')}…`; },
             onToolsUnsupported,
           });
-      const reply2 = reply || '(no response)';
-      messages = [...messages, { role: 'assistant', content: reply2, time: _fmtTime() }];
+      // No words: said as an error, never shown or saved as a blank answer
+      // (TraceApps/nutritrace#286).
+      if (!String(reply ?? '').trim()) throw new Error($_('trace_reply.stopped_empty'));
+      messages = [...messages, { role: 'assistant', content: reply, time: _fmtTime() }];
       if (toolsNote) messages = toolsNotice.add(messages, $_(toolsNote));
-      NoteApi.post('/api/ai/history', { role: 'assistant', content: reply2 })
+      NoteApi.post('/api/ai/history', { role: 'assistant', content: reply })
         .catch(e => console.warn('[Trace] history save (assistant) failed:', e?.message || e));
     } catch (e) {
       messages = [...messages, { role: 'assistant', content: `⚠ ${e.message || 'AI request failed'}`, time: _fmtTime() }];
