@@ -242,8 +242,11 @@ test('MCP offers read_notes as a read tool and takes its ids as numbers', () => 
 // Each provider asks for a tool until its request turns the tools off (or
 // until `stopAfter` rounds), then answers. `rejectChoice`: an OpenAI-
 // compatible server that refuses tool_choice; `ignoreChoice`: one that
-// ignores it and asks for a tool anyway, with no text.
-let stopAfter = Infinity, rejectChoice = false, rejectStatus = 400, ignoreChoice = false, perRound = 1, argPad = '';
+// ignores it and asks for a tool anyway, with no text. Each call asks for
+// another page, as a model going through many notes does, unless a test
+// plans the calls itself (`plan`, TraceApps/nutritrace#287).
+let stopAfter = Infinity, rejectChoice = false, rejectStatus = 400, ignoreChoice = false, perRound = 1, argPad = '', plan = null;
+const callOf = (n, k) => (plan ? plan(n, k) : { name: 'search_notes', args: { query: 'license', offset: n * 100 + k, ...(argPad ? { pad: argPad } : {}) } });
 const seen = [];
 const toolRounds = (b, path) => (path.startsWith('/claude')
   ? (b.messages || []).filter((m) => Array.isArray(m.content) && m.content.some((c) => c.type === 'tool_result')).length
@@ -266,17 +269,17 @@ const endpoint = http.createServer((req, res) => {
     if (req.url.startsWith('/claude')) {
       out = b.tool_choice?.type === 'none' || n >= stopAfter
         ? { content: [{ type: 'text', text: `answer after ${n}` }], stop_reason: 'end_turn' }
-        : { content: Array.from({ length: perRound }, (_, k) => ({ type: 'tool_use', id: `t${n}_${k}`, name: 'search_notes', input: { query: 'license', offset: n * 25, ...(argPad ? { pad: argPad } : {}) } })), stop_reason: 'tool_use' };
+        : { content: Array.from({ length: perRound }, (_, k) => { const c = callOf(n, k); return { type: 'tool_use', id: `t${n}_${k}`, name: c.name, input: c.args }; }), stop_reason: 'tool_use' };
     } else if (req.url.startsWith('/gemini')) {
       out = b.toolConfig?.functionCallingConfig?.mode === 'NONE' || n >= stopAfter
         ? { candidates: [{ content: { parts: [{ text: `answer after ${n}` }] }, finishReason: 'STOP' }] }
-        : { candidates: [{ content: { parts: Array.from({ length: perRound }, () => ({ functionCall: { name: 'search_notes', args: { query: 'license', ...(argPad ? { pad: argPad } : {}) } } })) }, finishReason: 'STOP' }] };
+        : { candidates: [{ content: { parts: Array.from({ length: perRound }, (_, k) => { const c = callOf(n, k); return { functionCall: { name: c.name, args: c.args } }; }) }, finishReason: 'STOP' }] };
     } else {
       if (rejectChoice && b.tool_choice) return res.writeHead(rejectStatus, { 'Content-Type': 'application/json' }).end(JSON.stringify({ error: { message: "Unsupported value: 'tool_choice' none" } }));
       const answer = (b.tool_choice === 'none' && !ignoreChoice) || n >= stopAfter;
       out = { choices: [{ index: 0, finish_reason: answer ? 'stop' : 'tool_calls', message: answer
         ? { role: 'assistant', content: `answer after ${n}` }
-        : { role: 'assistant', content: null, tool_calls: Array.from({ length: perRound }, (_, k) => ({ id: `c${n}_${k}`, type: 'function', function: { name: 'search_notes', arguments: JSON.stringify({ query: 'license', ...(argPad ? { pad: argPad } : {}) }) } })) } }] };
+        : { role: 'assistant', content: null, tool_calls: Array.from({ length: perRound }, (_, k) => { const c = callOf(n, k); return { id: `c${n}_${k}`, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args) } }; }) } }] };
     }
     res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(out));
   });
@@ -295,7 +298,7 @@ const client = await import('../src/lib/aiChat.js');
 let calls = 0, toolResult = { count: 0, notes: [] };
 client.setToolHandler(async () => { calls++; return toolResult; });
 const TOOLS = [NOTE_TOOLS.find((t) => t.name === 'search_notes')];
-const fresh = (o = {}) => { seen.length = 0; calls = 0; stopAfter = o.stopAfter ?? Infinity; rejectChoice = !!o.rejectChoice; rejectStatus = o.rejectStatus ?? 400; ignoreChoice = !!o.ignoreChoice; toolResult = o.toolResult ?? { count: 0, notes: [] }; perRound = o.perRound ?? 1; argPad = o.argPad ?? ''; };
+const fresh = (o = {}) => { seen.length = 0; calls = 0; stopAfter = o.stopAfter ?? Infinity; rejectChoice = !!o.rejectChoice; rejectStatus = o.rejectStatus ?? 400; ignoreChoice = !!o.ignoreChoice; toolResult = o.toolResult ?? { count: 0, notes: [] }; perRound = o.perRound ?? 1; argPad = o.argPad ?? ''; plan = o.plan ?? null; };
 const ask = (provider) => client.callAI({
   provider, apiKey: 'k', model: provider === 'oai-compat' ? 'local' : undefined, baseUrl: provider === 'oai-compat' ? ENDPOINT : undefined,
   messages: [{ role: 'user', content: 'Find every license key in my notes.' }], systemPrompt: 'You are Trace.', tools: TOOLS,
@@ -419,4 +422,100 @@ test('a conversation that gets too big wraps up early the same way', async () =>
 
 test('Trace is told how to go through many notes', () => {
   assert.match(read('../src/components/ai/Trace.svelte'), /page through search_notes with offset until complete is true[^`]*read the notes you need with read_notes in batches, and say whether you covered everything/);
+});
+
+// ── The same tool call again (TraceApps/nutritrace#287) ─────────────────
+// The report (NutriTrace): requests a second apart, the same tool call each
+// time, then nothing. Now the same call a second time isn't run again, and a
+// third time the next request is the last, saying which tool it got stuck on.
+const reply = await import('../src/lib/trace-reply.js');
+const PROVIDERS = ['oai-compat', 'claude', 'gemini'];
+// The same call every time, its arguments' keys in another order every other round.
+const sameCall = (name = 'search_notes') => (n) => ({ name, args: n % 2 ? { label: 'Work', query: 'license' } : { query: 'license', label: 'Work' } });
+const repeated = (s) => (reply.TOOL_REPEATED ? JSON.stringify(s.body).split(reply.TOOL_REPEATED).length - 1 : 0);
+const systemOf = (s) => (s.path.startsWith('/claude') ? s.body.system : s.path.startsWith('/gemini') ? s.body.systemInstruction.parts[0].text : s.body.messages[0].content);
+const toolsOff = (s) => (s.path.startsWith('/claude') ? s.body.tool_choice?.type === 'none' : s.path.startsWith('/gemini') ? s.body.toolConfig?.functionCallingConfig?.mode === 'NONE' : s.body.tool_choice === 'none');
+
+test('#287: the same call a second time isn\'t run again: the model hears it has that answer already', async () => {
+  for (const provider of PROVIDERS) {
+    fresh({ plan: sameCall(), stopAfter: 2 });
+    assert.equal(await ask(provider), 'answer after 2', provider);
+    assert.equal(calls, 1, `${provider}: the tool ran once`);
+    assert.equal(seen.length, 3, provider);
+    assert.equal(repeated(seen[2]), 1, `${provider}: the second call has its answer`);
+    assert.ok(!toolsOff(seen[2]), provider);
+  }
+  assert.equal(reply.toolCallKey?.('get_note', { a: 1, b: { d: 2, c: [3, { f: 4, e: 5 }] } }), reply.toolCallKey?.('get_note', '{"b":{"c":[3,{"e":5,"f":4}],"d":2},"a":1}'));
+  assert.notEqual(reply.toolCallKey?.('get_note', { id: 1 }), reply.toolCallKey?.('get_note', { id: 2 }));
+});
+
+test('#287: a third time, the next request is the last, with the tools off, and it names the tool', async () => {
+  for (const provider of PROVIDERS) {
+    fresh({ plan: sameCall() });
+    assert.equal(await ask(provider), 'answer after 3', provider);
+    assert.equal(calls, 1, provider);
+    assert.equal(seen.length, 4, `${provider}: 4 requests, not 13`);
+    assert.ok(toolsOff(seen[3]) && !toolsOff(seen[2]), provider);
+    assert.ok(reply.toolStuckNote && systemOf(seen[3]) === `You are Trace.\n\n${client.OUT_OF_ROUNDS}\n\n${reply.toolStuckNote('search_notes')}`, provider);
+    assert.match(systemOf(seen[3]), /stuck repeating search_notes/);
+    fresh({ perRound: 3, plan: () => ({ name: 'search_notes', args: { query: 'license' } }) });
+    await ask(provider);
+    assert.deepEqual([calls, seen.length, repeated(seen[1])], [1, 2, 2], provider);
+    assert.ok(toolsOff(seen[1]), provider);
+  }
+  fresh({ plan: sameCall(), ignoreChoice: true });
+  assert.match(await ask('oai-compat'), /kept asking for the same information/);
+  assert.match(JSON.parse(read('../src/i18n/en.json')).trace_reply.stuck_on_tool ?? '', /^Trace kept asking for the same information/);
+});
+
+test('#287: different arguments, or another call in the same round, still run', async () => {
+  for (const provider of PROVIDERS) {
+    fresh({ perRound: 3, stopAfter: 1, plan: (n, k) => ({ name: 'get_note', args: { id: k < 2 ? 1 : 2 } }) });
+    assert.match(await ask(provider), /^answer after/);
+    assert.equal(calls, 2, provider);
+    assert.equal(repeated(seen[1]), 1, provider);
+    fresh({ stopAfter: 10 });
+    assert.equal(await ask(provider), 'answer after 10');
+    assert.equal(calls, 10, provider);
+    assert.ok(seen.every((s) => repeated(s) === 0), provider);
+  }
+});
+
+test('#287: a tool that writes runs every time it is asked, and is never said to have run when it didn\'t', async () => {
+  // Every tool that doesn't only look (search_, get_, read_, list_) creates,
+  // edits, ticks, labels, reminds or trashes: none of them is counted.
+  const names = NOTE_TOOLS.map((t) => t.name);
+  assert.ok(names.includes('append_to_note') && names.includes('read_notes'));
+  assert.ok(client.READ_TOOLS instanceof Set, 'READ_TOOLS');
+  for (const name of names) assert.equal(client.READ_TOOLS.has(name), /^(search|get|read|list)_/.test(name), name);
+  for (const name of client.READ_TOOLS) assert.ok(names.includes(name), `${name} is a tool`);
+  const append = { name: 'append_to_note', args: { id: 7, text: '- milk' } };
+  for (const provider of PROVIDERS) {
+    fresh({ stopAfter: 3, plan: () => append });
+    assert.equal(await ask(provider), 'answer after 3');
+    assert.equal(calls, 3, provider);
+    fresh({ perRound: 2, stopAfter: 1, plan: () => append });
+    await ask(provider);
+    assert.equal(calls, 2, provider);
+    // A note read again after a write reads it again: it has changed.
+    fresh({ stopAfter: 3, plan: (n) => (n === 1 ? append : { name: 'get_note', args: { id: 7 } }) });
+    await ask(provider);
+    assert.equal(calls, 3, provider);
+    assert.ok(seen.every((s) => repeated(s) === 0 && !systemOf(s).includes('stuck')), provider);
+  }
+});
+
+test('#287: a made-up tool asked for again is counted too, and a lookup that failed may be tried once more', async () => {
+  for (const provider of PROVIDERS) {
+    // A tool the app doesn't have: nothing ran, nothing changed.
+    fresh({ plan: sameCall('search_notes_entries') });
+    assert.equal(await ask(provider), 'answer after 3', provider);
+    assert.deepEqual([calls, seen.length], [1, 4], provider);
+    assert.match(systemOf(seen[3]), /stuck repeating search_notes_entries/, provider);
+    // Offline the first time: asked again, it runs again; failing again, it counts.
+    fresh({ plan: sameCall(), toolResult: { error: 'Offline' } });
+    assert.equal(await ask(provider), 'answer after 4', provider);
+    assert.deepEqual([calls, seen.length], [2, 5], provider);
+    assert.equal(repeated(seen[3]), 1, provider);
+  }
 });

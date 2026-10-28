@@ -92,21 +92,22 @@ test('the message, and the app says it in English', () => {
 });
 
 // The stand-in: answers in turn from `plan` (then `rest`): 'empty', 'blank',
-// 'text' or 'tool', in the shape of whoever was asked.
-let plan = [], rest = 'text';
+// 'text' or 'tool', in the shape of whoever was asked. A tool asked for is
+// `toolCall`, the same every time.
+let plan = [], rest = 'text', toolCall = { name: 'lookup', args: {} };
 const seen = [];
 const reply = (url, kind) => {
   if (url.startsWith('/claude')) {
-    if (kind === 'tool') return { content: [{ type: 'tool_use', id: `tu_${seen.length}`, name: 'lookup', input: {} }], stop_reason: 'tool_use' };
+    if (kind === 'tool') return { content: [{ type: 'tool_use', id: `tu_${seen.length}`, name: toolCall.name, input: toolCall.args }], stop_reason: 'tool_use' };
     const content = kind === 'text' ? [{ type: 'text', text: 'Logged your lunch.' }] : kind === 'blank' ? [{ type: 'text', text: ' \n' }] : [];
     return { content, stop_reason: 'end_turn' };
   }
   if (url.startsWith('/gemini')) {
-    if (kind === 'tool') return { candidates: [{ content: { role: 'model', parts: [{ functionCall: { name: 'lookup', args: {} } }] }, finishReason: 'STOP' }] };
+    if (kind === 'tool') return { candidates: [{ content: { role: 'model', parts: [{ functionCall: { name: toolCall.name, args: toolCall.args } }] }, finishReason: 'STOP' }] };
     const parts = kind === 'text' ? [{ text: 'Logged your lunch.' }] : kind === 'blank' ? [{ text: ' \n' }] : [];
     return { candidates: [{ content: { role: 'model', parts }, finishReason: 'STOP' }] };
   }
-  if (kind === 'tool') return { choices: [{ index: 0, finish_reason: 'tool_calls', message: { role: 'assistant', content: null, tool_calls: [{ id: `call_${seen.length}`, type: 'function', function: { name: 'lookup', arguments: '{}' } }] } }] };
+  if (kind === 'tool') return { choices: [{ index: 0, finish_reason: 'tool_calls', message: { role: 'assistant', content: null, tool_calls: [{ id: `call_${seen.length}`, type: 'function', function: { name: toolCall.name, arguments: JSON.stringify(toolCall.args) } }] } }] };
   const content = kind === 'text' ? 'Logged your lunch.' : kind === 'blank' ? ' \n' : '';
   return { choices: [{ index: 0, finish_reason: 'stop', message: { role: 'assistant', content } }], usage: { completion_tokens: 1 } };
 };
@@ -120,7 +121,7 @@ const endpoint = http.createServer((req, res) => {
 });
 await new Promise(r => endpoint.listen(0, '127.0.0.1', r));
 const ENDPOINT = `http://127.0.0.1:${endpoint.address().port}`;
-const fresh = (p = [], r = 'text') => { seen.length = 0; plan = [...p]; rest = r; toolCalls.length = 0; };
+const fresh = (p = [], r = 'text', call = { name: 'lookup', args: {} }) => { seen.length = 0; plan = [...p]; rest = r; toolCalls.length = 0; toolCall = call; };
 
 // The server's own chat, set to the stand-in.
 let db = null, dir = null, server = null, base = null;
@@ -242,6 +243,24 @@ test('through the relay (Trace set by environment variables): the app asks once 
     assert.equal(await viaRelay({ tools: TOOLS }), 'Logged your lunch.', p);
     assert.equal(toolCalls.length, 1, `${p}: the tool ran once`);
     assert.equal(seen.length, 3);
+  }
+});
+
+test('through the relay: the same call again is counted once, by the app, and the last request names the tool (TraceApps/nutritrace#287)', async (t) => {
+  if (!db) return t.skip('better-sqlite3 is not built for this Node');
+  const search = client.TOOLS.filter((x) => x.name === 'search_notes');
+  for (const [p, model] of [['oai-compat', 'gemma4:31b'], ['claude', 'claude-sonnet-4-5'], ['gemini', 'gemini-3-flash']]) {
+    envLock(p, model);
+    const viaRelay = () => client.callAI({ provider: p, model, relay: true, messages: [{ role: 'user', content: 'Find my license keys.' }], systemPrompt: 'You are Trace.', tools: search });
+    // A model that asks for the same search every time, and still asks with the tools off.
+    fresh([], 'tool', { name: 'search_notes', args: { query: 'license' } });
+    assert.match(await viaRelay(), /kept asking for the same information/, p);
+    assert.equal(toolCalls.length, 1, `${p}: the search ran once`);
+    assert.equal(seen.length, 4, `${p}: 4 requests, not 13: the relay passes each on once`);
+    const last = seen[3].body;
+    const system = p === 'oai-compat' ? last.messages[0].content : p === 'claude' ? last.system : last.systemInstruction.parts[0].text;
+    assert.ok(system.includes(client.OUT_OF_ROUNDS) && /stuck repeating search_notes/.test(system), p);
+    assert.ok(p === 'oai-compat' ? last.tool_choice === 'none' : p === 'claude' ? last.tool_choice?.type === 'none' : last.toolConfig?.functionCallingConfig?.mode === 'NONE', p);
   }
 });
 
