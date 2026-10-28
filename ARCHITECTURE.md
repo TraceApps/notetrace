@@ -41,6 +41,20 @@ Svelte's teardown walks from the moved node and leaves the rest behind.
 Wrap such components in a plain element (see `.editor-host` in
 NoteEditor.svelte).
 
+### Layers stack in the order they open
+
+Every open layer registers with `src/lib/back-stack.js`, so the list is
+the order they opened in, and Android's back closes the newest. Popovers,
+sheets, dialogs and the time picker register through `use:closeOnBack` on
+their backdrop, which also raises one opened from another above it when its
+own z-index is lower, as the calendar sheet (200) opened from a reminder
+popover (300) was (#39). The full-screen layers (the note editor, the image
+and file viewers, the drawing editor) register with `onBack` alone: they
+have no element in the list and aren't raised. Escape: sheets and dialogs
+take it from inside themselves; a popover listens on the whole window and
+passes it to the newest layer (`escapeFrom`), even before that one has
+taken focus.
+
 ### Swapping a component in place needs `{#key}`
 
 On the Svelte 5 runtime, an `{#if}` block whose condition turns false

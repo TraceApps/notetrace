@@ -61,6 +61,7 @@ export const DEVICE_PREFS = new Set([
 const SERVER_SETTINGS = USER_PREFS;
 
 import { isNative, getServerUrl, getAuthToken, apiUrl } from '../lib/platform.js';
+import { bannerTextColor, parseColor } from '../lib/banner-text.js';
 
 function _settingsUrl() { return apiUrl('/api/settings'); }
 
@@ -532,7 +533,22 @@ export function applyAccentColor(value) {
   // instance self-hosters can spot which install a tab belongs to at
   // a glance. Favicon stays the branded logo.
   _applyThemeColor(value);
+  applyBannerText();
   accentColor.set(value);
+}
+
+/**
+ * The color for text and icons on page banners (--banner-text), white or
+ * near-black, from the accent and theme now in use (banner-text.js,
+ * TraceApps/notetrace#39). Again whenever either changes.
+ */
+export function applyBannerText() {
+  const root = document.documentElement;
+  const css = getComputedStyle(root);
+  const read = (name) => css.getPropertyValue(name).trim();
+  const color = bannerTextColor(read('--accent'), read('--accent-2'), read('--glass-surface'), read('--bg'));
+  root.style.setProperty('--banner-text', color);
+  root.style.setProperty('--banner-text-rgb', parseColor(color).slice(0, 3).join(', '));
 }
 
 /** Resolve any accent value (named, hex, or fallback) to a hex string.
@@ -573,5 +589,6 @@ export function applyAppearance(value) {
   const accentHex = _accentToHex(_lastAppliedAccent);
   const meta = document.getElementById('theme-color-meta');
   if (meta) meta.content = accentHex || (dark ? '#0A0B0F' : '#F5F7FA');
+  applyBannerText();
   appearance.set(value);
 }

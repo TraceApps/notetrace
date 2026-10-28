@@ -1,5 +1,5 @@
 <script>
-  import { closeOnBack } from '../../lib/back-stack.js';
+  import { closeOnBack, escapeFrom } from '../../lib/back-stack.js';
   import { fold } from '../../lib/fold.js';
   import { keepOffCrease } from '../../lib/fold-core.js';
   /**
@@ -104,7 +104,10 @@
   }
   $: observeSize(panel);
 
-  function onKey(e) { if (open && e.key === 'Escape') { e.stopPropagation(); close(); } }
+  let backdrop;
+  // The newest layer's: a calendar or time picker opened from this closes
+  // first, as back does, even before it has taken focus (TraceApps/notetrace#39).
+  function onKey(e) { if (open && e.key === 'Escape' && escapeFrom(backdrop, close, e.target)) e.stopImmediatePropagation(); }
   // A keyboard opening or closing moves the popover with it.
   let _vvFrame = 0;
   function onViewport() {
@@ -127,7 +130,7 @@
 </script>
 
 {#if open}
-  <div use:portal class="pop-backdrop" class:narrow use:backdropClick={closeOutside} use:closeOnBack={close} transition:fade={{ duration: 120 }}>
+  <div use:portal class="pop-backdrop" class:narrow use:backdropClick={closeOutside} use:closeOnBack={close} bind:this={backdrop} transition:fade={{ duration: 120 }}>
     <div class="pop-panel" class:sheet={narrow} bind:this={panel} {style}
       role="dialog" aria-modal="true" aria-label={label || undefined} tabindex="-1" use:dialogFocus
       in:fly={{ y: narrow ? 40 : 6, duration: 160 }}>

@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { onBack, handleBack, backStackDepth, closeOnBack } from '../src/lib/back-stack.js';
+import { onBack, handleBack, backStackDepth, closeOnBack, isTopLayer, escapeFrom } from '../src/lib/back-stack.js';
 
 const read = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
@@ -198,4 +198,128 @@ test('the drawing editor keeps catching back while it saves', () => {
 test('the sync merge questions swallow back rather than dismissing them', () => {
   const sc = read('../src/components/settings/SettingsServerConnection.svelte');
   assert.equal((sc.match(/class="merge-overlay"[^>]*use:closeOnBack=\{\(\) => \{\}\}/g) || []).length, 3);
+});
+
+// A calendar sheet (200) opened from a reminder popover (300) opened under it,
+// where the popover's backdrop took its clicks, and Escape closed the popover
+// with it (TraceApps/notetrace#39).
+test('a layer opened from another shows above it, and leaves its z-index as it was', () => {
+  const had = globalThis.getComputedStyle;
+  globalThis.getComputedStyle = (el) => ({ zIndex: el.style.zIndex || el.cssZ });
+  try {
+    const node = (cssZ) => ({ cssZ, style: { zIndex: '' } });
+    const popover = node('300'), calendar = node('200'), time = node('9999');
+    const a = closeOnBack(popover, () => {});
+    assert.equal(popover.style.zIndex, '', 'nothing under it: left alone');
+    const b = closeOnBack(calendar, () => {});
+    assert.equal(calendar.style.zIndex, '301');
+    b.destroy();
+    assert.equal(calendar.style.zIndex, '');
+    const c = closeOnBack(time, () => {});
+    assert.equal(time.style.zIndex, '', 'already above: left alone');
+    c.destroy(); a.destroy();
+  } finally {
+    globalThis.getComputedStyle = had;
+  }
+  assert.equal(backStackDepth(), 0);
+});
+
+test('Escape belongs to the newest layer only, as back does', () => {
+  const popover = { style: {} }, calendar = { style: {} };
+  const a = closeOnBack(popover, () => {});
+  assert.equal(isTopLayer(popover), true);
+  const b = closeOnBack(calendar, () => {});
+  assert.equal(isTopLayer(popover), false);
+  assert.equal(isTopLayer(calendar), true);
+  b.destroy();
+  assert.equal(isTopLayer(popover), true);
+  // A full-screen layer with no element of its own (a viewer) counts too.
+  const release = onBack(() => {});
+  assert.equal(isTopLayer(popover), false);
+  release(); a.destroy();
+  assert.equal(isTopLayer(popover), false, 'closed: not a layer any more');
+});
+
+test('a parent that goes first leaves its child on top, still above it', () => {
+  const had = globalThis.getComputedStyle;
+  globalThis.getComputedStyle = (el) => ({ zIndex: el.style.zIndex || el.cssZ });
+  try {
+    const popover = { cssZ: '300', style: { zIndex: '' } }, calendar = { cssZ: '200', style: { zIndex: '' } };
+    const a = closeOnBack(popover, () => {});
+    const b = closeOnBack(calendar, () => {});
+    a.destroy();                          // the page changed under both
+    assert.equal(isTopLayer(calendar), true);
+    assert.equal(calendar.style.zIndex, '301');
+    b.destroy();
+    assert.equal(calendar.style.zIndex, '');
+    // Opened again on its own: nothing under it, its own z-index.
+    const c = closeOnBack(calendar, () => {});
+    assert.equal(calendar.style.zIndex, '');
+    c.destroy();
+  } finally {
+    globalThis.getComputedStyle = had;
+  }
+  assert.equal(backStackDepth(), 0);
+});
+
+// Elements that can hold focus, enough for Escape's routing: Node's own
+// EventTarget, and contains() as the DOM has it.
+class El extends EventTarget {
+  constructor(parent = null) { super(); this.parent = parent; this.style = {}; }
+  contains(other) { for (let n = other; n; n = n.parent) if (n === this) return true; return false; }
+}
+/** A popover listening on the whole window, as Popover.svelte does. */
+function popover(win, backdrop, closed) {
+  const close = () => closed.push(backdrop.name);
+  const onKey = (e) => { if (e.key === 'Escape' && escapeFrom(backdrop, close, e.target)) e.stopImmediatePropagation(); };
+  win.addEventListener('keydown', onKey, { capture: true });
+  return () => win.removeEventListener('keydown', onKey, { capture: true });
+}
+const escape = (win, target) => { const e = new Event('keydown'); e.key = 'Escape'; Object.defineProperty(e, 'target', { value: target }); win.dispatchEvent(e); };
+
+test('Escape closes the newest layer only, wherever focus is', () => {
+  const win = new EventTarget(), page = new El();
+  const closed = [];
+  const reminder = Object.assign(new El(), { name: 'reminder' });
+  const calendar = Object.assign(new El(), { name: 'calendar' });
+  const stopReminder = popover(win, reminder, closed);
+  const a = closeOnBack(reminder, () => closed.push('reminder by back'));
+  // Focus still on the page underneath (the calendar hasn't taken it yet).
+  const b = closeOnBack(calendar, () => closed.push('calendar'));
+  escape(win, page);
+  assert.deepEqual(closed, ['calendar'], 'the calendar closes, the reminder stays');
+  // Focus inside the calendar: its own Escape (dialogFocus) handles it.
+  closed.length = 0;
+  escape(win, new El(calendar));
+  assert.deepEqual(closed, [], 'left to the calendar itself');
+  b.destroy();
+  escape(win, page);
+  assert.deepEqual(closed, ['reminder'], 'then the reminder');
+  // A viewer opened on top listens for itself.
+  closed.length = 0;
+  const release = onBack(() => closed.push('viewer'));
+  escape(win, page);
+  assert.deepEqual(closed, [], 'not the popover\'s to close');
+  release(); a.destroy(); stopReminder();
+  // Closed, it takes no Escape at all (a selection on the page clears instead).
+  escape(win, page);
+  assert.deepEqual(closed, []);
+});
+
+test('two popovers open: one Escape closes the upper one once', () => {
+  const win = new EventTarget(), page = new El();
+  const closed = [];
+  const lower = Object.assign(new El(), { name: 'lower' }), upper = Object.assign(new El(), { name: 'upper' });
+  const stops = [popover(win, lower, closed), popover(win, upper, closed)];
+  const a = closeOnBack(lower, () => closed.push('lower by back'));
+  const b = closeOnBack(upper, () => closed.push('upper'));
+  escape(win, page);
+  assert.deepEqual(closed, ['upper'], 'not again by the upper one\'s own listener');
+  b.destroy(); a.destroy(); stops.forEach(f => f());
+});
+
+test('the popover routes Escape through the layer list', () => {
+  const pop = read('../src/components/notes/Popover.svelte');
+  assert.match(pop, /e\.key === 'Escape' && escapeFrom\(backdrop, close, e\.target\)\) e\.stopImmediatePropagation\(\);/);
+  assert.match(pop, /use:closeOnBack=\{close\} bind:this=\{backdrop\}/);
 });

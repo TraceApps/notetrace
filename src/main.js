@@ -13,6 +13,7 @@ import './styles/buttons.css';
 import './styles/forms.css';
 import './styles/fold.css';
 import App from './App.svelte';
+import { applyBannerText } from './stores/settings.js';
 import { DB } from './lib/db.js';
 import { initI18n } from './i18n/index.js';
 import { Capacitor } from '@capacitor/core';
@@ -35,15 +36,18 @@ if (Capacitor.isNativePlatform()) {
 
 initI18n();
 
-// Sync system theme changes when appearance = 'system'
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
-  const appearance = localStorage.getItem('wl_appearance') || 'system';
-  if (appearance === 'system') {
-    document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
-    const meta = document.getElementById('theme-color-meta');
-    if (meta) meta.content = e.matches ? '#0A0B0F' : '#F5F7FA';
-  }
-});
+// The system's light or dark is followed only when the choice saved for this
+// account is System (DB.getSetting, as the settings store reads it). The
+// browser bar keeps the accent's color, as applyAppearance leaves it; only
+// before an accent is set does it take the theme's own.
+function followSystemTheme(e) {
+  if (DB.getSetting('appearance', 'system') !== 'system') return;
+  document.documentElement.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+  const meta = document.getElementById('theme-color-meta');
+  if (meta && ['#0A0B0F', '#F5F7FA'].includes(meta.content)) meta.content = e.matches ? '#0A0B0F' : '#F5F7FA';
+  applyBannerText();
+}
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', followSystemTheme);
 
 // A public note link (/n/<token>) opens on its own: no sign-in, no local
 // database, no sync, just the note.

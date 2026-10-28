@@ -1298,8 +1298,8 @@
   .notes-header .header-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
   .notes-header .header-btn { border-radius: 12px; color: var(--text-2); display: flex; align-items: center; justify-content: center; transition: background var(--dur-fast), color var(--dur-fast); }
   .notes-header .header-btn:hover { background: color-mix(in srgb, var(--text-1) 10%, transparent); color: var(--text-1); }
-  .notes-header.banner-gradient .header-btn, .notes-header.banner-animated .header-btn { color: rgba(255, 255, 255, 0.92); }
-  .notes-header.banner-gradient .header-btn:hover, .notes-header.banner-animated .header-btn:hover { background: rgba(255, 255, 255, 0.16); color: #fff; }
+  .notes-header.banner-gradient .header-btn, .notes-header.banner-animated .header-btn { color: rgba(var(--banner-text-rgb, 255, 255, 255), 0.92); }
+  .notes-header.banner-gradient .header-btn:hover, .notes-header.banner-animated .header-btn:hover { background: rgba(255, 255, 255, 0.16); color: var(--banner-text, #fff); }
   .header-search {
     flex: 1; min-width: 0; height: 40px;
     display: flex; align-items: center; gap: 8px; padding: 0 0 0 12px;
@@ -1311,12 +1311,12 @@
   .header-search input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text-1); font-size: 15px; }
   .header-search input::-webkit-search-cancel-button { display: none; }
   .notes-header.banner-gradient .header-search, .notes-header.banner-animated .header-search {
-    background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.28); color: rgba(255, 255, 255, 0.85);
+    background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.28); color: rgba(var(--banner-text-rgb, 255, 255, 255), 0.85);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
   }
-  .notes-header.banner-gradient .header-search input, .notes-header.banner-animated .header-search input { color: #fff; }
-  .notes-header.banner-gradient .header-search input::placeholder, .notes-header.banner-animated .header-search input::placeholder { color: rgba(255, 255, 255, 0.72); }
-  .notes-header.banner-gradient .search-kbd, .notes-header.banner-animated .search-kbd { border-color: rgba(255, 255, 255, 0.3); color: rgba(255, 255, 255, 0.8); }
+  .notes-header.banner-gradient .header-search input, .notes-header.banner-animated .header-search input { color: var(--banner-text, #fff); }
+  .notes-header.banner-gradient .header-search input::placeholder, .notes-header.banner-animated .header-search input::placeholder { color: rgba(var(--banner-text-rgb, 255, 255, 255), 0.72); }
+  .notes-header.banner-gradient .search-kbd, .notes-header.banner-animated .search-kbd { border-color: rgba(255, 255, 255, 0.3); color: rgba(var(--banner-text-rgb, 255, 255, 255), 0.8); }
 
   .view-menu { display: flex; flex-direction: column; gap: 2px; width: 280px; max-width: 100%; }
   :global(.pop-panel.sheet) .view-menu { width: 100%; }
