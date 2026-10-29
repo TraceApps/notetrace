@@ -85,7 +85,8 @@ test('only the app\'s own new-note links start recording at once', async () => {
   const browsable = manifest.match(/<intent-filter[^>]*>(?:(?!<\/intent-filter>)[\s\S])*BROWSABLE(?:(?!<\/intent-filter>)[\s\S])*<\/intent-filter>/g) || [];
   assert.ok(browsable.length);
   for (const f of browsable) assert.doesNotMatch(f, /<data android:scheme="notetrace" android:host="new"/);
-  for (const m of read('../android/app/src/main/res/xml/shortcuts.xml').match(/<intent[\s\S]*?\/>/g)) assert.match(m, /android:targetClass="com\.notetrace\.app\.MainActivity"/);
+  // The shortcuts go through AppShortcutActivity (app-shortcut-activity.test.js).
+  for (const m of read('../android/app/src/main/res/xml/shortcuts.xml').match(/<intent[\s\S]*?\/>/g)) assert.match(m, /android:targetClass="com\.notetrace\.app\.AppShortcutActivity"/);
   assert.match(read('../android/app/src/main/java/com/notetrace/app/NoteWidgetStore.java'), /i\.setClassName\(context, MainActivity\.class\.getName\(\)\);/);
 });
 
@@ -157,9 +158,12 @@ test('the server tells browsers which pages may frame it, on every answer', { sk
 
 test('a shortcut marks its new note once, and nothing a link opens takes focus', () => {
   const app = readFileSync(new URL('../src/App.svelte', import.meta.url), 'utf8');
-  // Marked once, by appUrlOpen (it fires on a cold start too): marking the
-  // launch URL as well started the recorder twice on the emulator.
-  assert.doesNotMatch(app.slice(app.indexOf('getLaunchUrl'), app.indexOf("addListener('appUrlOpen'")), /markAppNewNote/, 'the launch URL path does not mark it a second time');
+  // A cold start brings the launch URL and appUrlOpen: whichever comes first
+  // marks and opens it, and the other is dropped (marking and opening both
+  // started the recorder twice on the emulator).
+  const launch = app.slice(app.indexOf('App.getLaunchUrl'), app.indexOf("addListener('appUrlOpen'"));
+  const urlOpen = app.slice(app.indexOf("if (host === 'new')"), app.indexOf("if (host === 'oidc-callback')"));
+  for (const path of [launch, urlOpen]) assert.match(path, /const route = newNoteRoute\([^)]+\);\s*if \(!route\) return;\s*markAppNewNote\(/);
   const vr = readFileSync(new URL('../src/components/notes/VoiceRecorder.svelte', import.meta.url), 'utf8');
   assert.doesNotMatch(vr, /vr-start"[^>]*autofocus/, 'the waiting Record button is not focused');
   const ed = readFileSync(new URL('../src/components/notes/NoteEditor.svelte', import.meta.url), 'utf8');

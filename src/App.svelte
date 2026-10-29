@@ -473,11 +473,19 @@
         // Deep link callbacks: notetrace://oidc-callback?code=… (or ?token=…
         // from servers older than the single-use code hand-off)
         // A home screen shortcut that cold-starts the app arrives as the launch URL.
-        App.getLaunchUrl?.().then((r) => {
+        // appUrlOpen below fires for that launch too: whichever comes first
+        // marks and opens it, and lib/new-note-intent.js drops the other, so
+        // the recorder never starts twice (it stops).
+        App.getLaunchUrl?.().then(async (r) => {
           const m = String(r?.url || '').match(/^notetrace:\/\/new\/(\w+)/);
-          // Not marked here: appUrlOpen below also fires for this launch and
-          // marks it, and marking both starts the recorder twice (it stops).
-          if (m) import('svelte-spa-router').then(({ push }) => push(`/?new=${m[1]}`));
+          if (!m) return;
+          const { markAppNewNote, newNoteRoute, firstLaunchRead } = await import('./lib/new-note-intent.js');
+          // Not again after a reload: it would start the recorder untapped.
+          if (!firstLaunchRead()) return;
+          const route = newNoteRoute(m[1]);
+          if (!route) return;
+          markAppNewNote(m[1]);
+          (await import('svelte-spa-router')).push(route);
         }).catch(() => {});
         App.addListener('appUrlOpen', async ({ url }) => {
           // Without its query: a sign-in link carries a code or a token.
@@ -493,10 +501,14 @@
             if (host === 'new') {
               const what = (link.path || '').replace(/^\/+/, '') || 'text';
               // Only the app's own shortcuts and widget reach this (explicit
-              // intents): their voice note may start recording at once.
-              const { markAppNewNote } = await import('./lib/new-note-intent.js');
+              // intents): their voice note may start recording at once. A
+              // running app gets it here alone (AppShortcutActivity); a fresh
+              // start brings the launch URL too, and only one goes through.
+              const { markAppNewNote, newNoteRoute } = await import('./lib/new-note-intent.js');
+              const route = newNoteRoute(what);
+              if (!route) return;
               markAppNewNote(what);
-              import('svelte-spa-router').then(({ push }) => push(`/?new=${encodeURIComponent(what)}`));
+              import('svelte-spa-router').then(({ push }) => push(route));
               return;
             }
             if (host === 'oidc-callback') {

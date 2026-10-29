@@ -61,6 +61,21 @@
 
         </activity>
 
+        <!-- The app icon's shortcuts open this first (AppShortcutActivity.java).
+             Launchers start a shortcut with a fresh task; aimed at MainActivity,
+             that restarted the running app and reloaded its page. This one has
+             a task of its own, shows nothing, stays out of Recents and hands
+             the notetrace://new/<kind> link to MainActivity (singleTask, so the
+             running app gets it in onNewIntent). Exported so the launcher can
+             open it; it opens nothing but MainActivity. -->
+        <activity
+            android:name=".AppShortcutActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:noHistory="true" />
+
         <!-- Home screen widgets: Quick Note (start a note, list, voice note, or drawing)
              and Notes (pinned and latest notes, from a snapshot the app sends). -->
         <receiver android:name=".QuickNoteWidgetProvider" android:exported="true" android:label="@string/widget_quick_label">
