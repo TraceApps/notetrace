@@ -203,3 +203,15 @@ test('a note made offline with no picture still carries an empty list', () => {
   const note = applyOps([], [{ type: 'create', id: -6, at: 1, note: { title: 'Plain', kind: 'text' } }]).get(-6);
   assert.deepEqual(note.attachments, []);
 });
+
+test('a label change queued offline from an older list changes only what it put on or took off', () => {
+  const base = [{ id: 7, title: 'L', kind: 'text', labels: [1, 2], items: [], attachments: [] }];
+  // The editor showed [1] (2 came later) and put on 3, took off 1.
+  const ops = [{ type: 'update', id: 7, patch: { labels: [3], labels_from: [1] }, at: Date.parse('2026-10-01T10:00:00Z') }];
+  const final = applyOps(base, ops);
+  assert.deepEqual([...final.get(7).labels].sort(), [2, 3]);
+  const push = buildPush(ops, new Map(base.map(n => [n.id, n])), final).tables.note_labels;
+  assert.deepEqual(push.map(r => [r.label_id, r.deleted_at ? 'off' : 'on']).sort(), [[1, 'off'], [3, 'on']]);
+  // Queued by an app from before: the whole set, as then.
+  assert.deepEqual(applyOps(base, [{ type: 'update', id: 7, patch: { labels: [3] }, at: 1 }]).get(7).labels, [3]);
+});

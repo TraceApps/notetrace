@@ -479,6 +479,15 @@ for (const t of ['notes', 'labels', 'checklist_items', 'note_labels', 'note_atta
 for (const [t, fields] of Object.entries(SYNC_FIELDS)) {
   if (!columnExists(t, 'field_times')) db.exec(`ALTER TABLE ${t} ADD COLUMN field_times TEXT`);
   db.exec(fieldTimesSql(t, [...fields, 'deleted_at']));
+  // A write that moves updated_at without changing any of these (an item
+  // ticked moves its note's) isn't an edit of them: for a row from before
+  // the times, they start first, from the write before, so an offline edit
+  // made between the two doesn't count as older than the row.
+  db.exec(`DROP TRIGGER IF EXISTS fs_${t}_base;
+    CREATE TRIGGER fs_${t}_base AFTER UPDATE OF updated_at ON ${t} FOR EACH ROW
+    WHEN OLD.updated_at IS NOT NULL AND NEW.updated_at IS NOT OLD.updated_at AND NEW.field_times IS OLD.field_times
+      AND (OLD.field_times IS NULL OR NOT json_valid(OLD.field_times) OR OLD.field_times = '{}')
+    BEGIN UPDATE ${t} SET field_times = CASE WHEN json_valid(field_times) AND field_times != '{}' THEN field_times ELSE json_object('_base', OLD.updated_at) END WHERE rowid = NEW.rowid; END;`);
 }
 
 // ── Notification de-dupe log ───────────────────────────────────────────────

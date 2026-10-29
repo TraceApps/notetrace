@@ -830,7 +830,9 @@
   function toggleInTasks() { inTasks = !inTasks; patch({ in_tasks: inTasks }); }
   $: canShowInTasks = kind === 'checklist' && !readOnly && !$tasksAllChecklists;
   function setColor(c) { color = c; patch({ color: c }); }
-  function setLabels(ids) { noteLabels = ids; patch({ labels: ids }); }
+  // What changed: labels put on or taken off here (labels_from), so a label
+  // changed on another device meanwhile stays.
+  function setLabels(ids) { const from = noteLabels; noteLabels = ids; patch({ labels: ids, labels_from: from }); }
 
   async function setReminder(detail) {
     reminderOpen = false;
@@ -1003,7 +1005,10 @@
     const renamedFrom = openedTitle.trim();
     // Not contentLocked: a title changed with Edit, or just before Read Only went on, still renames its links.
     if (noteId && !trashed && !baseLocked && renamedFrom && title.trim() && renamedFrom !== title.trim()) {
-      try { await NoteApi.updateNote(noteId, { title, rename_links_from: renamedFrom }); } catch { /* links can be fixed by hand */ }
+      // Links only: a rename made elsewhere since the last save stays, and
+      // the links follow the note's title as it is now. The title goes too,
+      // for a server from before, which renames by it as it always did.
+      try { await NoteApi.updateNote(noteId, { title, rename_links_from: renamedFrom, links_only: true }); } catch { /* links can be fixed by hand */ }
     }
     // A note that ended up empty is removed instead of lingering as a blank card.
     if (!skipDiscard && noteId && !trashed && !hasPendingFor(noteId) && isEmptyNote({ title, body_md: body, items, attachments })) {

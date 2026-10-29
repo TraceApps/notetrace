@@ -96,13 +96,26 @@ changed there, with `field_edits`, each field's own edit time (kept by
 triggers in its `edit_times` table), so a field changed before a later
 change of another keeps its time. The web's offline outbox sends the same
 for notes and items. A row without them (older apps) counts every field it
-sends as edited at its `updated_at`. A delete loses to a later edit of the row
+sends as edited at its `updated_at`; one changed before the update and
+again after it (still waiting, no copy kept) goes whole, each field with
+its own time (`_rest` in `edit_times`: the earlier change's). A write that
+moves a row's `updated_at` without changing a field (an item ticked moves
+its note's) starts the times of a row from before them from the write
+before, so it isn't an edit. A full backup restores them. A delete loses to a later edit of the row
 (for a note, also of its items, pictures and labels), and an edit made
 before a delete doesn't bring the row back; ties go to the delete. A
 setting is one field, the newer value wins. A note title or text that
 loses is kept in version history rather than dropped. The note editor
 saves only the title or text it changed, so a save of one never puts the
-other back. Checklist items merge per item (a stable uuid plus tombstones
+other back; closing it renames links only (`links_only`, below). A label
+change sends the set it was made on (`labels_from`), so only what it put
+on or took off changes. The watch sends a queued tick or reminder done
+with when it was made (`edited_at`, `client_now` on `PATCH
+/api/notes/:id` and `.../items/:uuid`): a field changed here after it
+stays, and what goes in counts from when it was made (with its group, an
+item's `checked_at` too), not from when it arrived. Without `client_now`,
+or with a clock a year or more out, it counts as made now. Servers from
+before ignore `links_only`, `labels_from` and `edited_at`. Checklist items merge per item (a stable uuid plus tombstones
 for deletes), so a device with a stale list can never wipe items another
 device added.
 
@@ -232,8 +245,12 @@ over bodies, not a table, so imports and sync need nothing extra.
 Renaming a note rewrites `[[Old]]` to `[[New]]` in the owner's own
 notes, on the server and in Android local mode. The editor's title
 autosaves send `rename_links: false`, and closing the editor sends one
-rename from the title it opened with (`rename_links_from`), so partial
-titles never rewrite links. A rename is skipped when another note has
+rename from the title it opened with (`rename_links_from`, with
+`links_only`: the links follow to the note's title as it is now, and no
+title is written, so a rename made elsewhere meanwhile stays), so partial
+titles never rewrite links. In the browser it isn't queued: with no
+connection, a server gone quiet or changes still waiting, the editor
+closes at once and the links stay as they are. A rename is skipped when another note has
 the old or the new title.
 
 ### Card order, selection, and gestures are client state

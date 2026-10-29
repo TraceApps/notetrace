@@ -150,11 +150,18 @@ object Pairing {
         /** A reminder heard in what was said, kept so a queued note still gets it. */
         val at: String = "",
         val tz: String = "",
+        /**
+         * When the wearer made this change (ISO 8601, UTC), sent with it so a
+         * change made with no connection doesn't undo a later one made
+         * elsewhere. Blank for work queued before the watch kept it: that goes
+         * as made when it's sent, as it always did.
+         */
+        val made: String = "",
     ) {
         fun toJson(): JSONObject = JSONObject()
             .put("kind", kind).put("noteId", noteId).put("uuid", uuid)
             .put("id", id).put("checked", checked).put("text", text)
-            .put("at", at).put("tz", tz)
+            .put("at", at).put("tz", tz).put("made", made)
 
         companion object {
             fun from(o: JSONObject) = Op(
@@ -166,15 +173,18 @@ object Pairing {
                 text = o.optString("text"),
                 at = o.optString("at"),
                 tz = o.optString("tz"),
+                made = o.optString("made"),
             )
 
-            fun item(noteId: Long, uuid: String, checked: Boolean) = Op("item", noteId, uuid, 0, checked)
+            private fun now() = java.time.Instant.now().toString()
+
+            fun item(noteId: Long, uuid: String, checked: Boolean) = Op("item", noteId, uuid, 0, checked, made = now())
             fun shopping(id: Long, checked: Boolean) = Op("shopping", 0, "", id, checked)
             /** Spoken with no connection: these wait here rather than being lost. */
             fun note(text: String, at: String = "", tz: String = "") = Op("note", 0, "", 0, false, text, at, tz)
             fun newItem(noteId: Long, text: String) = Op("add_item", noteId, "", 0, false, text)
             fun newShopping(text: String) = Op("add_shopping", 0, "", 0, false, text)
-            fun reminderDone(noteId: Long) = Op("reminder_done", noteId, "", 0, false, "")
+            fun reminderDone(noteId: Long) = Op("reminder_done", noteId, "", 0, false, "", made = now())
         }
     }
 

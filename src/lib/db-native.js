@@ -320,10 +320,17 @@ async function _keepEditTimes(db) {
   const have = new Set(((await db.query(`SELECT name FROM sqlite_master WHERE type = 'trigger' AND name GLOB 'et_*'`, []))?.values || []).map(r => r.name));
   for (const [t, fields] of Object.entries(SYNC_FIELDS)) {
     const missing = fields.filter(f => !have.has(`et_${t}_${f}`));
-    if (!missing.length) continue;
+    // A row changed here before the update and still waiting (no copy of
+    // the server's kept: it goes up whole) keeps when that change was made
+    // (_rest) at its next change, for every field with no time of its own.
+    const rest = fields.length && !have.has(`et_${t}__rest`);
+    if (!missing.length && !rest) continue;
     const cols = new Set(((await db.query(`PRAGMA table_info(${t})`))?.values || []).map(c => c.name));
     for (const f of missing.filter(x => cols.has(x))) {
       await db.run(`CREATE TRIGGER IF NOT EXISTS et_${t}_${f} AFTER UPDATE OF ${f} ON ${t} FOR EACH ROW WHEN OLD.${f} IS NOT NEW.${f} AND NEW.sync_status = 'pending' AND NEW.server_id IS NOT NULL BEGIN INSERT OR REPLACE INTO edit_times (tbl, row_id, field, at) VALUES ('${t}', NEW.id, '${f}', NEW.updated_at); END`);
+    }
+    if (rest && cols.has('server_base') && cols.has('updated_at')) {
+      await db.run(`CREATE TRIGGER IF NOT EXISTS et_${t}__rest AFTER UPDATE OF updated_at ON ${t} FOR EACH ROW WHEN OLD.sync_status = 'pending' AND OLD.server_base IS NULL AND OLD.server_id IS NOT NULL AND OLD.updated_at IS NOT NULL AND NEW.updated_at IS NOT OLD.updated_at BEGIN INSERT OR IGNORE INTO edit_times (tbl, row_id, field, at) VALUES ('${t}', NEW.id, '_rest', OLD.updated_at); END`);
     }
   }
 }

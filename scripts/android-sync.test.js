@@ -1276,3 +1276,85 @@ test('an edit undone while its push is out still goes up (it differs from what w
   const server = A.q('SELECT body_md FROM notes WHERE id = ?', n.id)[0].body_md;
   assert.deepEqual({ phone: r.phone, server }, { phone: 'A', server: 'A' });
 });
+
+// A note changed offline before the update and still waiting (no copy of
+// the server's kept) went up whole at the time of the next change made
+// after the update: the earlier change's copy then put back a rename made
+// elsewhere in between. Each field now goes with its own time.
+test('a note changed before the update and again after keeps each change its own time', async (t) => {
+  if (skip(t)) return;
+  const n = await web(A, 'carol', 'POST', '/api/notes', { title: 'F6 plan', body_md: 'one', color: null });
+  const r = phone('f6mixed', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const local = (await p.rows()).find(x => x.server_id === ${n.id});
+    await p.offline(async () => {
+      // Changed by the app before the update: waiting, nothing kept.
+      await p.NotesNative.updateNote(local.id, { color: 'sky' });
+      await p.db.run('UPDATE notes SET server_base = NULL', []);
+      await p.db.run('DELETE FROM edit_times', []);
+      await p.sleep(2100);
+      await p.net.web(p.S + '/api/notes/${n.id}', { method: 'PATCH', headers: { Authorization: 'Bearer ' + p.platform.getAuthToken(), 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'F6 plan for June' }) });
+      await p.sleep(2100);
+      // Changed again after the update.
+      await p.NotesNative.updateNote(local.id, { body_md: 'one, two' });
+    });
+    await p.sync(); await p.sync();
+    const row = (await p.rows()).find(x => x.server_id === ${n.id});
+    p.done({ title: row.title, body: row.body_md, color: row.color });`);
+  const want = { title: 'F6 plan for June', body: 'one, two', color: 'sky' };
+  assert.deepEqual(A.q('SELECT title, body_md AS body, color FROM notes WHERE id = ?', n.id)[0], want);
+  assert.deepEqual(r, want);
+});
+
+// Closing the editor on the phone renamed the [[links]] by writing the
+// editor's title again: a rename that came down from the server since the
+// editor's last save was put back, and went up as the newest edit.
+test("closing the editor on the phone after a rename came down keeps that rename, and links follow it", async (t) => {
+  if (skip(t)) return;
+  const home = await web(A, 'carol', 'POST', '/api/notes', { title: 'F7 home', body_md: 'see [[F7 old]]' });
+  const n = await web(A, 'carol', 'POST', '/api/notes', { title: 'F7 old', body_md: 'x' });
+  const r = phone('f7close', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const local = (await p.rows()).find(x => x.server_id === ${n.id});
+    // The editor's autosave renames it here.
+    await p.NotesNative.updateNote(local.id, { title: 'F7 phone', rename_links: false });
+    await p.sync();
+    await p.sleep(1100);
+    // Renamed on the web, and pulled.
+    await p.net.web(p.S + '/api/notes/${n.id}', { method: 'PATCH', headers: { Authorization: 'Bearer ' + p.platform.getAuthToken(), 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'F7 web', rename_links: false }) });
+    await p.sleep(1100);
+    await p.sync();
+    // The editor closes, with the title it last saved.
+    await p.NotesNative.updateNote(local.id, { title: 'F7 phone', rename_links_from: 'F7 old', links_only: true });
+    await p.sync(); await p.sync();
+    const rows = await p.rows();
+    p.done({ title: rows.find(x => x.server_id === ${n.id}).title, home: rows.find(x => x.server_id === ${home.id}).body_md });`);
+  assert.deepEqual(r, { title: 'F7 web', home: 'see [[F7 web]]' });
+  assert.deepEqual(A.q('SELECT title FROM notes WHERE id = ?', n.id), [{ title: 'F7 web' }]);
+  assert.deepEqual(A.q('SELECT body_md FROM notes WHERE id = ?', home.id), [{ body_md: 'see [[F7 web]]' }]);
+});
+
+// A label put on a note from a list shown before a pull took off the label
+// the pull brought (the whole set was written). Only what changed changes.
+test('a label put on from a list shown before a pull keeps the label the pull brought', async (t) => {
+  if (skip(t)) return;
+  const la = await web(A, 'carol', 'POST', '/api/labels', { name: 'F8 a' });
+  const lb = await web(A, 'carol', 'POST', '/api/labels', { name: 'F8 b' });
+  const lc = await web(A, 'carol', 'POST', '/api/labels', { name: 'F8 c' });
+  const n = await web(A, 'carol', 'POST', '/api/notes', { title: 'F8 note', body_md: 'x', labels: [la.id] });
+  const r = phone('f8labels', A, `
+    await p.setupSignIn('carol'); await p.sync();
+    const local = (await p.rows()).find(x => x.server_id === ${n.id});
+    const lid = async sid => (await p.rows('labels')).find(x => x.server_id === sid).id;
+    const shown = [await lid(${la.id})];
+    // Put on elsewhere, and pulled while the list was open.
+    await p.net.web(p.S + '/api/notes/${n.id}', { method: 'PATCH', headers: { Authorization: 'Bearer ' + p.platform.getAuthToken(), 'Content-Type': 'application/json' }, body: JSON.stringify({ labels: [${la.id}, ${lb.id}] }) });
+    await p.sleep(1100);
+    await p.sync();
+    await p.NotesNative.updateNote(local.id, { labels: [...shown, await lid(${lc.id})], labels_from: shown });
+    await p.sync(); await p.sync();
+    p.done();`);
+  void r;
+  const on = A.q(`SELECT label_id FROM note_labels WHERE note_id = ? AND deleted_at IS NULL ORDER BY label_id`, n.id).map(x => x.label_id);
+  assert.deepEqual(on, [la.id, lb.id, lc.id].sort((x, y) => x - y));
+});

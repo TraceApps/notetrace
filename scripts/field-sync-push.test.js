@@ -440,3 +440,136 @@ test("the web outbox sends each field with the time it was changed", async (t) =
   assert.deepEqual(Object.keys(row.field_edits).sort(), ['color', 'title']);
   assert.ok(row.field_edits.title < row.field_edits.color, JSON.stringify(row.field_edits));
 });
+
+// Closing the editor renamed the [[links]] to the note by sending its title
+// again (rename_links_from): a rename made on another device since the
+// editor's last save was put back. With links_only the close renames the
+// links to the note's title as it now is, and changes no title.
+test("closing the editor after a rename elsewhere keeps that rename, and links follow it", async (t) => {
+  if (skip(t)) return;
+  const linking = await call('POST', '/api/notes', { title: 'Links home', body_md: 'see [[Close A]]' });
+  const n = await call('POST', '/api/notes', { title: 'Close A', body_md: 'x' });
+  // The editor's autosave renames it (links don't follow yet).
+  await call('PATCH', `/api/notes/${n.id}`, { title: 'Close B', rename_links: false });
+  await tick();
+  // Another device renames it.
+  await call('PATCH', `/api/notes/${n.id}`, { title: 'Close C', rename_links: false });
+  await tick();
+  // The editor closes: links follow the rename from the title it opened with.
+  await call('PATCH', `/api/notes/${n.id}`, { title: 'Close B', rename_links_from: 'Close A', links_only: true });
+  assert.equal(srv.q('SELECT title FROM notes WHERE id = ?', n.id)[0].title, 'Close C');
+  assert.equal(srv.q('SELECT body_md FROM notes WHERE id = ?', linking.id)[0].body_md, 'see [[Close C]]');
+  // An app from before (no links_only) renames as it always did.
+  await call('PATCH', `/api/notes/${n.id}`, { title: 'Close D', rename_links_from: 'Close C' });
+  assert.equal(srv.q('SELECT title FROM notes WHERE id = ?', n.id)[0].title, 'Close D');
+  assert.equal(srv.q('SELECT body_md FROM notes WHERE id = ?', linking.id)[0].body_md, 'see [[Close D]]');
+});
+
+// Changing a note's labels sent the whole set it showed: a label added on
+// another device since was taken off again. With labels_from (the set the
+// change was made on) only what that change added or took off changes.
+test("a note's labels: a change made on an older set keeps a label added elsewhere since", async (t) => {
+  if (skip(t)) return;
+  const mk = name => call('POST', '/api/labels', { name });
+  const a = await mk('LF one'), b = await mk('LF two'), c = await mk('LF three');
+  const n = await call('POST', '/api/notes', { title: 'LF note', body_md: 'x', labels: [a.id] });
+  // Another device adds b.
+  await call('PATCH', `/api/notes/${n.id}`, { labels: [a.id, b.id] });
+  // This one, still showing [a], adds c and takes off a.
+  const got = await call('PATCH', `/api/notes/${n.id}`, { labels: [c.id], labels_from: [a.id] });
+  assert.deepEqual([...got.labels].sort((x, y) => x - y), [b.id, c.id].sort((x, y) => x - y));
+  // An app from before (the whole set) replaces it, as it always did.
+  const old = await call('PATCH', `/api/notes/${n.id}`, { labels: [a.id] });
+  assert.deepEqual(old.labels, [a.id]);
+});
+
+// The watch keeps a tick, or a reminder marked done, made with no
+// connection, and sends it later. Sent with no time, it counted as made
+// when it arrived, and undid a later change made elsewhere. It now says
+// when it was made (edited_at, client_now), which a server from before
+// ignores.
+test('a tick and a reminder done on the watch offline lose to a later change elsewhere; on time they go in', async (t) => {
+  if (skip(t)) return;
+  const n = await call('POST', '/api/notes', { title: 'W list', kind: 'checklist', items: [{ uuid: 'w-milk', text: 'milk' }, { uuid: 'w-eggs', text: 'eggs' }] });
+  const madeAt = iso();
+  await tick();
+  // Ticked and unticked again elsewhere, after the watch's tick.
+  await call('PATCH', `/api/notes/${n.id}/items/w-milk`, { checked: true });
+  await call('PATCH', `/api/notes/${n.id}/items/w-milk`, { checked: false });
+  await tick();
+  await call('PATCH', `/api/notes/${n.id}/items/w-milk`, { checked: true, edited_at: madeAt, client_now: iso() });
+  assert.equal(srv.q(`SELECT checked FROM checklist_items WHERE uuid = 'w-milk'`)[0].checked, 0, 'the later untick stays');
+  // Nothing changed it since: the tick goes in.
+  await call('PATCH', `/api/notes/${n.id}/items/w-eggs`, { checked: true, edited_at: madeAt, client_now: iso() });
+  assert.equal(srv.q(`SELECT checked FROM checklist_items WHERE uuid = 'w-eggs'`)[0].checked, 1);
+  // A reminder marked done offline, then set again elsewhere.
+  const r = await call('POST', '/api/notes', { title: 'W remind', body_md: 'x', reminder_at: '2026-12-01T09:00:00Z' });
+  const doneAt = iso();
+  await tick();
+  await call('PATCH', `/api/notes/${r.id}`, { reminder_at: '2026-12-02T09:00:00Z' });
+  await tick();
+  await call('PATCH', `/api/notes/${r.id}`, { reminder_at: null, edited_at: doneAt, client_now: iso() });
+  assert.ok(srv.q('SELECT reminder_at FROM notes WHERE id = ?', r.id)[0].reminder_at, 'the new reminder stays');
+  // With no time, as before: made now.
+  await call('PATCH', `/api/notes/${r.id}`, { reminder_at: null });
+  assert.equal(srv.q('SELECT reminder_at FROM notes WHERE id = ?', r.id)[0].reminder_at, null);
+});
+
+// A note from before the times counts from its last write (updated_at). A
+// tick of one of its items moves its updated_at, without changing any of
+// its fields: an offline edit of the note made before the tick, but after
+// the note's last real edit, then lost every field. A write that changes
+// none of them starts the times first, from the write before.
+test('a note from before the times, ticked after an offline edit was made, still takes that edit', async (t) => {
+  if (skip(t)) return;
+  const b = await startServer('legacytick');
+  try {
+    const H = { 'Content-Type': 'application/json', Authorization: `Bearer ${b.token}` };
+    const n = await (await fetch(b.base + '/api/notes', { method: 'POST', headers: H, body: JSON.stringify({ title: 'Old list', kind: 'checklist', items: [{ uuid: 'lt-1', text: 'one' }] }) })).json();
+    b.proc.kill();
+    await sleep(500);
+    const Database = createRequire(new URL('../server/package.json', import.meta.url))('better-sqlite3');
+    const d = new Database(join(dir, 'legacytick.db'));
+    d.prepare(`UPDATE notes SET field_times = NULL, updated_at = '2026-01-02 03:04:05' WHERE id = ?`).run(n.id);
+    d.close();
+    const again = await startServer('legacytick2', join(dir, 'legacytick.db'));
+    try {
+      const H2 = { 'Content-Type': 'application/json', Authorization: `Bearer ${again.token}` };
+      // Ticked now: the note's updated_at moves.
+      await fetch(again.base + `/api/notes/${n.id}/items/lt-1`, { method: 'PATCH', headers: H2, body: JSON.stringify({ checked: true }) });
+      // An edit of its title made offline in June, sent now.
+      const r = await fetch(again.base + '/api/sync/push', { method: 'POST', headers: H2, body: JSON.stringify({
+        client_now: new Date().toISOString(),
+        tables: { notes: [{ client_id: 1, server_id: n.id, title: 'Renamed in June', updated_at: '2026-06-01 10:00:00', changed_fields: ['title'] }] },
+      }) });
+      assert.ok(r.ok);
+      assert.equal(again.q('SELECT title FROM notes WHERE id = ?', n.id)[0].title, 'Renamed in June');
+    } finally { again.proc.kill(); }
+  } finally { b.proc.kill(); }
+});
+
+test('a restored backup keeps when each field of a note last changed', async (t) => {
+  if (skip(t)) return;
+  const n = await call('POST', '/api/notes', { title: 'Backed up', body_md: 'x' });
+  await tick();
+  await call('PATCH', `/api/notes/${n.id}`, { title: 'Backed up, renamed' });
+  const before = srv.q('SELECT field_times FROM notes WHERE id = ?', n.id)[0].field_times;
+  assert.ok(JSON.parse(before).title);
+  const made = await call('POST', '/api/full-backup');
+  await call('POST', `/api/full-backup/${encodeURIComponent(made.filename)}/restore`);
+  assert.equal(srv.q('SELECT field_times FROM notes WHERE id = ?', n.id)[0].field_times, before);
+});
+
+// Sync's bookkeeping (when each field changed) stays on the server: not in
+// an export (Settings > Export), nor in any answer about notes.
+test('field_times is in no export or answer', async (t) => {
+  if (skip(t)) return;
+  const n = await call('POST', '/api/notes', { title: 'Out', kind: 'checklist', items: [{ uuid: 'out-1', text: 'a' }] });
+  await call('PATCH', `/api/notes/${n.id}`, { title: 'Out, renamed' });
+  const label = await call('POST', '/api/labels', { name: 'Out label' });
+  await call('PATCH', `/api/notes/${n.id}`, { labels: [label.id] });
+  for (const path of ['/api/data/export', `/api/notes/${n.id}`, '/api/notes', '/api/labels', '/api/notes?view=reminders']) {
+    const r = await fetch(srv.base + path, { headers: { Authorization: `Bearer ${srv.token}` } });
+    assert.ok(!(await r.text()).includes('field_times'), path);
+  }
+});

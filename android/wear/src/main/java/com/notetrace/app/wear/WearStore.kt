@@ -221,12 +221,12 @@ class WearStore(private val ctx: Context) {
             val op = queue.first()
             try {
                 when (op.kind) {
-                    "item" -> NoteApi.setChecked(cfg, op.noteId, op.uuid, op.checked)
+                    "item" -> NoteApi.setChecked(cfg, op.noteId, op.uuid, op.checked, op.made)
                     "shopping" -> NoteApi.checkShopping(cfg, op.id, op.checked)
                     "note" -> NoteApi.createNote(cfg, op.text, op.at, op.tz)
                     "add_item" -> NoteApi.addItem(cfg, op.noteId, op.text)
                     "add_shopping" -> NoteApi.addShopping(cfg, op.text)
-                    "reminder_done" -> NoteApi.clearReminder(cfg, op.noteId)
+                    "reminder_done" -> NoteApi.clearReminder(cfg, op.noteId, op.made)
                 }
             } catch (e: Exception) {
                 if (isOffline(e)) {

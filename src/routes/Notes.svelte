@@ -608,7 +608,7 @@
     if (!note) return;
     labelTarget = { ...note, labels: ids };
     try {
-      const n = await NoteApi.updateNote(note.id, { labels: ids });
+      const n = await NoteApi.updateNote(note.id, { labels: ids, labels_from: note.labels || [] });
       labelTarget = n;
       if (labelId != null && !ids.includes(labelId)) notes = notes.filter(x => x.id !== note.id);
       else replace(n);
@@ -797,7 +797,7 @@
       if (want.length !== cur.length || want.some(id => !cur.includes(id))) updates.push({ n, want });
     }
     try {
-      for (const { n, want } of updates) replace(await NoteApi.updateNote(n.id, { labels: want }));
+      for (const { n, want } of updates) replace(await NoteApi.updateNote(n.id, { labels: want, labels_from: n.labels || [] }));
       refreshLabels();
     } catch (e) { showError(e.message); }
   }

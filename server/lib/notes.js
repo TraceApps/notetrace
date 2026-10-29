@@ -438,9 +438,15 @@ export const createNote = db.transaction((u, data = {}) => {
 });
 
 /** Partial update. Only fields present in `patch` change. */
-export const updateNote = db.transaction((u, id, patch = {}) => {
+export const updateNote = db.transaction((u, id, patch0 = {}) => {
   const access = noteAccess(u, id);
   if (!access) return null;
+  // Links only (closing the editor): [[links]] follow a rename from the
+  // title the editor opened with to the note's title as it is now, and no
+  // title is written, so a rename made elsewhere since the editor last
+  // saved stays. A server from before ignores links_only and writes the
+  // title it is sent, as it always did.
+  const patch = _linksOnly(patch0);
   if (access.role !== 'owner') return _updateAsMember(u, access, patch);
   const row = access.row;
   const sets = [];
@@ -474,10 +480,19 @@ export const updateNote = db.transaction((u, id, patch = {}) => {
   if (sets.length) {
     db.prepare(`UPDATE notes SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).run(...args, ts, id);
   }
-  if (Array.isArray(patch.labels)) _setLabels(u, id, patch.labels, ts);
+  if (Array.isArray(patch.labels)) _setLabels(u, id, _labelsWanted(u, id, patch), ts);
   if ('title' in patch && patch.rename_links !== false) _renameLinks(row.user_id, id, patch.rename_links_from != null ? _cleanTitle(patch.rename_links_from) : row.title, _cleanTitle(patch.title), ts);
+  if (patch.links_from != null) _renameLinks(row.user_id, id, _cleanTitle(patch.links_from), row.title, ts);
   return getNote(u, id);
 });
+
+// A links-only patch: no title, and the rename to follow (links_from).
+function _linksOnly(patch) {
+  const { links_from: _own, ...p } = patch || {};
+  if (p.links_only !== true || p.rename_links_from == null) return p;
+  const { title: _t, rename_links_from: from, links_only: _l, ...rest } = p;
+  return { ...rest, links_from: from };
+}
 
 // A member's patch: pin, archive, and labels are theirs; content changes
 // need 'edit'; reminders and trash aren't theirs to change.
@@ -509,8 +524,9 @@ function _updateAsMember(u, { row, role, member }, patch) {
     if ('read_only' in patch) { sets.push('read_only = ?'); args.push(patch.read_only ? 1 : 0); }
     if (sets.length) db.prepare(`UPDATE notes SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).run(...args, ts, id);
     if ('title' in patch && patch.rename_links !== false) _renameLinks(row.user_id, id, patch.rename_links_from != null ? _cleanTitle(patch.rename_links_from) : row.title, _cleanTitle(patch.title), ts);
+    if (patch.links_from != null) _renameLinks(row.user_id, id, _cleanTitle(patch.links_from), row.title, ts);
   }
-  if (Array.isArray(patch.labels)) _setLabels(u, id, patch.labels, ts);
+  if (Array.isArray(patch.labels)) _setLabels(u, id, _labelsWanted(u, id, patch), ts);
   return getNote(u, id);
 }
 
@@ -791,6 +807,19 @@ export const deleteAttachment = db.transaction((u, noteId, uuid) => {
 });
 
 // ── Labels ───────────────────────────────────────────────────────────
+
+// The labels a patch leaves on a note. With labels_from (the set the
+// change was made on), only what it added or took off changes, so a label
+// put on or taken off elsewhere since stays as it is; without it (an app
+// from before), the set it sends.
+function _labelsWanted(u, noteId, patch) {
+  if (!Array.isArray(patch.labels_from)) return patch.labels;
+  const to = new Set(patch.labels.map(Number)), from = new Set(patch.labels_from.map(Number));
+  const current = db.prepare(
+    `SELECT label_id FROM note_labels WHERE note_id = ? AND ${userClause(u)} AND deleted_at IS NULL`
+  ).all(noteId, ...userArgs(u)).map(r => r.label_id);
+  return [...new Set([...current.filter(l => !(from.has(l) && !to.has(l))), ...[...to].filter(l => !from.has(l))])];
+}
 
 function _setLabels(u, noteId, labelIds, ts) {
   const wanted = new Set(labelIds.map(Number).filter(Number.isFinite));

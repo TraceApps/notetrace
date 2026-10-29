@@ -368,6 +368,13 @@ export const NotesNative = {
     id = Number(id);
     const row = await _row(id);
     if (!row) throw new Error('Note not found');
+    // Links only (closing the editor): [[links]] follow the rename from the
+    // title it opened with to the note's title as it is now, which a pull
+    // may have changed since the editor's last save. No title is written.
+    if (patch.links_only === true && patch.rename_links_from != null) {
+      await _renameLinks(id, patch.rename_links_from, row.title, _now());
+      return _note(id);
+    }
     const changing = ('title' in patch && String(patch.title) !== row.title)
       || ('body_md' in patch && String(patch.body_md) !== row.body_md);
     if (changing) await _snapshot(row, patch.snapshot === 'restore' ? 'restore' : 'edit');
@@ -397,7 +404,17 @@ export const NotesNative = {
     if (sets.length) {
       await _run(`UPDATE notes SET ${sets.join(', ')}, updated_at = ?, sync_status = 'pending' WHERE id = ?`, [...args, ts, id]);
     }
-    if (Array.isArray(patch.labels)) await _setLabels(id, patch.labels, ts);
+    if (Array.isArray(patch.labels)) {
+      // With labels_from (the set the change was made on): only what it
+      // added or took off, so a label a pull brought since stays.
+      let wanted = patch.labels;
+      if (Array.isArray(patch.labels_from)) {
+        const to = new Set(patch.labels.map(Number)), from = new Set(patch.labels_from.map(Number));
+        const current = (await _q(`SELECT label_id FROM note_labels WHERE note_id = ? AND deleted_at IS NULL`, [id])).map(r => Number(r.label_id));
+        wanted = [...new Set([...current.filter(l => !(from.has(l) && !to.has(l))), ...[...to].filter(l => !from.has(l))])];
+      }
+      await _setLabels(id, wanted, ts);
+    }
     if ('title' in patch && patch.rename_links !== false) await _renameLinks(id, patch.rename_links_from ?? row.title, String(patch.title ?? ''), ts);
     return _note(id);
   },

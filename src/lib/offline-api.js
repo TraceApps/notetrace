@@ -724,11 +724,27 @@ export function createOfflineApi(http) {
     async updateNote(id, patch = {}) {
       const real = _mapId(await _idMap(), id);
       const offlinePatch = {};
-      for (const k of [...NOTE_FIELDS, 'labels']) if (k in patch) offlinePatch[k] = patch[k];
+      // Links only (closing the editor): the server renames the [[links]];
+      // the title it carries (for a server from before) isn't an edit here.
+      if (patch.links_only !== true) for (const k of [...NOTE_FIELDS, 'labels', 'labels_from']) if (k in patch) offlinePatch[k] = patch[k];
+      if (!('labels' in offlinePatch)) delete offlinePatch.labels_from;
       // Renaming [[links]] across notes, or a kind change, needs the server.
       const serverOnly = 'kind' in patch || ('rename_links_from' in patch);
       if (serverOnly && !Object.keys(offlinePatch).length) {
         if (isTempId(real)) return (await _localNotes()).find(n => n.id === real) || null;
+        if (patch.links_only === true) {
+          // Nothing to queue: with no connection, a server gone quiet, or
+          // changes still waiting to go, the links stay as they are (as a
+          // close with no connection always left them) rather than the
+          // editor waiting on a server that may not answer.
+          if ((await _loadOps()).length || !_online() || queueUnsent()) return (await _localNotes()).find(n => n.id === real) || null;
+          try {
+            return await sendingChange(() => http.updateNote(real, patch));
+          } catch (err) {
+            if (!isUnavailableError(err)) throw err;
+            return (await _localNotes()).find(n => n.id === real) || null;
+          }
+        }
         return http.updateNote(real, patch);
       }
       return write({ type: 'update', id: real, patch: offlinePatch }, () => http.updateNote(real, patch));

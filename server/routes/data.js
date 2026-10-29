@@ -67,6 +67,9 @@ router.get('/export', wrap((req, res) => {
       : db.prepare(`SELECT * FROM ${t} WHERE user_id = ?`).all(u);
   }
 
+  // When each field last changed (field_times) is sync's bookkeeping: it
+  // stays on the server.
+  for (const rows of Object.values(out)) if (Array.isArray(rows)) for (const r of rows) delete r.field_times;
   res.json(out);
 }));
 

@@ -173,3 +173,22 @@ test('a refused token asks for a re-pair instead of failing forever', () => {
   assert.match(pairing, /if \(token == prefs\(ctx\)\.getString\(KEY_REFUSED, null\)\) continue/);
   assert.match(pairing, /\.remove\(KEY_REFUSED\)/);
 });
+
+// A tick or a reminder done on the watch waits for a connection in its
+// outbox. It goes with when it was made (edited_at, and the watch's clock
+// as it sends: client_now), so the server keeps a later change made
+// elsewhere (routes/notes.js). Work queued before the watch kept the time
+// goes as made now, as before.
+test('the watch sends when a queued tick or reminder done was made', () => {
+  const pairing = read('android/wear/src/main/java/com/notetrace/app/wear/Pairing.kt');
+  const api = read('android/wear/src/main/java/com/notetrace/app/wear/NoteApi.kt');
+  const store = read('android/wear/src/main/java/com/notetrace/app/wear/WearStore.kt');
+  assert.match(pairing, /fun item\([^)]*\) = Op\("item"[^\n]*made = now\(\)\)/);
+  assert.match(pairing, /fun reminderDone\([^)]*\) = Op\("reminder_done"[^\n]*made = now\(\)\)/);
+  assert.match(pairing, /\.put\("made", made\)/);
+  assert.match(pairing, /made = o\.optString\("made"\)/);
+  assert.match(api, /if \(made\.isBlank\(\)\) return body/);
+  assert.match(api, /put\("edited_at", made\)\.put\("client_now", java\.time\.Instant\.now\(\)\.toString\(\)\)/);
+  assert.match(store, /setChecked\(cfg, op\.noteId, op\.uuid, op\.checked, op\.made\)/);
+  assert.match(store, /clearReminder\(cfg, op\.noteId, op\.made\)/);
+});

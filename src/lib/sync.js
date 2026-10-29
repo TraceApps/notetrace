@@ -459,6 +459,12 @@ async function pushChanges({ token = getAuthToken(), signal = null, gen = accoun
         // isn't sent yet even if it's back to the server's value.
         const diff = rowChanges(SYNC_FIELDS[table], r, r.server_base, SYNC_JSON[table]);
         const changed = diff && [...new Set([...diff, ...Object.keys(t).filter(f => SYNC_FIELDS[table].includes(f))])];
+        if (!diff && typeof t._rest === 'string') {
+          // No copy kept, but changed here before the update (_rest) and
+          // since: the row goes whole, each field with its own time.
+          const edits = Object.fromEntries(SYNC_FIELDS[table].filter(f => row[f] !== undefined).map(f => [f, typeof t[f] === 'string' ? t[f] : t._rest]));
+          if (Object.keys(edits).length) row.field_edits = edits;
+        }
         if (changed) {
           row.changed_fields = changed;
           // Each with when it was changed here, where that's known.

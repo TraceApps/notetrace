@@ -104,8 +104,18 @@ object NoteApi {
      * Clear a note's reminder. A repeating one keeps its rule on the server, so
      * this is the same "done with this occurrence" the notification's Done does.
      */
-    suspend fun clearReminder(cfg: Pairing.Config, noteId: Long) {
-        send(cfg, "PATCH", "/api/notes/$noteId", JSONObject().put("reminder_at", JSONObject.NULL))
+    suspend fun clearReminder(cfg: Pairing.Config, noteId: Long, made: String = "") {
+        send(cfg, "PATCH", "/api/notes/$noteId", madeAt(JSONObject().put("reminder_at", JSONObject.NULL), made))
+    }
+
+    /**
+     * When a change was made (`made`, ISO 8601 UTC): the server keeps a change
+     * made elsewhere after it, rather than letting one that waited for a
+     * connection undo it. Servers from before ignore it.
+     */
+    private fun madeAt(body: JSONObject, made: String): JSONObject {
+        if (made.isBlank()) return body
+        return body.put("edited_at", made).put("client_now", java.time.Instant.now().toString())
     }
 
     /** A new item on a checklist, from what the wearer said. */
@@ -123,8 +133,8 @@ object NoteApi {
     }
 
     /** Tick an item off, or back on. */
-    suspend fun setChecked(cfg: Pairing.Config, noteId: Long, uuid: String, checked: Boolean) {
-        send(cfg, "PATCH", "/api/notes/$noteId/items/$uuid", JSONObject().put("checked", checked))
+    suspend fun setChecked(cfg: Pairing.Config, noteId: Long, uuid: String, checked: Boolean, made: String = "") {
+        send(cfg, "PATCH", "/api/notes/$noteId/items/$uuid", madeAt(JSONObject().put("checked", checked), made))
     }
 
     /** A slim note's checklist items. */

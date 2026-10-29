@@ -88,7 +88,14 @@ export function applyOp(byId, op) {
   switch (op.type) {
     case 'update':
       for (const k of NOTE_FIELDS) if (k in (op.patch || {})) n[k] = op.patch[k];
-      if (Array.isArray(op.patch?.labels)) n.labels = [...op.patch.labels];
+      if (Array.isArray(op.patch?.labels)) {
+        // With labels_from (the set the change was made on): only what it
+        // added or took off, on top of the labels the note has here.
+        if (Array.isArray(op.patch.labels_from)) {
+          const to = op.patch.labels.map(Number), from = op.patch.labels_from.map(Number);
+          n.labels = [...new Set([...(n.labels || []).map(Number).filter(l => !(from.includes(l) && !to.includes(l))), ...to.filter(l => !from.includes(l))])];
+        } else n.labels = [...op.patch.labels];
+      }
       n.updated_at = at;
       break;
     case 'trash':
