@@ -26,6 +26,7 @@
   import { serverAddressCheck, confirmPlainHttp } from '../../lib/plain-http.js';
   import { classifyServerAddress } from '../../lib/local-address.js';
   import { askPlainHttp } from '../../stores/plainHttp.js';
+  import TwoStepChallenge from '../two-step/TwoStepChallenge.svelte';
   import { fullSync, pushAllFromDevice, syncState } from '../../lib/sync.js';
   import { confirmDialog } from '../../stores/confirmDialog.js';
   import { portal } from '../../lib/portal.js';
@@ -143,6 +144,29 @@
     return true;
   }
 
+  // Two-step sign-in's second step (nutritrace#222): { kind, pendingToken, url } while open.
+  let twoStepChallengeOpen = null;
+  async function twoStepDone(e) {
+    const { url } = twoStepChallengeOpen;
+    const loginData = e.detail || {};
+    twoStepChallengeOpen = null;
+    busy = true;
+    try {
+      _pendingLogoutHint = null;
+      forgetSsoConnect();
+      await _afterSignIn(url, loginData.token, loginData.user || null);
+    } catch (err) {
+      showError(explainConnectError(err, url, $_));
+    } finally {
+      busy = false;
+    }
+  }
+  function twoStepRestart(e) {
+    twoStepChallengeOpen = null;
+    password = '';
+    if (e.detail?.message) showError(e.detail.message);
+  }
+
   async function connect() {
     if (!serverUrl.trim()) { showError($_('settings_server_conn.toast.enter_url')); return; }
     if (!username.trim() || !password.trim()) { showError($_('settings_server_conn.toast.enter_credentials')); return; }
@@ -156,6 +180,8 @@
       forgetSsoConnect(); // an SSO sign-in left open in the browser is over
       await _afterSignIn(url, body.token, body.user || null);
     } catch (e) {
+      // Two-step sign-in (nutritrace#222): the code, or its setup, comes next.
+      if (e?.twoStep) { twoStepChallengeOpen = { ...e.twoStep, url }; return; }
       showError(explainConnectError(e, url, $_));
     } finally {
       busy = false;
@@ -525,6 +551,15 @@
         {/if}
       </div>
     {/if}
+  </div>
+{/if}
+
+{#if twoStepChallengeOpen}
+  <div class="merge-overlay" use:portal transition:fade={{ duration: 150 }} use:closeOnBack={() => { twoStepChallengeOpen = null; }}>
+    <div class="merge-dialog">
+      <TwoStepChallenge challenge={twoStepChallengeOpen} serverUrl={twoStepChallengeOpen.url} account={username.trim()}
+        on:done={twoStepDone} on:restart={twoStepRestart} />
+    </div>
   </div>
 {/if}
 

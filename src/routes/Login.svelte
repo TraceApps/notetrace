@@ -12,6 +12,8 @@
 
   import { get } from 'svelte/store';
   import { responseJson, discoverSignIn, webPageError, serverErrorFor, signInProblemKey } from '../lib/server-signin.js';
+  import { twoStepChallenge } from '../lib/two-step.js';
+  import TwoStepChallenge from '../components/two-step/TwoStepChallenge.svelte';
 
   let username = '';
   let password = '';
@@ -53,6 +55,13 @@
   let recovering    = false;
   let recoveryDone  = false;
   let recoveryToken = '';
+  // Locked Out? can also reset two-step sign-in for one account (nutritrace#222).
+  let recoveryUsername = '';
+  let resettingTwoStep = false;
+
+  // Two-step sign-in (nutritrace#222): after a right password, the server may
+  // ask for a code ('verify') or for setup ('setup'). Null while it doesn't.
+  let challenge = null;
 
   // OIDC providers + password-login flag are returned by /api/auth/status.
   // Native (Capacitor server-mode) routes the auth flow through
@@ -166,51 +175,105 @@
         body: JSON.stringify({ username: username.trim(), password }),
       });
       const data = await responseJson(res);
+      const ch = twoStepChallenge(data);
+      if (ch) { challenge = ch; return; }
       if (!res.ok) { showError(data.error || $_('login.errors.failed')); return; }
-      // Store auth token for native server mode
-      if (isNative && data.token) {
-        setAuthToken(data.token);
-        await forgetServerCookies();
-      }
-      // If biometric is enabled, stash the JWT so the next launch can unlock
-      // with biometric instead of password. Mirrors the NT + LT save-on-login
-      // pattern.
-      if (isNative && data.token) {
-        try {
-          const { biometricLoginEnabled } = await import('../stores/settings.js');
-          const { saveTokenForBiometric } = await import('../lib/biometric.js');
-          if (get(biometricLoginEnabled)) await saveTokenForBiometric(data.token);
-        } catch {}
-      }
-      // Cache user for offline fallback
-      localStorage.setItem('wl:userId', String(data.user.id));
-      localStorage.setItem('note:cachedUser', JSON.stringify(data.user));
-      localStorage.setItem('note:cachedUserMgmt', '1');
-      // Web: don't set the user here. loadAuthState() below reads it back
-      // from the server, so the app only appears once the session cookie has
-      // actually stuck; setting it early flashed the app for a moment before
-      // a dropped cookie sent the user back. Native signs in with a token.
-      if (isNative) currentUser.set(data.user);
-      // Refresh CSRF token from /api/auth/me before any state-changing request
-      // can fire (otherwise reactive settings saves would use a stale csrf from
-      // a previous session and 403). loadAuthState() handles the fetch and
-      // populates localStorage note:csrf as a side effect.
-      await loadAuthState();
-      // The password was right but the session didn't stick: the browser
-      // dropped the cookie. Say why here instead of looping back to sign-in.
-      // get(), not $currentUser: this page can be torn down meanwhile.
-      if (!isNative && !get(currentUser)) {
-        signInProblem.set(droppedCookieReason(authStatus, { native: isNative }));
-        return;
-      }
-      signInProblem.set(null);
-      await loadServerSettings();
-      push('/');
+      await signedIn(data);
     } catch(e) {
       // A sign-in proxy's web page in place of the server: said as such (#36).
       showError(e?.webPage ? e.message : $_('common.errors.cant_reach_server'));
     } finally {
       loading = false;
+    }
+  }
+
+  // The second step finished: signed in as with a password alone.
+  async function twoStepDone(e) {
+    const data = e.detail || {};
+    loading = true;
+    try {
+      await signedIn(data);
+      if (data.recovery_codes_left != null) {
+        showSuccess($_('two_step.signin.recovery_used', { values: { count: data.recovery_codes_left } }));
+      }
+    } catch {
+      showError($_('common.errors.cant_reach_server'));
+    } finally {
+      loading = false;
+    }
+  }
+  function twoStepRestart(e) {
+    challenge = null;
+    password = '';
+    if (e.detail?.message) showError(e.detail.message);
+  }
+
+  // Signed in: the session (cookie on the web, token in the app), then the app.
+  async function signedIn(data) {
+    // Store auth token for native server mode
+    if (isNative && data.token) {
+      setAuthToken(data.token);
+      await forgetServerCookies();
+    }
+    // If biometric is enabled, stash the JWT so the next launch can unlock
+    // with biometric instead of password. Mirrors the NT + LT save-on-login
+    // pattern.
+    if (isNative && data.token) {
+      try {
+        const { biometricLoginEnabled } = await import('../stores/settings.js');
+        const { saveTokenForBiometric } = await import('../lib/biometric.js');
+        if (get(biometricLoginEnabled)) await saveTokenForBiometric(data.token);
+      } catch {}
+    }
+    // Cache user for offline fallback
+    localStorage.setItem('wl:userId', String(data.user.id));
+    localStorage.setItem('note:cachedUser', JSON.stringify(data.user));
+    localStorage.setItem('note:cachedUserMgmt', '1');
+    // Web: don't set the user here. loadAuthState() below reads it back
+    // from the server, so the app only appears once the session cookie has
+    // actually stuck; setting it early flashed the app for a moment before
+    // a dropped cookie sent the user back. Native signs in with a token.
+    if (isNative) currentUser.set(data.user);
+    // Refresh CSRF token from /api/auth/me before any state-changing request
+    // can fire (otherwise reactive settings saves would use a stale csrf from
+    // a previous session and 403). loadAuthState() handles the fetch and
+    // populates localStorage note:csrf as a side effect.
+    await loadAuthState();
+    // The password was right but the session didn't stick: the browser
+    // dropped the cookie. Say why here instead of looping back to sign-in.
+    // get(), not $currentUser: this page can be torn down meanwhile.
+    challenge = null;
+    if (!isNative && !get(currentUser)) {
+      signInProblem.set(droppedCookieReason(authStatus, { native: isNative }));
+      return;
+    }
+    signInProblem.set(null);
+    await loadServerSettings();
+    push('/');
+  }
+
+  // Locked Out?, the owner's way back in for one account: RECOVERY_TOKEN
+  // turns two-step sign-in off for that account and changes nothing else.
+  async function resetTwoStep() {
+    if (!recoveryToken.trim() || !recoveryUsername.trim()) return;
+    resettingTwoStep = true;
+    try {
+      const res = await fetch(apiUrl('/api/auth/two-step/recover'), {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: recoveryToken.trim(), username: recoveryUsername.trim() }),
+      });
+      const data = await responseJson(res);
+      if (!res.ok) { showError(data.error || $_('two_step.locked_out.failed')); return; }
+      showSuccess($_('two_step.locked_out.done', { values: { name: recoveryUsername.trim() } }));
+      recoveryToken = '';
+      showRecovery = false;
+      username = recoveryUsername.trim();
+      recoveryUsername = '';
+    } catch (e) {
+      showError(e?.webPage ? e.message : $_('common.errors.cant_reach_server'));
+    } finally {
+      resettingTwoStep = false;
     }
   }
 
@@ -253,7 +316,9 @@
       <CookieWarning reason={$signInProblem} />
     {/if}
 
-    {#if !recoveryDone}
+    {#if challenge}
+      <TwoStepChallenge {challenge} account={username.trim()} on:done={twoStepDone} on:restart={twoStepRestart} />
+    {:else if !recoveryDone}
       <!-- One notice, one reason (lib/server-signin.js signInProblemKey): who is
            signed in couldn't be read at startup, else the sign-in options. -->
       {#if $authUnavailable || optionsError}
@@ -322,10 +387,26 @@
 
       {#if showRecovery}
         <div class="recovery-box" transition:slide={{ duration: 180 }}>
-          <span class="material-symbols-rounded" style="font-size:20px;color:var(--warning,#f59e0b)">warning</span>
-          <p>{@html $_('login.recovery.explainer')}</p>
-          <p style="margin:0">{$_('login.recovery.token_prompt')}</p>
+          <p style="margin:0">{@html $_('login.recovery.token_prompt')}</p>
           <input class="input" type="password" bind:value={recoveryToken} placeholder={$_('login.recovery.token_placeholder')} />
+
+          <!-- The gentler way first: two-step sign-in off for one account. -->
+          <div class="recovery-part">
+            <strong class="recovery-heading">{$_('two_step.locked_out.title')}</strong>
+            <p style="margin:0">{$_('two_step.locked_out.explain')}</p>
+            <input class="input" type="text" autocomplete="off" autocapitalize="off" bind:value={recoveryUsername} placeholder={$_('two_step.locked_out.username_placeholder')} />
+            <button class="btn btn-secondary" style="width:100%" on:click={resetTwoStep} disabled={resettingTwoStep || !recoveryToken.trim() || !recoveryUsername.trim()}>
+              {resettingTwoStep ? $_('two_step.locked_out.resetting') : $_('two_step.locked_out.action')}
+            </button>
+          </div>
+
+          <div class="recovery-part">
+            <strong class="recovery-heading recovery-heading-danger">
+              <span class="material-symbols-rounded" style="font-size:18px;color:var(--warning,#f59e0b)">warning</span>
+              {$_('two_step.locked_out.disable_title')}
+            </strong>
+            <p style="margin:0">{@html $_('login.recovery.explainer')}</p>
+          </div>
           <button class="btn btn-secondary" style="width:100%;border-color:var(--danger);color:var(--danger)"
             on:click={recover} disabled={recovering || !recoveryToken.trim()}>
             {recovering ? $_('login.recovery.disabling') : $_('login.recovery.action')}
@@ -401,6 +482,8 @@
     color: var(--text-2);
     line-height: 1.5;
   }
+  .recovery-part { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .recovery-heading { display: flex; align-items: center; gap: 6px; color: var(--text-1); font-size: 13px; }
   .sso-row { display: flex; flex-direction: column; gap: 8px; }
   .options-error {
     display: flex; flex-direction: column; align-items: flex-start; gap: 8px;

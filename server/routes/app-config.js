@@ -15,6 +15,8 @@ const ALLOWED_KEYS = new Set([
   'session_hours',
   'sharing_enabled',
   'password_policy',
+  // Require Two-Step Sign-In for Everyone (nutritrace#222): 'true' or off.
+  'two_step_required',
 ]);
 
 // ── GET /api/app-config/env-locks — which sections are locked by env vars ──

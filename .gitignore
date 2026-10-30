@@ -33,6 +33,8 @@ data/
 server/notetrace.db
 server/notetrace.db-shm
 server/notetrace.db-wal
+# Two-step sign-in key, next to the database (nutritrace#222)
+two-step.key
 server/uploads/
 
 # Editor

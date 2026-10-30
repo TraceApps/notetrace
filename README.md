@@ -92,7 +92,7 @@ Stable since v1.0.0. What it does today:
 
 The foundation it shares with the other Trace apps:
 
-- **Accounts.** Multi-user with OIDC SSO (Authentik, Keycloak, Pocket ID, Authelia, and others).
+- **Accounts.** Multi-user with OIDC SSO (Authentik, Keycloak, Pocket ID, Authelia, and others) and [two-step sign-in](https://traceapps.github.io/docs/auth/two-step/) with an authenticator app.
 - **Backups.** Full-database zip, scheduled auto-backups, portable export, Android local-backup zip.
 - **Android app.** Offline local mode or server-connected differential sync.
 - **In-app updates.** Stable and Dev channels, same as the rest of the family.
@@ -163,6 +163,8 @@ Open `http://localhost:3004` and a first-run wizard walks you through creating a
 | `INSECURE_COOKIES` | `0` | Set `1` to send the sign-in cookie over plain HTTP too. The cookie is HTTPS-only by default, so at a plain `http://` address other than `localhost` (a LAN IP, an Unraid WebUI link) the browser drops it and signing in loops back to the sign-in page; the sign-in and setup screens say so. Use `1` only on a trusted LAN, and leave it `0` behind HTTPS. See [Plain-HTTP LAN](https://traceapps.github.io/docs/getting-started/lan-http/). |
 | `TZ` | `UTC` | The server's time zone, such as `America/New_York` (needs no tzdata). Names backups and runs a backup schedule that has no time zone of its own, `BACKUP_TIME` included. Set it in the container's environment and restart. |
 | `MAX_SESSION_HOURS` | `8760` | Session-length cap in hours. Lower for shared / kiosk machines. |
+| `RECOVERY_TOKEN` | - | Passphrase for Locked Out? on the login page: reset two-step sign-in for one account (16 characters or more), or disable user management (lockout recovery). |
+| `TWO_STEP_KEY` | a generated `two-step.key` next to the database | Key that locks two-step sign-in secrets. Leave it unset unless you keep secrets outside the data folder. See [DEPLOY.md](DEPLOY.md#two-step-sign-in). |
 | `FRAME_ANCESTORS` | - | Addresses allowed to show NoteTrace inside a frame, such as a dashboard (`https://home.example.com`; several separated by spaces or commas). By default only NoteTrace itself may. If you show NoteTrace inside a dashboard (Homarr, Organizr, Home Assistant), it shows blank after this update until you set `FRAME_ANCESTORS` to the dashboard's address, for example `FRAME_ANCESTORS=https://home.example.com`. Origins only; a path is ignored. A proxy that already sets its own frame-ancestors for the dashboard needs `FRAME_ANCESTORS` too. |
 | `UPDATE_CHECK` | - | `off` stops the server asking GitHub about new releases for good, whatever Settings, Updates says. Unset, the setting decides (off until someone turns it on). |
 | `BACKUP_UPLOAD_MAX_MB` | `512` | Upload cap for restore-from-zip. |

@@ -13,3 +13,4 @@ design
 SCOPE.md
 server/*.db*
 server/uploads
+**/two-step.key
