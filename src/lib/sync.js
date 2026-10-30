@@ -217,7 +217,14 @@ function _deadline(signal) {
  * no longer accepted, and the user sees "Sync push failed: 401" every
  * cycle. Mirrors the same fix in NT sync.js (commit d1e8217).
  */
-async function _handleSyncAuthError() {
+async function _handleSyncAuthError(said = null) {
+  // The server says this device was signed out (a password change, Sign
+  // Out Everywhere, nutritrace#222): the sign-in page says so
+  // (lib/fresh-session.js). The unsent changes stay for the next sign-in.
+  try {
+    const body = said ? await said.clone().json() : null;
+    if (body?.session_ended) (await import('../stores/auth.js')).sessionEnded.set(true);
+  } catch { /* not JSON */ }
   console.warn('[sync] received 401 — clearing local auth so the user can re-sign-in');
   try {
     const { setAuthToken, forgetServerCookies } = await import('./platform.js');
@@ -503,7 +510,7 @@ async function pushChanges({ token = getAuthToken(), signal = null, gen = accoun
     body: JSON.stringify({ tables: tablesToSend, settings, client_now: new Date().toISOString() }),
   });
   if (!res.ok) {
-    if (res.status === 401 && live() && getAuthToken() === token) await _handleSyncAuthError();
+    if (res.status === 401 && live() && getAuthToken() === token) await _handleSyncAuthError(res);
     throw new Error(`Sync push failed: ${res.status} ${await _errBody(res)}`);
   }
   const body = await res.json();
@@ -622,7 +629,7 @@ async function pullChanges({ token = getAuthToken(), signal = null, gen = accoun
     signal: _deadline(signal),
   });
   if (!res.ok) {
-    if (res.status === 401 && live() && getAuthToken() === token) await _handleSyncAuthError();
+    if (res.status === 401 && live() && getAuthToken() === token) await _handleSyncAuthError(res);
     throw new Error(`Sync pull failed: ${res.status} ${await _errBody(res)}`);
   }
   const body = await res.json();

@@ -32,6 +32,11 @@ export const signInProblem = writable(null);
 // of the app opening with nobody signed in, which looked like every note
 // was gone. Whoever signs in is past it.
 export const authUnavailable = writable(null);
+/** True when the server said this device's session was signed out (a
+ *  password change, two-step sign-in changed, Sign Out Everywhere,
+ *  nutritrace#222): the sign-in page says so (lib/fresh-session.js). */
+export const sessionEnded = writable(false);
+currentUser.subscribe((u) => { if (u) sessionEnded.set(false); });
 currentUser.subscribe((u) => { if (u) authUnavailable.set(null); });
 
 // Synthetic local user for native standalone mode (no server configured).
@@ -152,6 +157,12 @@ async function _fetchAuthFromServer({ waitMs = 8000 } = {}) {
     const statusData = await _serverAnswer(statusRes, d => typeof d.active === 'boolean');
     const meData     = await _serverAnswer(meRes, d => 'user' in d);
     const user       = meData.user || null;
+    // Signed out on this device since: the sign-in page says why, and the
+    // account kept for opening offline goes (its queue stays, lib/offline-api.js).
+    if (!user && meData.session_ended) {
+      sessionEnded.set(true);
+      localStorage.removeItem('note:cachedUser');
+    }
     const active     = !!statusData.active;
     userMgmtActive.set(active);
     setupRequired.set(!!statusData.setup_required);
@@ -265,6 +276,16 @@ async function _refreshAuthFromServer() {
       }
       // 401 from /me means logged-out (after a logout call, or token expired).
       // Clear local user state so needsLogin in App.svelte fires the Login route.
+      let meData = null;
+      if (meRes.ok) { try { meData = await meRes.json(); } catch {} }
+      // Signed out on this device (a password change, Sign Out Everywhere):
+      // the sign-in page, saying why. The phone's copy and its unsent
+      // changes stay for the account's next sign-in.
+      if (meData?.session_ended && !meData.user) {
+        const { endSessionHere } = await import('../lib/fresh-session.js');
+        await endSessionHere();
+        return;
+      }
       if (meRes.status === 401) {
         currentUser.set(null);
         localStorage.removeItem('wl:userId');
@@ -273,8 +294,7 @@ async function _refreshAuthFromServer() {
         await forgetServerCookies();
         return;
       }
-      if (!meRes.ok) return; // actual server error — keep cached auth
-      const meData     = await meRes.json();
+      if (!meRes.ok || !meData) return; // actual server error: keep cached auth
       const user       = meData.user || null;
       if (!user) return; // don't clear auth on native — keep cached user
       currentUser.set(user);

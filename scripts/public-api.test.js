@@ -86,7 +86,7 @@ test('setup: an admin and two tokens', { skip: !Database && 'needs better-sqlite
     ins.run('prune-stale', '-25 hours');
     ins.run('prune-fresh', '-23 hours');
   });
-  const make = async (scopes) => (await ask({ method: 'POST', path: '/api/admin/api-tokens', headers: owner, body: { name: scopes.join('+'), scopes } })).json.raw;
+  const make = async (scopes) => (await ask({ method: 'POST', path: '/api/admin/api-tokens', headers: owner, body: { name: scopes.join('+'), scopes, password: 'Owner-pass-2026!' } })).json.raw;
   create = await make(['notes:create']);
   mcp = await make(['mcp:read', 'mcp:write']);
   assert.match(create, /^note_pat_/);
@@ -108,10 +108,10 @@ test('every user makes, sees and revokes only their own tokens, and only admins 
   assert.deepEqual(offer.tokens, []);
 
   for (const scopes of [['mcp:read'], ['notes:create', 'mcp:write'], ['mcp:destroy']]) {
-    const r = await ask({ method: 'POST', path: '/api/admin/api-tokens', headers: member, body: { name: 'x', scopes } });
+    const r = await ask({ method: 'POST', path: '/api/admin/api-tokens', headers: member, body: { name: 'x', scopes, password: 'Member-pass-2026!' } });
     assert.equal(r.status, 403, JSON.stringify(scopes));
   }
-  const made = await ask({ method: 'POST', path: '/api/admin/api-tokens', headers: member, body: { name: 'Mail', scopes: ['notes:create'] } });
+  const made = await ask({ method: 'POST', path: '/api/admin/api-tokens', headers: member, body: { name: 'Mail', scopes: ['notes:create'], password: 'Member-pass-2026!' } });
   assert.equal(made.status, 201);
   assert.deepEqual(made.json.token.scopes, ['notes:create']);
 
@@ -136,17 +136,20 @@ test('every user makes, sees and revokes only their own tokens, and only admins 
   assert.deepEqual((await tokens(member)).json.tokens, []);
 });
 
-test('token expiry is a real time or the token is refused', { skip: !Database && 'needs better-sqlite3' }, async () => {
-  const make = (expires_at) => ask({ method: 'POST', path: '/api/admin/api-tokens', headers: owner, body: { name: 'exp', scopes: ['notes:create'], expires_at } });
-  for (const bad of ['garbage', '2020-01-01T00:00:00Z', '2099-02-30 00:00:00', '2099-01-01', 5]) {
+test('token expiry is a real time to come or the token is refused', { skip: !Database && 'needs better-sqlite3' }, async () => {
+  const make = (expires_at) => ask({ method: 'POST', path: '/api/admin/api-tokens', headers: owner, body: { name: 'exp', scopes: ['notes:create'], expires_at, password: 'Owner-pass-2026!' } });
+  // A time gone by, or more than ten years out, is refused too (from TraceApps/nutritrace#222).
+  for (const bad of ['garbage', '2020-01-01T00:00:00Z', '2099-02-30 00:00:00', '2099-01-01', 5, '2020-01-01 00:00:00', '2099-01-01 00:00:00']) {
     const r = await make(bad);
     assert.equal(r.status, 400, String(bad));
-    assert.match(r.json.error, /expires_at/);
+    assert.match(r.json.error, /[Ee]xpir/);
   }
-  const past = await make('2020-01-01 00:00:00');
+  // One that expires anyway (an older server kept it): refused.
+  const past = await make(new Date(Date.now() + 864e5).toISOString().slice(0, 19).replace('T', ' '));
   assert.equal(past.status, 201);
+  sql((db) => db.prepare(`UPDATE api_tokens SET expires_at = '2020-01-01 00:00:00' WHERE id = ?`).run(past.json.token.id));
   assert.equal((await post(past.json.raw, { title: 'x' })).status, 401);
-  const future = await make('2099-01-01 00:00:00');
+  const future = await make(new Date(Date.now() + 365 * 864e5).toISOString().slice(0, 19).replace('T', ' '));
   assert.equal((await post(future.json.raw, { title: 'x' })).status, 201);
   // A stored value that can't be read (an older server kept anything) counts as expired.
   sql((db) => db.prepare(`UPDATE api_tokens SET expires_at = 'garbage' WHERE id = ?`).run(future.json.token.id));

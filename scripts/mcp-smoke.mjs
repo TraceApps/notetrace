@@ -10,7 +10,7 @@ const j = async (method, p, body, tok) => (await fetch(B + p, { method, headers:
 
 await j('POST', '/api/auth/register', { username: 'agent', password: 'Agent!Pass99', full_name: 'Agent' });
 const session = (await j('POST', '/api/auth/login', { username: 'agent', password: 'Agent!Pass99' })).token;
-const mk = async (scopes) => (await j('POST', '/api/admin/api-tokens', { name: scopes.join(' '), scopes }, session)).raw;
+const mk = async (scopes) => (await j('POST', '/api/admin/api-tokens', { name: scopes.join(' '), scopes, password: 'Agent!Pass99' }, session)).raw;
 const full = await mk(['mcp:read', 'mcp:write', 'mcp:destroy']);
 const readOnly = await mk(['mcp:read']);
 

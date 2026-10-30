@@ -26,7 +26,7 @@ await j('POST', `/api/notes/${list.id}/items`, { text: 'Milk' }, tok);
 const label = (await j('POST', '/api/labels', { name: 'Home/Garage', color: 'mint', icon: 'home' }, tok)).data;
 await j('PATCH', `/api/notes/${note.id}`, { labels: [label.id] }, tok);
 await j('PUT', '/api/settings/bulk', { settings: { labelOrder: 'custom', accentColor: 'mint' } }, tok);
-const apiToken = (await j('POST', '/api/admin/api-tokens', { name: 'For scripts', scopes: ['mcp:read'] }, tok)).data;
+const apiToken = (await j('POST', '/api/admin/api-tokens', { name: 'For scripts', scopes: ['mcp:read'], password: 'Backup!Pass9' }, tok)).data;
 const hook = (await j('POST', '/api/admin/webhooks', { url: 'https://example.com/notetrace-hook', events: ['note.created'] }, tok)).data;
 ok(!!apiToken?.token, `made an API token (${apiToken.error || 'ok'})`);
 ok(!!hook?.webhook, `made a webhook (${hook.error || 'ok'})`);

@@ -116,6 +116,7 @@ test('an SSO sign-in from Settings: the account is asked of that server with the
   assert.match(url, /^https:\/\/notes\.example\.com\/api\/auth\/oidc\/login\/3\?mobile=1&return=%23%2F&app_challenge=[\w-]+$/);
   const { challengeSent } = await import('../src/lib/oidc-app-handoff.js');
   assert.equal(challengeSent(), true, 'asking for a code is remembered');
+  assert.equal(challengeSent(), false, 'taken by the link that answers it (nutritrace#222)');
   // Which server the deep link is for, for half an hour.
   signin.rememberSsoConnect(URL_);
   assert.equal(signin.pendingSsoConnect().url, URL_);
@@ -133,7 +134,9 @@ test('a Settings sign-in takes only the code it asked for, never a token another
   assert.deepEqual(act({ code: 'c1', connecting, challengeSent: true }), { do: 'redeem', server: URL_ });
   assert.deepEqual(act({ error: 'denied', code: 'c1', connecting, challengeSent: true }), { do: 'error' });
   // Without WebCrypto no code was asked for: the token is the only answer.
-  assert.deepEqual(act({ token: 't', connecting, challengeSent: false }), { do: 'token' });
+  // A bare token nobody here asked for is another app's (nutritrace#222).
+  assert.deepEqual(act({ token: 't', connecting, challengeSent: false }), { do: 'refuse' });
+  assert.deepEqual(act({ token: 't', connecting: null, challengeSent: false }), { do: 'refuse' }, 'no sign-in under way');
   // First run and after Log Out: a server from before the code hand-off (1.0)
   // answers with a token, so it's still taken there.
   assert.deepEqual(act({ token: 't', connecting: null, challengeSent: true }), { do: 'token' });
