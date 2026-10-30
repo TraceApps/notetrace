@@ -14,6 +14,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Fixed
 
+- **Locked Out? says what disabling user management deletes.** It said your food and diary data would be kept; it deletes every account and its notes. The words now say so.
 - **Sync keeps the newer edit of each part of a note, not of the whole note.** An edit made on one device could undo a newer edit made elsewhere to a different part of the same note, checklist item, picture or label: renaming a note on the web and then ticking something on the phone before it synced put the old name back, and an edit made offline before a change elsewhere was dropped entirely. Now each field keeps its newest edit, and parts that go together (a note's text and its type, a reminder's time and repeat, an item's tick and when) stay together. A title or text that loses is still kept in version history. A delete made before a later edit no longer wins, and a setting changed earlier on the phone no longer undoes a later change. The note editor on the web now saves only the title or text you changed. Edits from an earlier Android app still count as changing everything they send.
 - **Closing a note no longer puts back a rename made elsewhere.** Closing the editor sent the note's title again so links to it followed the rename, which undid a rename made on another device since your last change. Now closing only updates the links, to the note's title as it is now.
 - **Changing a note's labels keeps a label put on elsewhere.** Changing labels sent the whole set you saw, so a label put on (or taken off) on another device since was undone. Now only the labels you put on or took off change. On the web and in the Android app.
@@ -33,6 +34,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Security
 
+- **Linking a sign-in provider asks for your password first.** Profile > Linked Accounts > Link now asks for your password, and your two-step code when that's on, before it starts; the server checks it, not just the page. Before, anyone holding a signed-in session could link their own single sign-on account and keep signing in with it, even after a password change. An account that only signs in through single sign-on can link another provider, or set a first password, within 15 minutes of signing in. The link has to finish in the browser it started in. A changed email waits too: Profile asks you to confirm it with your password, and until then single sign-on doesn't link to your account by it and a password reset goes to your previous email. (from [nutritrace#222](https://github.com/TraceApps/nutritrace/issues/222))
 - **The server log no longer shows a key or password from an address when a lookup fails.** The server logged the full address of a failed lookup through its proxy, a USDA key included. Keys, tokens, passwords and a `user:password@` part in it are now shown as `***`.
 
 ---
