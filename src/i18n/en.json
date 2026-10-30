@@ -1140,8 +1140,8 @@
       "fix_link": "How to fix it"
     },
     "recovery": {
-      "confirm":           "This will delete all user accounts and their notes. Continue?",
-      "explainer":         "If you never set up user accounts intentionally, you can disable user management. <strong>This will delete all user accounts and their notes.</strong>",
+      "confirm_delete":           "This will delete all user accounts and their notes. Continue?",
+      "explainer_delete":         "If you never set up user accounts intentionally, you can disable user management. <strong>This will delete all user accounts and their notes.</strong>",
       "token_prompt":      "Enter the <code>RECOVERY_TOKEN</code> from your server environment:",
       "token_placeholder": "Recovery token",
       "action":            "Disable User Management & Reset",
