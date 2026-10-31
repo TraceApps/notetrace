@@ -269,6 +269,9 @@ function restoreFromZip(zip) {
     // parents within the same transaction. Standard SQLite pattern for
     // tree restores.
     db.pragma('defer_foreign_keys = ON');
+    // What devices may hold of the tables that say a row is gone only with
+    // its deleted_at, read before the wipe (keepGone, below).
+    const before = rowsBefore(data);
     // Wipe in dependency order, children before parents.
     db.prepare('DELETE FROM note_labels').run();
     db.prepare('DELETE FROM note_members').run();
@@ -316,7 +319,7 @@ function restoreFromZip(zip) {
       const colList = cols.join(', ');
       const ph = cols.map(c => '@' + c).join(', ');
       const ins = db.prepare(`INSERT OR IGNORE INTO ${table} (${colList}) VALUES (${ph})`);
-      const defaults = Object.fromEntries(cols.map(c => [c, null]));
+      const defaults = _defaultsOf(table);
       for (const r of rows) ins.run(_withDefaults(r, defaults));
     }
     _bulkRestoreSchemaDriven('ai_chat_history', data.ai_chat_history);
@@ -331,15 +334,17 @@ function restoreFromZip(zip) {
     // Side tables. Schema-driven INSERTs (column list pulled from PRAGMA)
     // so a backup made on a slightly different schema version still
     // restores cleanly: extra columns get nulled, missing columns skipped.
+    // Emptied first even when the backup holds none of it: an invite made
+    // since (its maker's delete leaves it) doesn't stay.
     function _restoreTable(table, rows) {
-      if (!Array.isArray(rows) || rows.length === 0) return;
       const cols = _columnsOf(table);
       if (cols.length === 0) return; // table not present in this build
       try { db.prepare(`DELETE FROM ${table}`).run(); } catch {}
+      if (!Array.isArray(rows) || rows.length === 0) return;
       const colList = cols.join(', ');
       const ph = cols.map(c => '@' + c).join(', ');
       const ins = db.prepare(`INSERT OR IGNORE INTO ${table} (${colList}) VALUES (${ph})`);
-      const defaults = Object.fromEntries(cols.map(c => [c, null]));
+      const defaults = _defaultsOf(table);
       for (const r of rows) ins.run(_withDefaults(r, defaults));
     }
     // See TODO(review) in dumpDatabase: pending invitations only.
@@ -406,6 +411,10 @@ function restoreFromZip(zip) {
         email_verified: 0, last_login_at: null, created_at: null,
       }));
     } catch {} // tables don't exist — skip silently
+
+    // Rows a device may hold that the backup doesn't: kept as deleted, so
+    // devices drop them.
+    keepGone(before);
   })(), data.users);
 
   // Restore images — guard against zip-slip and zip-bomb attacks
@@ -437,6 +446,93 @@ function restoreFromZip(zip) {
     fs.writeFileSync(dest, bytes);
   }
   logTwoStepAfterRestore();
+}
+
+// A column a backup's row doesn't have (one added since it was made) gets
+// the column's own default, as an upgrade gives the rows it already has:
+// NULL into a NOT NULL column would make INSERT OR IGNORE drop the whole row.
+function _defaultsOf(table) {
+  const out = {};
+  for (const c of db.prepare(`PRAGMA table_info(${table})`).all()) {
+    out[c.name] = null;
+    if (c.dflt_value != null) {
+      try { out[c.name] = db.prepare(`SELECT ${c.dflt_value} AS v`).get().v; } catch { /* left empty */ }
+    }
+  }
+  return out;
+}
+
+// Tables whose rows a device pulls whole and that say a row is gone only by
+// its deleted_at (routes/sync.js TABLES, softDelete), and the shares that
+// tell someone a note is no longer theirs (revokedNoteIds), parents first,
+// with who has to be the same before and after the restore for a row to be
+// theirs (an account: its id, username and when it was made).
+const KEEP_GONE = ['labels', 'notes', 'checklist_items', 'note_attachments', 'note_labels', 'note_members'];
+// The rows of `t` the backup doesn't hold (by `key`), read one at a time so
+// the rest never sits in memory beside the backup.
+function _notIn(data, t, key = 'id') {
+  const backed = new Set((Array.isArray(data?.[t]) ? data[t] : []).map(r => r?.[key]));
+  const out = [];
+  try { for (const r of db.prepare(`SELECT * FROM ${t}`).iterate()) if (!backed.has(r[key])) out.push(r); } catch { /* not in this build */ }
+  return out;
+}
+
+function rowsBefore(data) {
+  const out = Object.fromEntries(KEEP_GONE.map(t => [t, _notIn(data, t)]));
+  try { out.sharedIds = db.prepare('SELECT id FROM note_members WHERE deleted_at IS NULL').all().map(r => r.id); } catch { out.sharedIds = []; }
+  out.users = new Map(db.prepare('SELECT id, username, created_at FROM users').all().map(u => [u.id, `${u.username}\n${u.created_at}`]));
+  return out;
+}
+
+/**
+ * A row a device may hold that the restore took away is put back deleted,
+ * as the app deletes a note with what it holds (deleted_at and updated_at
+ * now, one time for all, which db.js stamps like any delete), so every device that pulls it drops its copy (a note
+ * made after the backup, an item ticked into a list since, a note shared
+ * since), and an older edit queued on a phone doesn't bring it back. Only
+ * for the same people: an account that is someone else in the backup, or
+ * isn't in it, gets nothing of the other's. A link to a row that isn't
+ * there is left empty (or the row stays out, when it needs one), so the
+ * restore's foreign keys hold. A note's public link goes, so it no longer
+ * opens it.
+ */
+function keepGone(before) {
+  const usersNow = new Map(db.prepare('SELECT id, username, created_at FROM users').all().map(u => [u.id, `${u.username}\n${u.created_at}`]));
+  // A row with no account is the one user's of a server without accounts:
+  // the same only when there were none before and are none now (restored
+  // onto a server with accounts, it would be handed to one of them).
+  const solo = before.users.size === 0 && usersNow.size === 0;
+  const same = id => (id == null ? solo : usersNow.has(id) && usersNow.get(id) === before.users.get(id));
+  const ts = new Date().toISOString().replace('T', ' ').replace('Z', ''); // as lib/notes.js stampNow
+  for (const t of KEEP_GONE) {
+    const info = db.prepare(`PRAGMA table_info(${t})`).all();
+    if (!info.length || !before[t]?.length) continue;
+    const cols = info.map(c => c.name);
+    const notNull = new Set(info.filter(c => c.notnull).map(c => c.name));
+    const fks = db.prepare(`PRAGMA foreign_key_list(${t})`).all()
+      .map(f => ({ from: f.from, there: db.prepare(`SELECT 1 FROM ${f.table} WHERE ${f.to || 'id'} = ?`) }));
+    const has = db.prepare(`SELECT 1 FROM ${t} WHERE id = ?`);
+    const ins = db.prepare(`INSERT OR IGNORE INTO ${t} (${cols.join(', ')}) VALUES (${cols.map(c => '@' + c).join(', ')})`);
+    const del = db.prepare(`UPDATE ${t} SET deleted_at = @ts, updated_at = @ts WHERE id = @id`);
+    for (const r of before[t]) {
+      if (has.get(r.id) || !same(r.user_id)) continue;
+      const row = { ...Object.fromEntries(cols.map(c => [c, null])), ...r };
+      let ok = true;
+      for (const f of fks) {
+        if (row[f.from] == null || f.there.get(row[f.from])) continue;
+        if (notNull.has(f.from)) { ok = false; break; }
+        row[f.from] = null;
+      }
+      if (!ok) continue;
+      if (t === 'notes') row.share_token = null;
+      if (ins.run(row).changes && r.deleted_at == null) del.run({ ts, id: r.id });
+    }
+  }
+  // A share the backup holds as removed that was there before the restore
+  // (shared again since, under the same row): told to the person's devices
+  // now (revokedNoteIds reads updated_at; shares have no synced_at).
+  const told = db.prepare('UPDATE note_members SET updated_at = @ts WHERE id = @id AND deleted_at IS NOT NULL');
+  for (const id of before.sharedIds) told.run({ ts, id });
 }
 
 function _columnsOf(table) {

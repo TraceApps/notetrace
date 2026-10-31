@@ -101,7 +101,12 @@ again after it (still waiting, no copy kept) goes whole, each field with
 its own time (`_rest` in `edit_times`: the earlier change's). A write that
 moves a row's `updated_at` without changing a field (an item ticked moves
 its note's) starts the times of a row from before them from the write
-before, so it isn't an edit. A full backup restores them. A delete loses to a later edit of the row
+before, so it isn't an edit. A full backup restores them, and a column
+a backup's rows don't have gets its default. A restore's inserts get
+`synced_at` now, so every device pulls the restored rows again; rows a
+device may hold that the backup doesn't (notes, labels, items,
+attachments, label links, shares) are put back and deleted as a note is,
+only for the same accounts (`keepGone` in `server/routes/full-backup.js`). A delete loses to a later edit of the row
 (for a note, also of its items, pictures and labels), and an edit made
 before a delete doesn't bring the row back; ties go to the delete. A
 setting is one field, the newer value wins. A note title or text that
