@@ -291,8 +291,17 @@ reminder tick, sends at the user's digest time in their `timezone` setting (unti
 `NoteEditor` takes `inline` to render inside the List layout's reading pane
 instead of over the page (no portal, backdrop, or open animation). Inline, its
 actions move from the bottom bar to a toolbar across the top, with no Done
-button. Switching notes calls the editor's exported `flush()` first so pending
-text is saved before the pane is re-keyed. Sections come from
+button. Switching notes calls the editor's exported `leave()` first, which runs
+the same steps as closing it (`src/lib/editor-close.js`: pending text saved,
+links renamed after a title change, a note emptied there removed, the lists
+told) without the close event, before the pane is re-keyed. Only Done also
+removes an empty note that was merely opened. Only the last note picked opens
+(`paneSeq`). The pane closing for
+another layout does the same, and an editor that goes away without closing
+(the page left) runs the steps on its way out unless the account changed.
+Moving the note between the pane and full screen (a fold) uses `handOff()`
+instead: nothing closes, and the next editor gets `openedAs`, the title the
+note first opened with, so its links still follow a rename. Sections come from
 `src/lib/list-groups.js`. On wide screens `Notes.svelte` sizes the workspace to
 the space under the banner after each update, so the list and the pane scroll
 separately while the page itself doesn't.

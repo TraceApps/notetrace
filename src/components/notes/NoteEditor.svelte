@@ -63,9 +63,14 @@
   import { pendingVoice, queueVoiceNote, flushPendingVoice, discardPendingVoice, hasPendingFor } from '../../lib/pending-voice.js';
   import { sharingAvailable } from '../../lib/note-sharing.js';
   import { onBack } from '../../lib/back-stack.js';
+  import { editorCloser } from '../../lib/editor-close.js';
+  import { currentUser } from '../../stores/auth.js';
+  import { get } from 'svelte/store';
 
   /** Existing note, or null to create one. */
   export let note = null;
+  /** The title the note had when it was first opened, when it moved here from another editor (its links follow a rename from it). */
+  export let openedAs = null;
   /** Kind for a new note. */
   export let initialKind = 'text';
   /** Labels to apply to a new note (e.g. when created from a label view). */
@@ -78,7 +83,9 @@
 
   let noteId = note?.id ?? null;
   let title = note?.title ?? prefill?.title ?? '';
-  const openedTitle = note?.title ?? '';
+  const openedTitle = openedAs ?? note?.title ?? '';
+  // Who opened it: an editor that goes away after a sign-out saves nothing.
+  const openedBy = get(currentUser)?.id ?? null;
   let body = note?.body_md ?? prefill?.body_md ?? '';
   // The title and text as the server last had them from this editor: a save
   // sends only what changed since, so a title or text changed on another
@@ -997,26 +1004,44 @@
     showInfo($_('templates.saved', { values: { name: template.name } }));
   }
 
+  // What closing does, also run when the note goes without being closed
+  // (another note picked in the List layout's pane, the page left): see
+  // lib/editor-close.js.
+  const closer = editorCloser({
+    flush: flushAll,
+    async renameLinks() {
+      const renamedFrom = openedTitle.trim();
+      // Not contentLocked: a title changed with Edit, or just before Read Only went on, still renames its links.
+      if (noteId && !trashed && !baseLocked && renamedFrom && title.trim() && renamedFrom !== title.trim()) {
+        // Links only: a rename made elsewhere since the last save stays, and
+        // the links follow the note's title as it is now. The title goes too,
+        // for a server from before, which renames by it as it always did.
+        try { await NoteApi.updateNote(noteId, { title, rename_links_from: renamedFrom, links_only: true }); } catch { /* links can be fixed by hand */ }
+        return true;
+      }
+      return false;
+    },
+    async dropIfEmpty(skipDiscard, untouchedStays) {
+      // A note that ended up empty is removed instead of lingering as a blank
+      // card. Left without Done, only one changed here.
+      if (!skipDiscard && !(untouchedStays && !touched) && noteId && !trashed && !hasPendingFor(noteId) && isEmptyNote({ title, body_md: body, items, attachments })) {
+        try { await NoteApi.deleteNoteForever(noteId); } catch { /* best effort */ }
+        noteId = null;
+      }
+    },
+    announce(skipDiscard) {
+      if (touched || skipDiscard) signalNotesChanged();
+      refreshLabels();
+    },
+    noteId: () => noteId,
+  });
   let closing = false;
   async function close(skipDiscard = false, navigate = null) {
     if (closing) return;
     closing = true;
-    await flushAll();
-    const renamedFrom = openedTitle.trim();
-    // Not contentLocked: a title changed with Edit, or just before Read Only went on, still renames its links.
-    if (noteId && !trashed && !baseLocked && renamedFrom && title.trim() && renamedFrom !== title.trim()) {
-      // Links only: a rename made elsewhere since the last save stays, and
-      // the links follow the note's title as it is now. The title goes too,
-      // for a server from before, which renames by it as it always did.
-      try { await NoteApi.updateNote(noteId, { title, rename_links_from: renamedFrom, links_only: true }); } catch { /* links can be fixed by hand */ }
-    }
-    // A note that ended up empty is removed instead of lingering as a blank card.
-    if (!skipDiscard && noteId && !trashed && !hasPendingFor(noteId) && isEmptyNote({ title, body_md: body, items, attachments })) {
-      try { await NoteApi.deleteNoteForever(noteId); } catch { /* best effort */ }
-      noteId = null;
-    }
-    if (touched || skipDiscard) signalNotesChanged();
-    refreshLabels();
+    try { await closer.finish(skipDiscard); } catch { /* closes all the same */ }
+    // Another note was picked meanwhile: it opens in this one's place.
+    if (closer.leaving) return;
     dispatch('close', { id: noteId, navigate });
   }
 
@@ -1085,8 +1110,14 @@
   $: tightBar = inline && barW < 600;
   // The desktop editor's own bar (not the phone bar or the list pane's): what it shows stays out of the More menu.
   $: fullBar = !inline && !compactBar;
-  /** Save anything pending, for switching notes in the side pane. */
+  /** Save anything pending, for moving the note between the pane and full screen. */
   export async function flush() { await flushAll(); }
+  /** Another note takes this one's place in the pane: close it the way Done does, without the close event. Resolves to { id, renamed }. */
+  export function leave() { return closer.leave(); }
+  /** The note moves on to another editor (a foldable folding or unfolding): the title it opened with, for its links. */
+  export function handOff() { closer.handOff(); return openedTitle; }
+  /** Close it the way Done does, without the close event (a move that couldn't take the note along). */
+  export function finish() { return closer.pass(); }
   /** The note's id once it exists (a new note gets one on its first save). */
   export function currentNoteId() { return noteId; }
   const _reduceMotion = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -1174,6 +1205,10 @@
     window.removeEventListener('resize', onResize);
     window.visualViewport?.removeEventListener('resize', onViewport);
     window.visualViewport?.removeEventListener('scroll', onViewport);
+    // Gone without closing (the page left with the note open): what was
+    // typed still saves and the rest of closing still runs, unless the
+    // account changed meanwhile (signing out takes the page away too).
+    closer.gone((get(currentUser)?.id ?? null) === openedBy);
     clearTimeout(textTimer);
     releaseBack();
   });
@@ -1196,6 +1231,7 @@
   }
   function onLeft() {
     shareOpen = false;
+    closer.handOff();   // no longer this account's note: nothing more to save or close
     signalNotesChanged();
     dispatch('close', { id: null });
   }

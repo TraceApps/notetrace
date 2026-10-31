@@ -310,20 +310,44 @@
   let newOpen = false, newAnchor = null;
   let paneKey = 0;
   let paneRef;
+  // Moves on with every note asked for in the pane, so only the last one
+  // picked opens (arrow keys held down, a pick made while a link opens).
+  let paneSeq = 0;
   async function openInPane(entry) {
+    const seq = ++paneSeq;
     const hadPane = !!pane;
-    try { await paneRef?.flush?.(); } catch { /* keep going */ }
+    // The note in the pane closes the way Done closes it (saved, its links
+    // follow a rename, removed if emptied here), then the next one opens.
+    const leftId = paneRef?.currentNoteId?.() ?? null;
+    let left = null;
+    try { left = await paneRef?.leave?.(); } catch { /* keep going */ }
+    if (seq !== paneSeq) return;
+    if (entry.note && left) {
+      // Its own row picked again after it was emptied: it's gone, not reopened.
+      if (left.id == null && leftId != null && entry.note.id === leftId) {
+        pane = null;
+        load();
+        return;
+      }
+      // The list's copy is from before: the note just left, or one whose
+      // [[links]] that note's rename just changed, opens as it is now.
+      if (left.renamed || entry.note.id === leftId) {
+        try { entry = { ...entry, note: (await NoteApi.getNote(entry.note.id)) || entry.note }; } catch { /* the list's copy */ }
+        if (seq !== paneSeq) return;
+      }
+    }
     pane = entry;
     paneKey++;
     if (hadPane) load();   // the note just left may have changed
   }
   async function closePane(e) {
     const target = e?.detail?.navigate;
+    const seq = ++paneSeq;
     pane = null;
     load();
     if (target) {
       await tick();
-      try { const n = await NoteApi.getNote(target); if (n) openInPane({ note: n }); } catch { /* gone */ }
+      try { const n = await NoteApi.getNote(target); if (n && seq === paneSeq) openInPane({ note: n }); } catch { /* gone */ }
     }
   }
   // Unfolding with a note open full screen moves it into the pane, and folding
@@ -331,26 +355,40 @@
   let overlayRef;
   let moving = false;
   async function _openedNote(ref, entry) {
+    // Still open, in the other editor: nothing closes here, and its links
+    // follow a rename from the title it first opened with. Taken before
+    // anything waits, as the editor may already be on its way out.
+    const openedAs = ref?.handOff?.() ?? null;
     try { await ref?.flush?.(); } catch { /* keep going */ }
     const id = ref?.currentNoteId?.() ?? entry?.note?.id ?? null;
-    if (id == null) return null;
-    try { return await NoteApi.getNote(id); } catch { return null; }
+    let note = null;
+    if (id != null) { try { note = await NoteApi.getNote(id); } catch { /* gone */ } }
+    // Not to be had again (no connection): it closes the way Done does instead.
+    if (!note) { try { await ref?.finish?.(); } catch { /* keep going */ } return null; }
+    return { note, openedAs };
   }
   async function moveOverlayToPane() {
     moving = true;
+    paneSeq++;   // a pick still on its way doesn't open over this
     const entry = editing;
-    const note = await _openedNote(overlayRef, entry);
+    // A note already in the pane (a share opened over it) closes first, so
+    // a rename there reaches the note coming over before it's read.
+    if (pane) { try { await paneRef?.leave?.(); } catch { /* keep going */ } }
+    const moved = await _openedNote(overlayRef, entry);
     editing = null;
-    pane = note ? { note } : { kind: entry.kind || 'text', labels: entry.labels || [], prefill: entry.prefill || null };
+    pane = moved ? moved : { kind: entry.kind || 'text', labels: entry.labels || [], prefill: entry.prefill || null };
     paneKey++;
     moving = false;
     load();
   }
   async function movePaneToOverlay(reopen) {
     moving = true;
-    const note = await _openedNote(paneRef, pane);
+    paneSeq++;   // a pick still on its way doesn't open over this
+    // Closing the pane (another layout picked) closes its note like Done.
+    const moved = reopen ? await _openedNote(paneRef, pane) : null;
+    if (!reopen) { try { await paneRef?.leave?.(); } catch { /* keep going */ } }
     pane = null;
-    if (reopen && note) editing = { note };
+    if (moved) editing = moved;
     moving = false;
     load();
   }
@@ -489,7 +527,9 @@
     if (!id || editing) return;
     try {
       const n = await NoteApi.getNote(id);
-      if (n) editing = { note: n };
+      // Beside the list, it takes the pane's place the way a picked note does.
+      if (n && splitPane) openInPane({ note: n });
+      else if (n) editing = { note: n };
     } catch { /* note gone */ }
     replaceRoute(path);
   }
@@ -1028,7 +1068,7 @@
         <div class="pane">
           {#if pane}
             {#key paneKey}
-              <NoteEditor bind:this={paneRef} inline autoRecord={!!pane.voice} autoDraw={!!pane.drawing} note={pane.note || null} initialKind={pane.kind || 'text'}
+              <NoteEditor bind:this={paneRef} inline autoRecord={!!pane.voice} autoDraw={!!pane.drawing} note={pane.note || null} openedAs={pane.openedAs ?? null} initialKind={pane.kind || 'text'}
                 initialLabels={pane.labels || []} prefill={pane.prefill || null} recordOnTap={!!pane.voiceWait} on:close={closePane} />
             {/key}
           {:else}
@@ -1163,7 +1203,7 @@
   <!-- Keyed per open: reopening while the last editor is still fading out
        would otherwise resume that editor with the previous note's state. -->
   {#key editing}
-    <NoteEditor bind:this={overlayRef} autoRecord={!!editing.voice} autoDraw={!!editing.drawing} note={editing.note || null} initialKind={editing.kind || 'text'} initialLabels={editing.labels || []}
+    <NoteEditor bind:this={overlayRef} autoRecord={!!editing.voice} autoDraw={!!editing.drawing} note={editing.note || null} openedAs={editing.openedAs ?? null} initialKind={editing.kind || 'text'} initialLabels={editing.labels || []}
       prefill={editing.prefill || null} originId={editing.originId ?? null} recordOnTap={!!editing.voiceWait} on:close={closeEditor} />
   {/key}
 {/if}
