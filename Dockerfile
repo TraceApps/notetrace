@@ -1,5 +1,5 @@
 # ── Stage 1: Build Svelte frontend ──────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM node:20-alpine AS build
+FROM --platform=$BUILDPLATFORM node:24-alpine AS build
 WORKDIR /app
 COPY package*.json ./
 # scripts/postinstall.cjs is referenced by the "postinstall" npm hook, so it
@@ -14,7 +14,7 @@ RUN npm run build
 # Converts voice recordings imported from Google Keep (3GP/AMR) to M4A and
 # splits long recordings for transcription. Built with only the audio formats
 # NoteTrace handles, so it adds a few MB instead of a full ffmpeg's 125 MB.
-FROM node:20-alpine AS ffmpeg
+FROM node:24-alpine AS ffmpeg
 RUN apk add --no-cache build-base curl xz
 ARG FFMPEG_VERSION=7.1.1
 # SHA-256 of the release tarball, checked against FFmpeg's signature when pinned.
@@ -36,7 +36,10 @@ RUN curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 -o /tmp/ffmpeg.tar.x
  && make -j"$(nproc)" && make install && strip /opt/ffmpeg/bin/ffmpeg /opt/ffmpeg/bin/ffprobe
 
 # ── Stage 2: Express server + static frontend ────────────────────────────────
-FROM node:20-alpine
+# node:24 follows the newest Node 24 LTS release, so every image build picks up
+# its security fixes without a Dockerfile change (24.22.1 or later carries the
+# CVE-2026-111497 fix, nutritrace#302).
+FROM node:24-alpine
 # python3 + make + g++ are needed by better-sqlite3's native build.
 RUN apk add --no-cache python3 make g++
 WORKDIR /app
