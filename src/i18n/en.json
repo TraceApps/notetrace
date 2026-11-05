@@ -1965,6 +1965,14 @@
       "channel_note":     "To switch server channels, change your docker-compose.yml image tag (:latest, :dev) and re-run docker-compose pull && docker-compose up -d."
     }
   },
+  "connection_status": {
+    "connected": "Connected",
+    "not_connected": "Not connected",
+    "not_connected_error": "Not connected: {error}",
+    "test": "Test",
+    "testing": "Testing…",
+    "testing_connection": "Testing connection…"
+  },
   "two_step": {
     "errors": {
       "generic": "Something went wrong. Try again.",
