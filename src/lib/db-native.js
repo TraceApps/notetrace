@@ -619,7 +619,10 @@ export async function dbSetReadOnlyFromPull(payload) {
  *  server_id. Parent-table FK columns are translated from server ids to local ids via the per-table
  *  server_id index.
  */
-export async function dbApplyPull(payload, { live = () => true } = {}) {
+// `settings` collects the settings written ({ key, value }, or { key, reset }
+// for one reset on the server), for the open setting stores (lib/sync.js);
+// `keepSetting(key)` is true for one changed on screen since the pull began.
+export async function dbApplyPull(payload, { live = () => true, settings = null, keepSetting = () => false } = {}) {
   // live(): false once the copy is changing hands (another account signing
   // in, lib/local-account.js): nothing more of this pull is written.
   if (!isNative || !payload?.tables) return true;
@@ -800,6 +803,17 @@ export async function dbApplyPull(payload, { live = () => true } = {}) {
       ))?.values?.[0];
       if (localRow?.sync_status === 'pending') continue;
 
+      // Reset on another device (Clear All Settings): back to its default
+      // here too, on screen also when the phone's copy has no row for it
+      // (a copy made again after another account's sign-in). One changed
+      // on screen since the pull began is newer: left as it is, its change
+      // on its way up.
+      if (s.deleted_at) {
+        if (keepSetting(s.key)) continue;
+        if (localRow) await db.run(`DELETE FROM user_settings WHERE user_id = ? AND key = ?`, [LOCAL_USER_ID, s.key]);
+        settings?.push({ key: s.key, reset: true });
+        continue;
+      }
       const v = typeof s.value === 'string' ? s.value : (s.value == null ? null : JSON.stringify(s.value));
       await db.run(
         `INSERT INTO user_settings (user_id, key, value, updated_at, sync_status)
@@ -810,6 +824,7 @@ export async function dbApplyPull(payload, { live = () => true } = {}) {
            sync_status = 'synced'`,
         [LOCAL_USER_ID, s.key, v, s.updated_at || new Date().toISOString()]
       );
+      settings?.push({ key: s.key, value: v });
     }
   }
   return true;

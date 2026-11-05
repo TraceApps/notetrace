@@ -530,9 +530,11 @@ router.get('/pull', wrap((req, res) => {
     ).all(...userArgs(u), since);
   }
 
-  // Settings: only the keys that changed since the last pull.
+  // Settings: only the keys that changed since the last pull, and the ones
+  // reset (Clear All Settings, deleted_at), for the phone to go back to its
+  // default.
   out.settings = db.prepare(
-    `SELECT key, value, updated_at FROM user_settings
+    `SELECT key, value, updated_at, deleted_at FROM user_settings
       WHERE ${userClause(u)} AND synced_at >= ?`
   ).all(...userArgs(u), since).filter(r => !isServerOnlyKey(r.key));
 

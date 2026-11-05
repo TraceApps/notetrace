@@ -462,6 +462,89 @@ test('a setting sent straight to the server is marked sent on the phone', async 
   assert.deepEqual(r, ['synced']);
 });
 
+test('a setting changed on the web applies on the phone with the sync; the newer change wins', async (t) => {
+  if (skip(t)) return;
+  const r = phone('settings-live', B, `
+    await p.setupSignIn('carol'); await p.sync();
+    const { DB } = await import(p.SRC + 'lib/db.js');
+    const before = p.get(p.settings.dateFormat);
+    const told = [];
+    addEventListener('wl:setting', e => told.push(e.detail.key));
+    const web = (key, value) => p.net.web(p.S + '/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + p.platform.getAuthToken() }, body: JSON.stringify({ key, value }) });
+    // Changed on the phone with the direct save failing: waiting for the sync.
+    const offline = async (store, value) => { p.net.block = u => u.endsWith('/api/settings'); store.set(value); await p.sleep(900); p.net.block = null; };
+    await web('dateFormat', 'EU'); await web('noteOrder', [3, 1, 2]); await web('appearance', 'dark');
+    await offline(p.settings.timeFormat, '24h'); await p.sleep(1200); await web('timeFormat', '12h'); // the web's is newer
+    await web('startPage', '/tasks'); await p.sleep(1200); await offline(p.settings.startPage, '/labels'); // the phone's is newer
+    const at = p.net.sent.length;
+    await p.sync(); await p.sync();
+    p.done({
+      before, after: p.get(p.settings.dateFormat), order: p.get(p.settings.noteOrder), appearance: DB.getSetting('appearance', 'system'),
+      time: p.get(p.settings.timeFormat), start: p.get(p.settings.startPage),
+      told: [...new Set(told)].sort(),
+      sentBack: p.net.sent.slice(at).filter(e => e.method === 'PUT' && e.url.startsWith('/api/settings')).length,
+    });`);
+  assert.deepEqual(r, {
+    before: 'US', after: 'EU', order: [3, 1, 2], appearance: 'system', time: '12h', start: '/labels',
+    told: ['dateFormat', 'noteOrder', 'startPage', 'timeFormat'], sentBack: 0,
+  }, "no restart needed; the phone's own appearance is never the server's; the newer of two changes shows; nothing pulled is sent back");
+  const there = Object.fromEntries(B.q(`SELECT s.key, s.value FROM user_settings s JOIN users u ON u.id = s.user_id WHERE u.username = 'carol' AND s.key IN ('timeFormat', 'startPage')`).map(x => [x.key, JSON.parse(x.value)]));
+  assert.deepEqual(there, { timeFormat: '12h', startPage: '/labels' });
+});
+
+test('Clear All Settings on the web resets the phone too; a change made on the phone after it stays', async (t) => {
+  if (skip(t)) return;
+  const r = phone('settings-reset', B, `
+    await p.setupSignIn('bob');
+    const web = (method, key, value) => p.net.web(p.S + '/api/settings', { method, headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + p.platform.getAuthToken() }, body: key ? JSON.stringify({ key, value }) : undefined });
+    for (const [k, v] of Object.entries({ dateFormat: 'EU', noteOrder: [3, 1, 2], aiAssistantName: 'Iris', labelOrder: 'used' })) await web('PUT', k, v);
+    await p.sync();
+    const before = { date: p.get(p.settings.dateFormat), name: p.get(p.settings.aiAssistantName), labels: p.get(p.settings.labelOrder) };
+    const offline = async (store, value) => { p.net.block = u => u.endsWith('/api/settings'); store.set(value); await p.sleep(900); p.net.block = null; };
+    await offline(p.settings.tasksGroupBy, 'note'); // before the reset
+    await p.sleep(2100);
+    await web('DELETE');
+    await p.sleep(2100);
+    await offline(p.settings.aiAssistantName, 'Nova'); // after it
+    // And one made on the phone while the sync's pull is out.
+    p.net.block = u => { if (u.includes('/api/sync/pull')) { p.net.block = null; p.settings.labelOrder.set('custom'); } return false; };
+    const at = p.net.sent.length;
+    await p.sync();
+    const first = { date: p.get(p.settings.dateFormat), order: p.get(p.settings.noteOrder), labels: p.get(p.settings.labelOrder) };
+    await p.sleep(1000);
+    await p.sync();
+    const there = await (await web('GET')).json();
+    const after = { date: p.get(p.settings.dateFormat), order: p.get(p.settings.noteOrder), tasks: p.get(p.settings.tasksGroupBy), name: p.get(p.settings.aiAssistantName), labels: p.get(p.settings.labelOrder) };
+    const waiting = (await p.rows('user_settings')).filter(x => x.sync_status !== 'synced').map(x => x.key);
+    const sentBack = p.net.sent.slice(at).filter(e => e.method === 'PUT' && e.url.startsWith('/api/settings')).map(e => e.url);
+    // Reset again while another account uses the phone: its copy is made
+    // again for that account, and once back the reset still applies.
+    const bobToken = p.platform.getAuthToken();
+    await p.logout(); await p.loginSignIn('carol'); await p.sync();
+    await p.net.web(p.S + '/api/settings', { method: 'DELETE', headers: { Authorization: 'Bearer ' + bobToken } });
+    await p.sleep(1100);
+    await p.logout(); await p.loginSignIn('bob'); await p.sync();
+    const back = p.get(p.settings.aiAssistantName);
+    // A change made on screen after a pull began stays over what it brings.
+    const t0 = Date.now();
+    p.settings.listGroupBy.set('label'); p.settings.startPage.set('/tasks');
+    p.settings.applyServerSettings({ startPage: '/labels', timeFormat: '24h' }, { skip: k => p.settings.changedSince(k, t0), reset: ['startPage'] });
+    const kept = { start: p.get(p.settings.startPage), time: p.get(p.settings.timeFormat), group: p.get(p.settings.listGroupBy) };
+    p.done({
+      before, first, back, kept, after, there, waiting, sentBack,
+    });`);
+  assert.deepEqual(r, {
+    before: { date: 'EU', name: 'Iris', labels: 'used' },
+    first: { date: 'US', order: [], labels: 'custom' },
+    after: { date: 'US', order: [], tasks: 'due', name: 'Nova', labels: 'custom' },
+    there: { aiAssistantName: 'Nova', labelOrder: 'custom' },
+    back: 'Trace',
+    kept: { start: '/tasks', time: '24h', group: 'label' },
+    waiting: [],
+    sentBack: ['/api/settings'],
+  }, 'back to the defaults at the sync; a change made on the phone after the reset stays and goes up (the one PUT is its own save); one made before it is reset too');
+});
+
 test("signing out stops the account's reminders; another account gets only its own once its copy is current", async (t) => {
   if (skip(t)) return;
   const soon = new Date(Date.now() + 86400000).toISOString().replace('T', ' ').slice(0, 19);

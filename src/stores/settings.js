@@ -83,6 +83,10 @@ export function isRecentlyChanged(key) {
   const ts = _recentlyChanged.get(key);
   return ts && Date.now() - ts < 10000;
 }
+/** Whether `key` was changed on this screen at or after `at` (ms). */
+export function changedSince(key, at) {
+  return (_recentlyChanged.get(key) ?? -Infinity) >= at;
+}
 let _suppressSync = false;
 
 export function _applySetting(key, value) {
@@ -239,6 +243,35 @@ async function _mirrorServerSettings(serverSettings) {
   }
 }
 
+/**
+ * The server's values into this device's settings, the setting stores
+ * following at once (wl:setting); nothing is sent back. `skip(key)` keeps
+ * a key as it is here (a change made here that is the newer one). `reset`
+ * lists keys reset on the server (Clear All Settings): they go back to
+ * their defaults here.
+ */
+export function applyServerSettings(values, { skip = () => false, reset = [] } = {}) {
+  _suppressSync = true;
+  try {
+    // CRITICAL: skip DEVICE_PREFS keys. These are local-only (form-factor
+    // or hardware specific) and should never be overwritten by server
+    // values. Stale rows can exist from before the device-pref filter
+    // was added on the write path; without this filter every settings
+    // poll would overwrite a tablet's `sidebarPersistent: true` with a
+    // phone's `false` and the persistent-sidebar toggle would silently
+    // turn off mid-session.
+    for (const [key, value] of Object.entries(values || {})) {
+      if (DEVICE_PREFS.has(key) || skip(key)) continue;
+      DB.setSetting(key, value, true);
+    }
+    for (const key of reset) {
+      if (DEVICE_PREFS.has(key) || skip(key)) continue;
+      DB.removeSetting(key);
+      window.dispatchEvent(new CustomEvent('wl:setting', { detail: { key } }));
+    }
+  } finally { _suppressSync = false; }
+}
+
 export async function loadServerSettings() {
   if (!_shouldSyncToServer()) return;
   try {
@@ -250,24 +283,11 @@ export async function loadServerSettings() {
     // this account's (before, its rows can be the previous account's).
     const forUser = localStorage.getItem('wl:userId');
     const unsent = isNative ? await _unsentSettingKeys(forUser) : new Set();
-    _suppressSync = true;
-    // CRITICAL: skip DEVICE_PREFS keys. These are local-only (form-factor
-    // or hardware specific) and should never be overwritten by server
-    // values. Stale rows can exist from before the device-pref filter
-    // was added on the write path — without this filter every settings
-    // poll would overwrite a tablet's `sidebarPersistent: true` with a
-    // phone's `false` and the persistent-sidebar toggle would silently
-    // turn off mid-session.
-    for (const [key, value] of Object.entries(serverSettings)) {
-      if (DEVICE_PREFS.has(key)) continue;
-      if (unsent.has(key)) continue; // changed here, not sent yet: the newer value
-      DB.setSetting(key, value, true);
-    }
+    applyServerSettings(serverSettings, { skip: key => unsent.has(key) });
     // Into the phone's copy only once it's this account's, and never over
     // a change waiting to go up. In the background, so signing in never
     // waits on the account check.
     if (isNative) _mirrorServerSettings(serverSettings).catch(() => {});
-    _suppressSync = false;
 
     try {
       if (typeof window !== 'undefined') {
@@ -277,7 +297,7 @@ export async function loadServerSettings() {
         applyAppearance(appearanceVal);
       }
     } catch {}
-  } catch { _suppressSync = false; }
+  } catch { /* offline: the settings this device has stay */ }
 }
 
 // Global wl:setting listener — catches direct DB.setSetting() calls and

@@ -36,6 +36,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **The connection banner in Settings follows your language.** Connected, Not connected, Test and Testing were always in English.
 - **A pushed note with no time of its own no longer brings back one deleted elsewhere.** A third-party client re-sending a note, item, picture or label through `POST /api/sync/push` with no readable `updated_at` (none, or one that isn't a time) brought it back after it was deleted. It now stays deleted, as an older change would, and a change made after the delete still brings it back.
 - **A setting changed in the Android app after Clear All Settings shows everywhere.** After Settings > Clear All Settings on the web, a setting changed on the phone reached the server but stayed hidden, so the web and your other devices kept the default. It now counts.
+- **A setting changed on another device applies in the Android app at its next sync**, such as your date format, start page or Trace settings. It used to show only after the app was restarted. Clear All Settings on the web now resets the Android app too, each setting going back to its default at the next sync. A setting you change on the phone after the reset stays as you set it and reaches your other devices; one changed on the phone before it is reset too.
 
 ### Security
 

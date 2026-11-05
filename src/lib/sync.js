@@ -620,6 +620,10 @@ async function pullChanges({ token = getAuthToken(), signal = null, gen = accoun
   const live = () => gen === accountGeneration();
   if (!live() || !(await localDataIsThisAccount(token))) return { pulled: 0, stopped: true };
   const since = (await dbGetMeta(LAST_PULL_KEY)) || '1970-01-01T00:00:00';
+  // A setting changed on screen from here on is newer than what this pull
+  // brings: kept as it is (stores/settings.js changedSince).
+  const startedAt = Date.now();
+  const forUser = localStorage.getItem('wl:userId');
   // keys=1: rows this phone made come back with the key they were sent
   // with, so one whose push answer was lost is matched to its row here.
   // ro=1: this app knows Read Only, so notes come with read_only (older apps don't ask).
@@ -634,8 +638,25 @@ async function pullChanges({ token = getAuthToken(), signal = null, gen = accoun
   }
   const body = await res.json();
   if (!live() || !(await localDataIsThisAccount(token))) return { pulled: 0, stopped: true };
-  const done = await dbApplyPull(body, { live });
+  const { applyServerSettings, changedSince } = await import('../stores/settings.js');
+  const keepSetting = key => changedSince(key, startedAt);
+  const settings = [];
+  const done = await dbApplyPull(body, { live, settings, keepSetting });
   if (done === false || !live()) return { pulled: 0, stopped: true };
+  // The settings it wrote into the phone's copy, into the open setting
+  // stores too: they read this device's own copy (localStorage), and a
+  // setting changed on another device showed only after a restart.
+  // Only while the same account is signed in (a sign-out clears wl:userId
+  // before the account generation moves, stores/auth.js).
+  if (settings.length && localStorage.getItem('wl:userId') === forUser) {
+    const values = {};
+    for (const { key, value, reset } of settings) {
+      if (reset) continue;
+      // Kept as the server keeps them, JSON text.
+      try { values[key] = JSON.parse(value); } catch { values[key] = value; }
+    }
+    applyServerSettings(values, { skip: keepSetting, reset: settings.filter(x => x.reset).map(x => x.key) });
+  }
   // After a backup of this account was restored, the pull went from the
   // start: rows it holds an id for that the server no longer has go up
   // again, once (their create keys), instead of staying here alone.
