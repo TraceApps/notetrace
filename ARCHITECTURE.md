@@ -112,7 +112,9 @@ before a delete doesn't bring the row back; ties go to the delete. A
 pushed row with no readable `updated_at` (missing, null, not a time, a
 number like 1e20) can't be told from a stale copy, so it never brings a
 deleted row back on its own; it is answered as deleted, as an older edit
-is. A setting is one field, the newer value wins. A note title or text that
+is. A setting is one field, the newer value wins; Clear All Settings
+(`DELETE /api/settings`) counts as a change of each, so only a pushed
+change made after it, with a readable time, brings one back. A note title or text that
 loses is kept in version history rather than dropped. The note editor
 saves only the title or text it changed, so a save of one never puts the
 other back; closing it renames links only (`links_only`, below). A label

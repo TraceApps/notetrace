@@ -3,7 +3,8 @@
  * push follows too): a pushed copy with no readable updated_at (none, text
  * that isn't a time, a number like 1e20) can't be told from a stale one, so
  * it never brings back a row deleted here, and no such time fails the push.
- * An edit made after the delete still does.
+ * An edit made after the delete still does. Settings follow the same rule
+ * against Clear All Settings.
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -106,4 +107,20 @@ test('no pushed time fails the push: the other rows in it go in', { skip }, asyn
   ] });
   assert.equal(r.status, 200);
   assert.equal(r.body.tables.labels.filter(x => x.server_id).length, 3);
+});
+
+test('Clear All Settings: only a change made after it brings a setting back', { skip }, async () => {
+  await call('PUT', '/api/settings', { key: 'accentColor', value: 'mint' });
+  await call('PUT', '/api/settings', { key: 'timeFormat', value: '24h' });
+  await call('PUT', '/api/settings', { key: 'dateFormat', value: 'iso' });
+  const before = new Date(Date.now() - 2000).toISOString();
+  await call('DELETE', '/api/settings');
+  await sleep(1100);
+  const r = await push({}, { settings: [
+    { key: 'accentColor', value: 'mint', updated_at: before },               // made before the reset
+    { key: 'dateFormat', value: 'iso' },                                     // no time of its own
+    { key: 'timeFormat', value: '12h', updated_at: new Date().toISOString() }, // made after it
+  ] });
+  assert.equal(r.status, 200);
+  assert.deepEqual((await call('GET', '/api/settings')).body, { timeFormat: '12h' });
 });

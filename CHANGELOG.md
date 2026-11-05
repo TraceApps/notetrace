@@ -35,6 +35,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Tapping a home screen shortcut opens it in the running app instead of restarting it, so nothing waiting to save is lost** (from [nutritrace#278](https://github.com/TraceApps/nutritrace/issues/278)). Android started the app over for Voice Note, New Note or New List and reloaded the page; the shortcut now opens in the app as it is, and opens one new note when it starts the app. Reopening the app from Recents no longer opens the shortcut, widget or tile a second time, and signing out or restoring a backup no longer opens another new note.
 - **The connection banner in Settings follows your language.** Connected, Not connected, Test and Testing were always in English.
 - **A pushed note with no time of its own no longer brings back one deleted elsewhere.** A third-party client re-sending a note, item, picture or label through `POST /api/sync/push` with no readable `updated_at` (none, or one that isn't a time) brought it back after it was deleted. It now stays deleted, as an older change would, and a change made after the delete still brings it back.
+- **A setting changed in the Android app after Clear All Settings shows everywhere.** After Settings > Clear All Settings on the web, a setting changed on the phone reached the server but stayed hidden, so the web and your other devices kept the default. It now counts; one changed before the reset stays reset.
 
 ### Security
 

@@ -452,7 +452,8 @@ router.post('/push', wrap((req, res) => {
        VALUES (?, ?, ?, ?)
        ON CONFLICT(user_id, key) DO UPDATE SET
          value = excluded.value,
-         updated_at = excluded.updated_at`
+         updated_at = excluded.updated_at,
+         deleted_at = NULL`
     );
     const here = db.prepare(`SELECT updated_at, deleted_at FROM user_settings WHERE ${userClause(u)} AND key = ?`);
     const restamp = db.prepare(`UPDATE user_settings SET synced_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE ${userClause(u)} AND key = ?`);
@@ -461,6 +462,9 @@ router.post('/push', wrap((req, res) => {
         if (!s?.key || isServerOnlyKey(s.key)) continue;
         const cur = here.get(...userArgs(u), s.key);
         if (cur && !cur.deleted_at && laterThan(cur.updated_at, editAt(s))) { restamp.run(...userArgs(u), s.key); continue; }
+        // Reset (Settings > Clear All Settings): only a change made after it
+        // brings the setting back, never one with no readable time.
+        if (cur?.deleted_at && !(Number.isFinite(tsMs(s.updated_at)) && laterThan(editAt(s), cur.deleted_at))) { restamp.run(...userArgs(u), s.key); continue; }
         // Kept at the time it was compared by (on the server's clock, never
         // ahead of now), so a phone's fast clock can't hold a setting.
         ins.run(u, s.key, typeof s.value === 'string' ? s.value : JSON.stringify(s.value), _sqlTime(editAt(s)));
