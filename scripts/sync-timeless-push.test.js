@@ -56,6 +56,7 @@ async function call(method, path, body) {
 }
 const push = (tables, extra = {}) => call('POST', '/api/sync/push', { tables, client_now: new Date().toISOString(), ...extra });
 const pulled = async (table, id) => (await call('GET', '/api/sync/pull?since=1970-01-01')).body.tables[table].find(r => r.id === id);
+const pulledLink = async (note, label) => (await call('GET', '/api/sync/pull?since=1970-01-01')).body.tables.note_labels.find(r => r.note_id === note && r.label_id === label);
 
 async function deletedNote() {
   const { id } = (await call('POST', '/api/notes', { title: 'Shop', body_md: 'milk' })).body;
@@ -96,6 +97,20 @@ test('an edit made after the delete still brings the row back', { skip }, async 
   const r = await push({ labels: [{ client_id: 1, server_id: label, name: 'Back', updated_at: new Date().toISOString(), deleted_at: null }] });
   assert.equal(r.status, 200);
   assert.equal((await pulled('labels', label)).deleted_at, null);
+});
+
+test('a label put back on a note with no time of its own goes back on, as before', { skip }, async () => {
+  const note = (await call('POST', '/api/notes', { title: 'Tagged', body_md: '' })).body.id;
+  const label = (await call('POST', '/api/labels', { name: `Label ${++n}` })).body.id;
+  const link = extra => push({ note_labels: [{ client_id: 5, note_id: note, label_id: label, ...extra }] });
+  await link({ updated_at: new Date().toISOString(), deleted_at: null });
+  await sleep(1100);
+  await link({ updated_at: new Date().toISOString(), deleted_at: new Date().toISOString() });
+  assert.notEqual((await pulled('note_labels', (await pulledLink(note, label)).id)).deleted_at, null, 'taken off');
+  await sleep(1100);
+  const r = await link({ deleted_at: null });
+  assert.equal(r.status, 200);
+  assert.equal((await pulledLink(note, label)).deleted_at, null);
 });
 
 test('no pushed time fails the push: the other rows in it go in', { skip }, async () => {

@@ -277,9 +277,11 @@ router.post('/push', wrap((req, res) => {
           }
           if (!existing && !whole) continue; // as before: nothing to make it from
         }
+        let byKey = false;
         if (!existing && spec.uniqueKey) {
           const where = spec.uniqueKey.map(k => `${k} = ?`).join(' AND ');
           existing = db.prepare(`SELECT * FROM ${name} WHERE ${where}`).get(...spec.uniqueKey.map(k => translated[k])) || null;
+          byKey = !!existing;
           // The same uuid is another account's row (a copy of someone
           // else's data): never theirs to change, and the uuid can't be
           // used twice. The device gives its row its own and sends it again.
@@ -334,10 +336,12 @@ router.post('/push', wrap((req, res) => {
         const at = editAt(translated);
         if (existing && spec.softDelete && existing.deleted_at && !translated.deleted_at) {
           const childAt = name === 'notes' ? (childEdit.get(existing.id) ?? -Infinity) : -Infinity;
-          // A copy with no readable time of its own (a client re-sending a
-          // row it has had for a while) can't be told from a stale one: it
-          // never brings the row back on its own.
-          const ownAt = Number.isFinite(tsMs(translated.updated_at)) ? at : -Infinity;
+          // A copy of this row with no readable time of its own (a client
+          // re-sending a row it has had for a while) can't be told from a
+          // stale one: it never brings the row back on its own. A new row
+          // that only matches a deleted one by its key (a label put back on
+          // a note) is taken as made now, as before.
+          const ownAt = byKey || Number.isFinite(tsMs(translated.updated_at)) ? at : -Infinity;
           if (editRevives({ existing, at: Math.max(ownAt, childAt) })) {
             if (name === 'notes') _reviveNote(existing);
             else db.prepare(`UPDATE ${name} SET deleted_at = NULL WHERE id = ?`).run(existing.id);
