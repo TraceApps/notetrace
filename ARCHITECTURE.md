@@ -109,7 +109,10 @@ attachments, label links, shares) are put back and deleted as a note is,
 only for the same accounts (`keepGone` in `server/routes/full-backup.js`). A delete loses to a later edit of the row
 (for a note, also of its items, pictures and labels), and an edit made
 before a delete doesn't bring the row back; ties go to the delete. A
-setting is one field, the newer value wins. A note title or text that
+pushed row with no readable `updated_at` (missing, null, not a time, a
+number like 1e20) can't be told from a stale copy, so it never brings a
+deleted row back on its own; it is answered as deleted, as an older edit
+is. A setting is one field, the newer value wins. A note title or text that
 loses is kept in version history rather than dropped. The note editor
 saves only the title or text it changed, so a save of one never puts the
 other back; closing it renames links only (`links_only`, below). A label

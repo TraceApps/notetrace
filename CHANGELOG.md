@@ -34,6 +34,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Page banner titles are readable on every accent and theme** (found with [#39](https://github.com/TraceApps/notetrace/pull/39), thanks @harikiran-lab). The title and buttons on a Gradient or Animated banner were always white, about 2:1 on the light theme and on light accents. They stay white where white reads well and turn near-black where it doesn't.
 - **Tapping a home screen shortcut opens it in the running app instead of restarting it, so nothing waiting to save is lost** (from [nutritrace#278](https://github.com/TraceApps/nutritrace/issues/278)). Android started the app over for Voice Note, New Note or New List and reloaded the page; the shortcut now opens in the app as it is, and opens one new note when it starts the app. Reopening the app from Recents no longer opens the shortcut, widget or tile a second time, and signing out or restoring a backup no longer opens another new note.
 - **The connection banner in Settings follows your language.** Connected, Not connected, Test and Testing were always in English.
+- **A pushed note with no time of its own no longer brings back one deleted elsewhere.** A third-party client re-sending a note, item, picture or label through `POST /api/sync/push` with no readable `updated_at` (none, or one that isn't a time) brought it back after it was deleted. It now stays deleted, as an older change would, and a change made after the delete still brings it back.
 
 ### Security
 

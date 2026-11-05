@@ -334,7 +334,11 @@ router.post('/push', wrap((req, res) => {
         const at = editAt(translated);
         if (existing && spec.softDelete && existing.deleted_at && !translated.deleted_at) {
           const childAt = name === 'notes' ? (childEdit.get(existing.id) ?? -Infinity) : -Infinity;
-          if (editRevives({ existing, at: Math.max(at, childAt) })) {
+          // A copy with no readable time of its own (a client re-sending a
+          // row it has had for a while) can't be told from a stale one: it
+          // never brings the row back on its own.
+          const ownAt = Number.isFinite(tsMs(translated.updated_at)) ? at : -Infinity;
+          if (editRevives({ existing, at: Math.max(ownAt, childAt) })) {
             if (name === 'notes') _reviveNote(existing);
             else db.prepare(`UPDATE ${name} SET deleted_at = NULL WHERE id = ?`).run(existing.id);
             // Brought back when the edit was made, not when it arrived.
