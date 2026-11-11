@@ -18,6 +18,7 @@ import { logger } from '../logger.js';
 import { dueOccurrence, toUtcString, LATE_WINDOW_MS } from './reminders.js';
 import { pushNotify } from './push-notify.js';
 import { dispatchWebhookEvent } from './webhooks.js';
+import { readSettingRaw } from './secret-settings.js';
 
 export { LATE_WINDOW_MS };
 const KIND = 'note_reminder';
@@ -25,7 +26,7 @@ const KIND = 'note_reminder';
 function _setting(userId, key) {
   const r = db.prepare(`SELECT value FROM user_settings WHERE user_id IS ? AND key = ?`).get(userId ?? null, key);
   if (!r) return null;
-  try { return JSON.parse(r.value); } catch { return r.value; }
+  return readSettingRaw(key, r.value);
 }
 
 /** Plain-text preview for the push body. */

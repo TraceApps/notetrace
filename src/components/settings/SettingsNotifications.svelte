@@ -1,4 +1,5 @@
 <script>
+  import { selectSecret } from '../../lib/secret-set.js';
   import Toggle from './Toggle.svelte';
   import ConnectionStatus from './ConnectionStatus.svelte';
   // SettingsNotifications — device + push-service reminders.
@@ -217,7 +218,7 @@
         <label class="form-label" for="notif-gotify-token">{$_('settings_notifications.app_token')}</label>
         <div style="display:flex;gap:8px;align-items:center">
           <input id="notif-gotify-token" class="input" style="flex:1" type={showGotifyToken ? 'text' : 'password'} autocomplete="off"
-            value={$gotifyToken} on:change={e => gotifyToken.set(e.target.value)} />
+            value={$gotifyToken} on:focus={selectSecret} on:change={e => gotifyToken.set(e.target.value)} />
           <button type="button" class="btn-icon" on:click={() => showGotifyToken = !showGotifyToken}
             title={showGotifyToken ? $_('settings_notifications.hide') : $_('settings_notifications.show')} aria-label={showGotifyToken ? $_('settings_notifications.hide') : $_('settings_notifications.show')}>
             <span class="material-symbols-rounded">{showGotifyToken ? 'visibility_off' : 'visibility'}</span>
@@ -239,7 +240,7 @@
         <label class="form-label" for="notif-ntfy-token">{$_('settings_notifications.ntfy_token')}</label>
         <div style="display:flex;gap:8px;align-items:center">
           <input id="notif-ntfy-token" class="input" style="flex:1" type={showNtfyToken ? 'text' : 'password'} autocomplete="off"
-            value={$ntfyToken} on:change={e => ntfyToken.set(e.target.value)} />
+            value={$ntfyToken} on:focus={selectSecret} on:change={e => ntfyToken.set(e.target.value)} />
           <button type="button" class="btn-icon" on:click={() => showNtfyToken = !showNtfyToken}
             title={showNtfyToken ? $_('settings_notifications.hide') : $_('settings_notifications.show')} aria-label={showNtfyToken ? $_('settings_notifications.hide') : $_('settings_notifications.show')}>
             <span class="material-symbols-rounded">{showNtfyToken ? 'visibility_off' : 'visibility'}</span>

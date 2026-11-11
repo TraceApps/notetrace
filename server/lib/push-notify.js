@@ -12,6 +12,7 @@
 import db from '../db.js';
 import { logger } from '../logger.js';
 import { fetchChecked, serviceBase } from './ssrf-guard.js';
+import { readSettingRaw } from './secret-settings.js';
 
 // Push services (Gotify, ntfy, Apprise) usually live on the home network,
 // so that's allowed for every account; the address is still checked on
@@ -44,7 +45,7 @@ function _getUserSetting(userId, key) {
   // IS so single-user mode (user_id NULL) finds its settings too.
   const row = db.prepare('SELECT value FROM user_settings WHERE user_id IS ? AND key = ?').get(userId ?? null, key);
   if (!row?.value) return '';
-  try { return JSON.parse(row.value); } catch { return row.value; }
+  return readSettingRaw(key, row.value);
 }
 
 function _isEnabled(userId, key) {

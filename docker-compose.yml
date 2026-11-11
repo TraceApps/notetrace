@@ -22,8 +22,9 @@ services:
       # Required if using user management — set a long random secret
       - JWT_SECRET=${JWT_SECRET}
       # Or mount a Swarm/Docker secret and set JWT_SECRET_FILE=/run/secrets/<name>
-      # Optional — at-rest encryption key for OIDC client secrets and
-      # webhook secrets. Defaults to a key derived from
+      # Optional: at-rest encryption key for OIDC client secrets,
+      # webhook secrets, the CookTrace link token and the tokens and keys saved
+      # in Settings (ntfy, Gotify, AI). Defaults to a key derived from
       # JWT_SECRET, which means rotating JWT_SECRET also invalidates every
       # encrypted secret. Set this explicitly if you want to rotate session
       # tokens independently.

@@ -80,6 +80,7 @@ import { isServerOnlyKey } from '../lib/server-only-keys.js';
 import { cleanCreateKey, findByCreateKey, setCreateKey } from '../lib/create-keys.js';
 import { mergeEdit, deleteLoses, editRevives, stampTimes, createdTimes, laterThan, rowTimes } from '../lib/field-sync.js';
 import { SYNC_FIELDS, SYNC_GROUPS, SYNC_JSON } from '../lib/sync-fields.js';
+import { clientSettingRaw, settingToStoreRaw } from '../lib/secret-settings.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -460,6 +461,7 @@ router.post('/push', wrap((req, res) => {
          deleted_at = NULL`
     );
     const here = db.prepare(`SELECT updated_at, deleted_at FROM user_settings WHERE ${userClause(u)} AND key = ?`);
+    const current = db.prepare(`SELECT value FROM user_settings WHERE ${userClause(u)} AND key = ? AND deleted_at IS NULL`);
     const restamp = db.prepare(`UPDATE user_settings SET synced_at = strftime('%Y-%m-%d %H:%M:%f', 'now') WHERE ${userClause(u)} AND key = ?`);
     const txn = db.transaction(() => {
       for (const s of req.body.settings) {
@@ -471,7 +473,12 @@ router.post('/push', wrap((req, res) => {
         if (cur?.deleted_at && !(Number.isFinite(tsMs(s.updated_at)) && laterThan(editAt(s), cur.deleted_at))) { restamp.run(...userArgs(u), s.key); continue; }
         // Kept at the time it was compared by (on the server's clock, never
         // ahead of now), so a phone's fast clock can't hold a setting.
-        ins.run(u, s.key, typeof s.value === 'string' ? s.value : JSON.stringify(s.value), _sqlTime(editAt(s)));
+        // A secret is stored encrypted; the placeholder the phone was sent
+        // for one leaves it be (TraceApps/cooktrace#92).
+        const raw = typeof s.value === 'string' ? s.value : JSON.stringify(s.value);
+        const stored = settingToStoreRaw(s.key, raw, current.get(...userArgs(u), s.key)?.value ?? null);
+        if (stored === undefined) continue;
+        ins.run(u, s.key, stored, _sqlTime(editAt(s)));
       }
     });
     try { txn(); } catch {}
@@ -536,7 +543,9 @@ router.get('/pull', wrap((req, res) => {
   out.settings = db.prepare(
     `SELECT key, value, updated_at, deleted_at FROM user_settings
       WHERE ${userClause(u)} AND synced_at >= ?`
-  ).all(...userArgs(u), since).filter(r => !isServerOnlyKey(r.key));
+  ).all(...userArgs(u), since).filter(r => !isServerOnlyKey(r.key))
+    // A secret only the server uses goes as its placeholder (TraceApps/cooktrace#92).
+    .map(r => ({ ...r, value: clientSettingRaw(r.key, r.value) }));
 
   // Every chat message this account has now. Clear Chat and the trim to
   // the newest messages delete chat outright, so the changed rows above

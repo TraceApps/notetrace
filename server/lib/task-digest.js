@@ -14,6 +14,7 @@ import { logger } from '../logger.js';
 import { pushNotify } from './push-notify.js';
 import { localTimeZone } from './reminders.js';
 import { buildTaskDigest, localParts, timeToMinutes, DEFAULT_DIGEST_TIME } from './task-digest-core.js';
+import { readSettingRaw } from './secret-settings.js';
 
 const KIND = 'tasks_due';
 const LATEST_MINUTES = 20 * 60;
@@ -21,7 +22,7 @@ const LATEST_MINUTES = 20 * 60;
 function _setting(userId, key) {
   const r = db.prepare(`SELECT value FROM user_settings WHERE user_id IS ? AND key = ? AND deleted_at IS NULL`).get(userId ?? null, key);
   if (!r) return null;
-  try { return JSON.parse(r.value); } catch { return r.value; }
+  return readSettingRaw(key, r.value);
 }
 
 /** Open, dated checklist items a user can see: their own notes and notes shared with them. */
