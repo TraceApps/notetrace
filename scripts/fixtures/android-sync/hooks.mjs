@@ -9,6 +9,12 @@ export async function resolve(spec, ctx, next) {
 }
 // Vite's import.meta.env, as a production build has it.
 export async function load(url, ctx, next) {
+  // i18n/index.js imports en.json without an import attribute, as Vite allows.
+  if (url.startsWith(src) && url.endsWith('.json')) {
+    const { readFile } = await import('node:fs/promises');
+    const json = await readFile(new URL(url), 'utf8');
+    return { format: 'module', source: `export default ${json};`, shortCircuit: true };
+  }
   const r = await next(url, ctx);
   if (url.startsWith(src) && r.source) {
     const code = String(r.source).replaceAll('import.meta.env', '({DEV:false,PROD:true,MODE:"production"})');

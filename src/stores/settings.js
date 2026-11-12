@@ -1,4 +1,5 @@
 import { writable, get, derived } from 'svelte/store';
+import { pickInitialLocale } from '../i18n/index.js';
 import { DB } from '../lib/db.js';
 
 const _dlog = import.meta.env.DEV
@@ -457,7 +458,8 @@ export const bannerAnimation = createSettingStore('bannerAnimation', 'shimmer');
 export const startPage   = createSettingStore('startPage',   '/');
 // UI language. English is the only one shipped today; translations register
 // themselves in src/i18n/index.js as they arrive.
-export const language    = createSettingStore('language',    'en');
+// The browser or phone's own language until one is chosen (nutritrace#323).
+export const language    = createSettingStore('language',    pickInitialLocale());
 export const dateFormat  = createSettingStore('dateFormat',  'US');
 export const timeFormat  = createSettingStore('timeFormat',  '12h');
 export const timezone    = createSettingStore('timezone',    '');
