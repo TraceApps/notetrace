@@ -755,6 +755,10 @@
   function onPaste(e) {
     const files = [...(e.clipboardData?.files || [])];
     if (!files.length || contentLocked) return;
+    // Spreadsheets and word processors copy text with a picture of it. Paste
+    // the text then (into the title too), not the picture; the same rule as
+    // lib/paste-image.js. Other files on the clipboard still attach.
+    if (files.every(isImageFile) && e.clipboardData.getData('text/plain')) return;
     e.preventDefault();
     addFiles(files);
   }

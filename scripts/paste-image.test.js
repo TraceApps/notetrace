@@ -63,3 +63,20 @@ for (const [file, name, busy, use, shape] of [
     assert.deepEqual(run(make, { files: [png], busy: true }), { used: [], prevented: false });
   });
 }
+
+test('the note editor pastes copied text with a picture of it as text, other files attach', () => {
+  const src = read('../src/components/notes/NoteEditor.svelte');
+  const start = src.indexOf('function onPaste(e) {');
+  const body = src.slice(start, src.indexOf('\n  }\n', start) + 4);
+  const make = new Function('ctx', `let contentLocked = ctx.locked; const isImageFile = (f) => !!f && typeof f.type === 'string' && f.type.startsWith('image/'); const addFiles = ctx.use; ${body}; return onPaste;`);
+  const go = ({ files = [], text = '', locked = false }) => {
+    const used = []; let prevented = false;
+    make({ locked, use: (x) => used.push(x) })({ clipboardData: clip({ files, text }), preventDefault() { prevented = true; } });
+    return { used, prevented };
+  };
+  const pdf = { type: 'application/pdf', name: 'a.pdf' };
+  assert.deepEqual(go({ files: [png], text: 'Apples\t12' }), { used: [], prevented: false });
+  assert.deepEqual(go({ files: [png] }), { used: [[png]], prevented: true });
+  assert.deepEqual(go({ files: [pdf], text: 'a.pdf' }), { used: [[pdf]], prevented: true });
+  assert.deepEqual(go({ files: [png], locked: true }), { used: [], prevented: false });
+});
