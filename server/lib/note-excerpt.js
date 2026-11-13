@@ -32,3 +32,26 @@ export function plainExcerpt(md, maxChars = 1200) {
   return text;
 }
 
+/**
+ * A note as the watch gets it (/api/notes?slim=1): what fits on a wrist and
+ * nothing else. The phone answers its watch with the same in Local mode
+ * (src/lib/watch-relay.js).
+ */
+export function watchNote(n) {
+  return {
+    id: n.id,
+    title: n.title,
+    kind: n.kind,
+    updated_at: n.updated_at,
+    pinned: !!n.pinned,
+    // Read Only (TraceApps/notetrace#30): the watch ticks its items but adds none.
+    read_only: !!n.read_only,
+    reminder_at: n.reminder_at || null,
+    reminder_rrule: n.reminder_rrule || null,
+    // Enough of a text note to read on a wrist, with the Markdown marks
+    // taken out; the phone has the whole thing.
+    excerpt: n.kind === 'checklist' ? '' : plainExcerpt(n.body_md, 1200),
+    items: (n.items || []).map(i => ({ uuid: i.uuid, text: i.text, checked: !!i.checked })),
+  };
+}
+

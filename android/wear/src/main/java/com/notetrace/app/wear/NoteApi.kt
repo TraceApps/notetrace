@@ -1,7 +1,13 @@
 package com.notetrace.app.wear
 
+import android.content.Context
+import com.google.android.gms.wearable.Wearable
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.json.JSONArray
 import org.json.JSONObject
 import okhttp3.ConnectionSpec
@@ -23,6 +29,12 @@ import java.util.concurrent.TimeUnit
 object NoteApi {
 
     class ApiError(message: String, val status: Int = 0) : Exception(message)
+
+    /** Local mode: the phone couldn't answer (out of reach, or its app closed). What was done waits. */
+    class PhoneUnavailable(message: String) : IOException(message)
+
+    /** Where Local mode asks the phone (WearPairingPlugin.API_PATH). */
+    private const val PHONE_API = "/notetrace/api"
 
     data class Note(
         val id: Long,
@@ -49,8 +61,8 @@ object NoteApi {
      * and none of them fit on a watch. Opening a list then needs no second
      * request at all.
      */
-    suspend fun notes(cfg: Pairing.Config): Pair<List<Note>, Map<Long, List<Item>>> {
-        val arr = asArray(get(cfg, "/api/notes?slim=1&watch=1"), "notes")
+    suspend fun notes(ctx: Context, cfg: Pairing.Config): Pair<List<Note>, Map<Long, List<Item>>> {
+        val arr = asArray(get(ctx, cfg, "/api/notes?slim=1&watch=1"), "notes")
         val notes = mutableListOf<Note>()
         val items = mutableMapOf<Long, List<Item>>()
         for (i in 0 until arr.length()) {
@@ -85,7 +97,7 @@ object NoteApi {
      * A new text note, from what the wearer said. A time heard in the sentence
      * becomes the note's reminder rather than part of its text.
      */
-    suspend fun createNote(cfg: Pairing.Config, text: String, reminderAt: String = "", tz: String = "") {
+    suspend fun createNote(ctx: Context, cfg: Pairing.Config, text: String, reminderAt: String = "", tz: String = "") {
         val clean = text.trim()
         if (clean.isBlank()) return
         // The first line becomes the title, as it does everywhere else in NoteTrace.
@@ -97,15 +109,18 @@ object NoteApi {
             payload.put("reminder_at", reminderAt)
             if (tz.isNotBlank()) payload.put("reminder_tz", tz)
         }
-        send(cfg, "POST", "/api/notes", payload)
+        send(ctx, cfg, "POST", "/api/notes", payload)
     }
 
     /**
      * Clear a note's reminder. A repeating one keeps its rule on the server, so
      * this is the same "done with this occurrence" the notification's Done does.
      */
-    suspend fun clearReminder(cfg: Pairing.Config, noteId: Long, made: String = "") {
-        send(cfg, "PATCH", "/api/notes/$noteId", madeAt(JSONObject().put("reminder_at", JSONObject.NULL), made))
+    suspend fun clearReminder(ctx: Context, cfg: Pairing.Config, noteId: Long, made: String = "", seen: String = "") {
+        val body = JSONObject().put("reminder_at", JSONObject.NULL)
+        // The reminder the watch showed: in Local mode the phone keeps one moved since. A server ignores it.
+        if (seen.isNotBlank()) body.put("reminder_seen", seen)
+        send(ctx, cfg, "PATCH", "/api/notes/$noteId", madeAt(body, made))
     }
 
     /**
@@ -119,22 +134,22 @@ object NoteApi {
     }
 
     /** A new item on a checklist, from what the wearer said. */
-    suspend fun addItem(cfg: Pairing.Config, noteId: Long, text: String) {
+    suspend fun addItem(ctx: Context, cfg: Pairing.Config, noteId: Long, text: String) {
         val clean = text.trim()
         if (clean.isBlank()) return
-        send(cfg, "POST", "/api/notes/$noteId/items", JSONObject().put("text", clean))
+        send(ctx, cfg, "POST", "/api/notes/$noteId/items", JSONObject().put("text", clean))
     }
 
     /** A new item on the CookTrace shopping list. */
-    suspend fun addShopping(cfg: Pairing.Config, text: String) {
+    suspend fun addShopping(ctx: Context, cfg: Pairing.Config, text: String) {
         val clean = text.trim()
         if (clean.isBlank()) return
-        send(cfg, "POST", "/api/integrations/cooktrace/shopping", JSONObject().put("items", org.json.JSONArray().put(clean)))
+        send(ctx, cfg, "POST", "/api/integrations/cooktrace/shopping", JSONObject().put("items", org.json.JSONArray().put(clean)))
     }
 
     /** Tick an item off, or back on. */
-    suspend fun setChecked(cfg: Pairing.Config, noteId: Long, uuid: String, checked: Boolean, made: String = "") {
-        send(cfg, "PATCH", "/api/notes/$noteId/items/$uuid", madeAt(JSONObject().put("checked", checked), made))
+    suspend fun setChecked(ctx: Context, cfg: Pairing.Config, noteId: Long, uuid: String, checked: Boolean, made: String = "") {
+        send(ctx, cfg, "PATCH", "/api/notes/$noteId/items/$uuid", madeAt(JSONObject().put("checked", checked), made))
     }
 
     /** A slim note's checklist items. */
@@ -151,8 +166,8 @@ object NoteApi {
      * opened from Reminders may not be one kept on the watch, and would
      * otherwise open empty.
      */
-    suspend fun reminders(cfg: Pairing.Config): Pair<List<Note>, Map<Long, List<Item>>> {
-        val arr = asArray(get(cfg, "/api/notes?view=reminders&slim=1"), "notes")
+    suspend fun reminders(ctx: Context, cfg: Pairing.Config): Pair<List<Note>, Map<Long, List<Item>>> {
+        val arr = asArray(get(ctx, cfg, "/api/notes?view=reminders&slim=1"), "notes")
         val items = mutableMapOf<Long, List<Item>>()
         val notes = (0 until arr.length()).mapNotNull { i ->
             val n = arr.getJSONObject(i)
@@ -178,8 +193,8 @@ object NoteApi {
     }
 
     /** The CookTrace shopping list, as the phone shows it. Empty when CookTrace isn't linked. */
-    suspend fun shopping(cfg: Pairing.Config): List<ShopItem> = try {
-        val arr = asArray(get(cfg, "/api/integrations/cooktrace/shopping"), "items")
+    suspend fun shopping(ctx: Context, cfg: Pairing.Config): List<ShopItem> = try {
+        val arr = asArray(get(ctx, cfg, "/api/integrations/cooktrace/shopping"), "items")
         (0 until arr.length()).map { i ->
             val it = arr.getJSONObject(i)
             val qty = it.opt("quantity")?.takeIf { q -> q != JSONObject.NULL }?.toString().orEmpty()
@@ -197,8 +212,8 @@ object NoteApi {
         if (e.status == 409) emptyList() else throw e
     }
 
-    suspend fun checkShopping(cfg: Pairing.Config, id: Long, checked: Boolean) {
-        send(cfg, "PATCH", "/api/integrations/cooktrace/shopping/$id", JSONObject().put("checked", checked))
+    suspend fun checkShopping(ctx: Context, cfg: Pairing.Config, id: Long, checked: Boolean) {
+        send(ctx, cfg, "PATCH", "/api/integrations/cooktrace/shopping/$id", JSONObject().put("checked", checked))
     }
 
     // ── HTTP ─────────────────────────────────────────────────────────────
@@ -223,10 +238,10 @@ object NoteApi {
     private fun asArray(body: String, key: String): JSONArray =
         if (body.trimStart().startsWith("[")) JSONArray(body) else JSONObject(body).optJSONArray(key) ?: JSONArray()
 
-    private suspend fun get(cfg: Pairing.Config, path: String): String = send(cfg, "GET", path, null)
+    private suspend fun get(ctx: Context, cfg: Pairing.Config, path: String): String = send(ctx, cfg, "GET", path, null)
 
-    private suspend fun send(cfg: Pairing.Config, method: String, path: String, body: JSONObject?): String =
-        withContext(Dispatchers.IO) {
+    private suspend fun send(ctx: Context, cfg: Pairing.Config, method: String, path: String, body: JSONObject?): String =
+        if (cfg.viaPhone) askPhone(ctx, method, path, body) else withContext(Dispatchers.IO) {
             // https:// as saved; plain http:// only to a server on your own
             // network that the phone confirmed (LocalAddress.workerBase).
             // Refused, it fails like no connection.
@@ -251,4 +266,50 @@ object NoteApi {
                 text
             }
         }
+
+    /**
+     * Local mode: the same request, answered by the phone's app over the Wear
+     * connection instead of by a server. A failure here is like no
+     * connection: what was done waits, and the watch says why.
+     */
+    private suspend fun askPhone(ctx: Context, method: String, path: String, body: JSONObject?): String {
+        val nodes = try {
+            Wearable.getNodeClient(ctx).connectedNodes.await()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw PhoneUnavailable("Phone not nearby")
+        }
+        val phone = nodes.firstOrNull { it.isNearby } ?: nodes.firstOrNull() ?: throw PhoneUnavailable("Phone not nearby")
+        val request = JSONObject().put("method", method).put("path", path).put("body", body?.toString() ?: JSONObject.NULL)
+        val answer = try {
+            withTimeout(25_000) {
+                Wearable.getMessageClient(ctx).sendRequest(phone.id, PHONE_API, request.toString().toByteArray(Charsets.UTF_8)).await()
+            }
+        } catch (e: TimeoutCancellationException) {
+            throw PhoneUnavailable("Open NoteTrace on your phone")
+        } catch (e: CancellationException) {
+            // The screen closed: nothing to say.
+            throw e
+        } catch (e: Exception) {
+            // No one listening on the phone: its app isn't running.
+            throw PhoneUnavailable("Open NoteTrace on your phone")
+        }
+        return readPhoneAnswer(answer)
+    }
+
+    /** The phone's reply ({status, body}, WearPairingPlugin.reply): the body, or why not. */
+    fun readPhoneAnswer(answer: ByteArray): String {
+        val reply = runCatching { JSONObject(String(answer, Charsets.UTF_8)) }.getOrNull()
+            ?: throw PhoneUnavailable("Open NoteTrace on your phone")
+        val status = reply.optInt("status", 500)
+        val text = reply.optString("body", "")
+        // The app not ready yet, or too slow: what was done waits, as offline.
+        if (status == 503 || status == 504) throw PhoneUnavailable("Open NoteTrace on your phone")
+        if (status !in 200..299) {
+            val message = runCatching { JSONObject(text).optString("error") }.getOrNull()
+            throw ApiError(message?.ifBlank { "Phone error $status" } ?: "Phone error $status", status)
+        }
+        return text
+    }
 }

@@ -55,9 +55,13 @@ test('the watch asks for the slim list, and the server can answer it', () => {
   assert.match(api, /\/api\/integrations\/cooktrace\/shopping/);
   const route = read('server/routes/notes.js');
   assert.match(route, /req\.query\.slim === '1'/);
+  // One shape for the server and the phone in Local mode (watch-relay.js).
+  assert.match(route, /return res\.json\(wanted\.map\(watchNote\)\);/);
+  assert.match(read('src/lib/watch-relay.js'), /\.map\(watchNote\)\);/);
   // Slim carries what the watch draws: items, an excerpt, and reminder times.
+  const shape = read('server/lib/note-excerpt.js');
   for (const field of ['items', 'excerpt', 'reminder_at']) {
-    assert.ok(route.includes(`${field}:`), `slim is missing ${field}`);
+    assert.ok(shape.includes(`${field}:`), `slim is missing ${field}`);
   }
 });
 
@@ -189,6 +193,6 @@ test('the watch sends when a queued tick or reminder done was made', () => {
   assert.match(pairing, /made = o\.optString\("made"\)/);
   assert.match(api, /if \(made\.isBlank\(\)\) return body/);
   assert.match(api, /put\("edited_at", made\)\.put\("client_now", java\.time\.Instant\.now\(\)\.toString\(\)\)/);
-  assert.match(store, /setChecked\(cfg, op\.noteId, op\.uuid, op\.checked, op\.made\)/);
-  assert.match(store, /clearReminder\(cfg, op\.noteId, op\.made\)/);
+  assert.match(store, /setChecked\(ctx, cfg, op\.noteId, op\.uuid, op\.checked, op\.made\)/);
+  assert.match(store, /clearReminder\(ctx, cfg, op\.noteId, op\.made, op\.at\)/);
 });

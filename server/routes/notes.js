@@ -7,7 +7,7 @@ import db from '../db.js';
 import { wrap } from '../logger.js';
 import { requireAuth, userMgmtActive } from '../middleware/auth.js';
 import * as Notes from '../lib/notes.js';
-import { plainExcerpt } from '../lib/note-excerpt.js';
+import { watchNote } from '../lib/note-excerpt.js';
 import { mergeEdit, rowTimes, instantMs, stampTimes, fieldUnits } from '../lib/field-sync.js';
 import { SYNC_FIELDS, SYNC_GROUPS, SYNC_JSON } from '../lib/sync-fields.js';
 
@@ -54,21 +54,7 @@ router.get('/', wrap((req, res) => {
     // A watch with a hundred notes on it is a list nobody scrolls.
     const chosen = req.query.watch === '1' ? watchChoice(req) : null;
     const wanted = chosen ? notes.filter(n => chosen.has(n.id)) : notes;
-    return res.json(wanted.map(n => ({
-      id: n.id,
-      title: n.title,
-      kind: n.kind,
-      updated_at: n.updated_at,
-      pinned: !!n.pinned,
-      // Read Only (TraceApps/notetrace#30): the watch ticks its items but adds none.
-      read_only: !!n.read_only,
-      reminder_at: n.reminder_at || null,
-      reminder_rrule: n.reminder_rrule || null,
-      // Enough of a text note to read on a wrist, with the Markdown marks
-      // taken out; the phone has the whole thing.
-      excerpt: n.kind === 'checklist' ? '' : plainExcerpt(n.body_md, 1200),
-      items: (n.items || []).map(i => ({ uuid: i.uuid, text: i.text, checked: !!i.checked })),
-    })));
+    return res.json(wanted.map(watchNote));
   }
   res.json(notes);
 }));

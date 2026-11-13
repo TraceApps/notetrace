@@ -314,7 +314,7 @@ test('the watch ticks a Read Only list\'s items but adds none, and remembers it 
   assert.match(screen, /if \(note\?\.readOnly == true\) \{[\s\S]{0,240}Message\(title = "Read Only"[\s\S]{0,120}\} else \{\s*item \{ SpeakButton\("Add an item", speak\) \}/);
   // A list opened from Reminders that isn't kept on the watch opens with its items.
   assert.match(wear('NoteApi.kt'), /if \(n\.optString\("kind"\) == "checklist"\) items\[n\.getLong\("id"\)\] = itemsOf\(n\)/);
-  assert.match(store, /val \(upcoming, remindItems\) = remindJob\.await\(\)[\s\S]{0,400}items = remindItems \+ items,/);
+  assert.match(store, /val \(upcoming, remindItems\) = remindJob\.await\(\)[\s\S]{0,440}items = remindItems \+ items,/);
   // Ticking and Uncheck All stay.
   assert.match(screen, /store\.setItemChecked\(noteId, item\.uuid, true\)/);
   assert.match(screen, /store\.uncheckAll\(noteId\)/);

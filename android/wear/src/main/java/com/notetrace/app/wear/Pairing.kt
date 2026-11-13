@@ -28,7 +28,16 @@ object Pairing {
      * TraceApps/nutritrace#194); empty otherwise. The API sends over plain
      * HTTP only when it matches (LocalAddress.workerBase).
      */
-    data class Config(val serverUrl: String, val token: String, val httpOk: String = "")
+    data class Config(val serverUrl: String, val token: String, val httpOk: String = "") {
+        /** The phone is in Local mode: ask it, not a server. */
+        val viaPhone: Boolean get() = serverUrl == PHONE
+    }
+
+    /** The address a phone in Local mode gives instead of a server's (watch-relay.js). */
+    const val PHONE = "phone:"
+
+    /** Set by a watch that knows Local mode when it saves the phone's address. */
+    private const val KEY_VIA_PHONE = "via_phone"
 
     private const val TAG = "NoteTraceWear"
     private const val PREFS = "notetrace.wear"
@@ -96,12 +105,21 @@ object Pairing {
         val p = prefs(ctx)
         val before = accountOf(p.getString(KEY_TOKEN, null) ?: p.getString(KEY_REFUSED, null))
         val now = accountOf(token)
-        if (before != null && now != null && before != now) {
-            Log.i(TAG, "paired with another account: what the previous one left here is cleared")
+        // A phone switched between a server and Local mode: what was kept and
+        // done here belongs to the other one, and its ids mean other things.
+        val wasUrl = p.getString(KEY_URL, null)?.takeIf { it.isNotBlank() }
+        val viaPhone = serverUrl.trim() == PHONE
+        // A watch on an older release took the phone's address without
+        // clearing (it didn't know it): what it kept is cleared once, here.
+        val unmarked = viaPhone && wasUrl == PHONE && !p.getBoolean(KEY_VIA_PHONE, false)
+        val switched = wasUrl != null && ((wasUrl == PHONE) != viaPhone || unmarked)
+        if (switched || (before != null && now != null && before != now)) {
+            Log.i(TAG, "paired with another account or mode: what the previous one left here is cleared")
             clear(ctx)
         }
         val edit = prefs(ctx).edit()
             .putString(KEY_URL, serverUrl.trim().trimEnd('/'))
+            .putBoolean(KEY_VIA_PHONE, viaPhone)
             .putString(KEY_TOKEN, token.trim())
             // Only what the phone said with this address: an older phone app says nothing.
             .putString(KEY_HTTP_OK, httpOk)
@@ -168,7 +186,10 @@ object Pairing {
         val id: Long,
         val checked: Boolean,
         val text: String = "",
-        /** A reminder heard in what was said, kept so a queued note still gets it. */
+        /**
+         * A reminder heard in what was said, kept so a queued note still gets
+         * it; for a reminder done, the time the watch showed for it.
+         */
         val at: String = "",
         val tz: String = "",
         /**
@@ -205,7 +226,7 @@ object Pairing {
             fun note(text: String, at: String = "", tz: String = "") = Op("note", 0, "", 0, false, text, at, tz)
             fun newItem(noteId: Long, text: String) = Op("add_item", noteId, "", 0, false, text)
             fun newShopping(text: String) = Op("add_shopping", 0, "", 0, false, text)
-            fun reminderDone(noteId: Long) = Op("reminder_done", noteId, "", 0, false, "", made = now())
+            fun reminderDone(noteId: Long, seen: String = "") = Op("reminder_done", noteId, "", 0, false, "", seen, made = now())
         }
     }
 

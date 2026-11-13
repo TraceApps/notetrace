@@ -468,6 +468,16 @@
           // catches a watch paired after this app was last opened.
           else import('./lib/wear-pairing.js').then(({ pairWatch }) => pairWatch()).catch(() => {});
         });
+        // Off screen in Local mode with the watch in use: stay awake for it.
+        // On pause, while Android still lets the app start a foreground service.
+        App.addListener('pause', () => {
+          import('./lib/wear-pairing.js').then(({ keepAwakeForWatch }) => keepAwakeForWatch(true)).catch(() => {});
+        });
+        App.addListener('resume', () => {
+          import('./lib/wear-pairing.js').then(({ keepAwakeForWatch }) => keepAwakeForWatch(false)).catch(() => {});
+        });
+        // The watch asks this phone instead of a server in Local mode: it is answered here.
+        import('./lib/wear-pairing.js').then(({ serveWatch }) => serveWatch()).catch(() => {});
         // And on launch, once auth has settled.
         setTimeout(() => import('./lib/wear-pairing.js').then(({ pairWatch }) => pairWatch()).catch(() => {}), 2500);
         // Deep link callbacks: notetrace://oidc-callback?code=… (or ?token=…

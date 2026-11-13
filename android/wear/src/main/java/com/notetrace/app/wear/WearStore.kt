@@ -22,6 +22,8 @@ class WearStore(private val ctx: Context) {
         val paired: Boolean = false,
         val loading: Boolean = false,
         val offline: Boolean = false,
+        /** Local mode: why the phone couldn't answer, said instead of "Offline". */
+        val offlineWhy: String? = null,
         val error: String? = null,
         val pending: Int = 0,
         /** A word about what just happened, shown for a moment. */
@@ -64,14 +66,14 @@ class WearStore(private val ctx: Context) {
             // Both at once: on a watch connection, two round trips in a row is
             // most of the wait.
             coroutineScope {
-                val listsJob = async { NoteApi.notes(cfg) }
-                val shopJob = async { NoteApi.shopping(cfg) }
-                val remindJob = async { NoteApi.reminders(cfg) }
+                val listsJob = async { NoteApi.notes(ctx, cfg) }
+                val shopJob = async { NoteApi.shopping(ctx, cfg) }
+                val remindJob = async { NoteApi.reminders(ctx, cfg) }
                 val (lists, items) = listsJob.await()
                 val shop = shopJob.await()
                 val (upcoming, remindItems) = remindJob.await()
                 _state.value = _state.value.copy(
-                    loading = false, offline = false, error = null,
+                    loading = false, offline = false, offlineWhy = null, error = null,
                     checklists = lists, shopping = shop, reminders = upcoming,
                     // The slim lists carry the items, so opening one is instant,
                     // also a list opened from Reminders that isn't kept on the watch.
@@ -91,6 +93,7 @@ class WearStore(private val ctx: Context) {
             _state.value = _state.value.copy(
                 loading = false,
                 offline = isOffline(e),
+                offlineWhy = (e as? NoteApi.PhoneUnavailable)?.message,
                 error = if (isOffline(e)) null else (e.message ?: "Couldn't reach NoteTrace"),
             )
         }
@@ -157,8 +160,10 @@ class WearStore(private val ctx: Context) {
 
     /** Done with a reminder, from the watch rather than from its notification. */
     suspend fun reminderDone(noteId: Long) {
+        // The time it showed: in Local mode the phone keeps a reminder moved since (notes-native.js).
+        val seen = _state.value.reminders.firstOrNull { it.id == noteId }?.reminderAt.orEmpty()
         _state.value = _state.value.copy(reminders = _state.value.reminders.filterNot { it.id == noteId })
-        Pairing.queue(ctx, Pairing.Op.reminderDone(noteId))
+        Pairing.queue(ctx, Pairing.Op.reminderDone(noteId, seen))
         _state.value = _state.value.copy(pending = Pairing.outbox(ctx).size)
         save()
         val cfg = Pairing.config(ctx) ?: return
@@ -221,16 +226,16 @@ class WearStore(private val ctx: Context) {
             val op = queue.first()
             try {
                 when (op.kind) {
-                    "item" -> NoteApi.setChecked(cfg, op.noteId, op.uuid, op.checked, op.made)
-                    "shopping" -> NoteApi.checkShopping(cfg, op.id, op.checked)
-                    "note" -> NoteApi.createNote(cfg, op.text, op.at, op.tz)
-                    "add_item" -> NoteApi.addItem(cfg, op.noteId, op.text)
-                    "add_shopping" -> NoteApi.addShopping(cfg, op.text)
-                    "reminder_done" -> NoteApi.clearReminder(cfg, op.noteId, op.made)
+                    "item" -> NoteApi.setChecked(ctx, cfg, op.noteId, op.uuid, op.checked, op.made)
+                    "shopping" -> NoteApi.checkShopping(ctx, cfg, op.id, op.checked)
+                    "note" -> NoteApi.createNote(ctx, cfg, op.text, op.at, op.tz)
+                    "add_item" -> NoteApi.addItem(ctx, cfg, op.noteId, op.text)
+                    "add_shopping" -> NoteApi.addShopping(ctx, cfg, op.text)
+                    "reminder_done" -> NoteApi.clearReminder(ctx, cfg, op.noteId, op.made, op.at)
                 }
             } catch (e: Exception) {
                 if (isOffline(e)) {
-                    _state.value = _state.value.copy(offline = true, pending = queue.size)
+                    _state.value = _state.value.copy(offline = true, offlineWhy = (e as? NoteApi.PhoneUnavailable)?.message, pending = queue.size)
                     return false
                 }
                 if (isRefused(e)) {
@@ -244,7 +249,7 @@ class WearStore(private val ctx: Context) {
             queue = queue.drop(1)
             Pairing.writeOutbox(ctx, queue)
         }
-        _state.value = _state.value.copy(pending = 0, offline = false)
+        _state.value = _state.value.copy(pending = 0, offline = false, offlineWhy = null)
         return true
     }
 

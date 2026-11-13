@@ -13,6 +13,7 @@ import { stripAccents } from './search-text.js';
 import { cleanTaskRepeat, nextDueDate } from '../../server/lib/task-rules.js';
 import { drawingText, parseDrawing } from '../../server/lib/drawing-meta.js';
 import { todayStr } from './due-dates.js';
+import { instantMs, laterThan } from './field-sync.js';
 
 export const NOTE_COLORS = ['ember', 'clay', 'amber', 'sand', 'lime', 'moss', 'sage', 'mint', 'sky', 'tide', 'indigo', 'plum', 'orchid', 'rose', 'bark', 'slate'];
 const REPEATS = ['daily', 'weekly', 'monthly', 'yearly'];
@@ -111,6 +112,41 @@ async function _hydrate(rows) {
     share_owner: r.share_owner || null,
     share_count: Number(r.share_count) || 0,
   }));
+}
+
+/**
+ * A change sent with when it was made (edited_at, ISO 8601 with its zone;
+ * client_now, the sender's clock as it sent it): one the watch queued with
+ * no connection, answered here in Local mode (watch-relay.js). An item
+ * changed here after it was made keeps that change, as on a server
+ * (routes/notes.js _madeBefore); this phone keeps no per-field times, so the
+ * item's last change stands for its fields. Returns the patch to apply and,
+ * when it goes in, the time it was made (`at`, stored as its change time,
+ * as a server stamps it), so a second tap made after it isn't taken as older.
+ * A change that doesn't say was made now.
+ */
+function _unlessChangedSince(row, patch) {
+  const { edited_at: made, client_now: theirClock, ...rest } = patch || {};
+  if (typeof made !== 'string' || !/(Z|[+-]\d\d:?\d\d)$/i.test(made.trim())) return { patch: rest, at: null };
+  const sent = instantMs(made), theirs = instantMs(theirClock), now = Date.now();
+  // Without the sender's clock, or with one no real clock is, it counts as made now.
+  if (!Number.isFinite(sent) || !Number.isFinite(theirs) || Math.abs(now - theirs) >= 366 * 86400000) return { patch: rest, at: null };
+  const at = Math.min(sent + (now - theirs), now);
+  return laterThan(row?.updated_at, at) ? { patch: {}, at: null } : { patch: rest, at };
+}
+
+/**
+ * A reminder done on the watch (reminder_seen: the time it showed for it):
+ * moved here since, the move stands and the reminder stays. Judged by the
+ * reminder itself, not by when the note last changed: ticking its items
+ * changes the note too.
+ */
+function _unlessReminderMoved(row, patch) {
+  const { reminder_seen: seen, edited_at: _e, client_now: _c, ...rest } = patch || {};
+  if (typeof seen !== 'string' || !seen || !('reminder_at' in rest)) return rest;
+  const was = instantMs(row?.reminder_at), shown = instantMs(seen);
+  if (Number.isFinite(was) && Number.isFinite(shown) && was !== shown) delete rest.reminder_at;
+  return rest;
 }
 
 async function _row(id) {
@@ -368,6 +404,7 @@ export const NotesNative = {
     id = Number(id);
     const row = await _row(id);
     if (!row) throw new Error('Note not found');
+    patch = _unlessReminderMoved(row, patch);
     // Links only (closing the editor): [[links]] follow the rename from the
     // title it opened with to the note's title as it is now, which a pull
     // may have changed since the editor's last save. No title is written.
@@ -525,7 +562,10 @@ export const NotesNative = {
     noteId = Number(noteId);
     const item = (await _q(`SELECT * FROM checklist_items WHERE uuid = ? AND note_id = ? AND deleted_at IS NULL`, [uuid, noteId]))[0];
     if (!item) throw new Error('Item not found');
-    const ts = _now();
+    const made = _unlessChangedSince(item, patch);
+    patch = made.patch;
+    if (!Object.keys(patch).length) return _note(noteId);
+    const ts = made.at != null ? new Date(made.at).toISOString().replace('T', ' ').slice(0, 19) : _now();
     let checked = 'checked' in patch ? !!patch.checked : !!item.checked;
     let dueDate = 'due_date' in patch ? patch.due_date : item.due_date;
     const repeat = 'due_repeat' in patch ? patch.due_repeat : item.due_repeat;
@@ -543,7 +583,8 @@ export const NotesNative = {
       due_repeat: repeat,
       checked_at: checked ? (item.checked ? item.checked_at : undefined) : null,
     }, ts);
-    await _touch(noteId, ts);
+    // The note changed now, whenever the tick was made: its time never goes back.
+    await _touch(noteId, _now());
     return _note(noteId);
   },
 

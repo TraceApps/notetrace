@@ -108,6 +108,13 @@
         <!-- Voice notes record here, so recording keeps going with the screen off. -->
         <service android:name=".VoiceRecorderService" android:exported="false" android:foregroundServiceType="microphone" />
 
+        <!-- Keeps the app awake while the watch works through this phone in
+             Local mode (WatchAwakeService). -->
+        <service
+            android:name=".WatchAwakeService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
         <!-- Note reminders: exact alarms fire here; Done and Snooze buttons too. -->
         <receiver android:name=".NoteReminderReceiver" android:exported="false" />
 
@@ -149,6 +156,12 @@
     <!-- Voice notes keep recording with the screen off: a microphone foreground service and a wake lock. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Local mode: the app stays awake while the watch works through it
+         (WatchAwakeService). A connected-device service needs one of a few
+         permissions on Android 14+; changing network state is the one granted
+         at install. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Capacitor's BridgeWebChromeClient.onPermissionRequest() (in
          node_modules/@capacitor/android/...) demands BOTH of these
