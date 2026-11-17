@@ -9,6 +9,14 @@
   import { fetchMemos } from '../../lib/import-export/memos.js';
   import { shareBlob } from '../../lib/share-file.js';
   import { currentUser } from '../../stores/auth.js';
+  import { isNative } from '../../lib/platform.js';
+  import { pickerAccept, fileMatchesAccept } from '../../lib/file-accept.js';
+
+  // Android can't filter by .enex or .bko, so in the app these pickers show
+  // every file and the pick is checked here (cooktrace#98).
+  const EVERNOTE_ACCEPT = '.enex,.zip,application/zip,application/xml,text/xml';
+  const BLINKO_ACCEPT = '.bko,.zip,application/zip';
+  const CHECKED_ACCEPT = { evernote: EVERNOTE_ACCEPT, blinko: BLINKO_ACCEPT };
 
   let includeTrashed = false;
   let tagsToLabels = true;
@@ -51,6 +59,10 @@
 
   async function runImport(source, file) {
     if (!file || busy) return;
+    if (isNative && CHECKED_ACCEPT[source] && !fileMatchesAccept(file, CHECKED_ACCEPT[source])) {
+      showError($_(`import_export.wrong_${source}_file`));
+      return;
+    }
     busy = source;
     summary = null;
     progress = $_('import_export.reading');
@@ -140,7 +152,7 @@
         <span class="material-symbols-rounded">upload_file</span>
         {busy === 'evernote' ? $_('import_export.importing') : $_('import_export.choose_file')}
       </button>
-      <input bind:this={evernoteInput} type="file" accept=".enex,.zip,application/zip,application/xml,text/xml" hidden
+      <input bind:this={evernoteInput} type="file" accept={pickerAccept(EVERNOTE_ACCEPT, isNative)} hidden
         on:change={(e) => runImport('evernote', e.target.files?.[0])} />
     </div>
     <div class="setting-row sub">
@@ -195,7 +207,7 @@
         <span class="material-symbols-rounded">upload_file</span>
         {busy === 'blinko' ? $_('import_export.importing') : $_('import_export.choose_file')}
       </button>
-      <input bind:this={blinkoInput} type="file" accept=".bko,.zip,application/zip" hidden
+      <input bind:this={blinkoInput} type="file" accept={pickerAccept(BLINKO_ACCEPT, isNative)} hidden
         on:change={(e) => runImport('blinko', e.target.files?.[0])} />
     </div>
 

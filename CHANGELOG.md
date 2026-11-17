@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Evernote exports and Blinko backups can be picked in the Android app** (the same bug as [cooktrace#98](https://github.com/TraceApps/cooktrace/issues/98), thanks @sreich). The file picker in Settings > Import & Export greyed out `.enex` and `.bko` files. It now shows every file, and one that isn't an Evernote export or a Blinko backup gets a message saying what to pick.
+
 ---
 
 ## [1.2.0-dev03] - 2026-11-14 (pre-release)

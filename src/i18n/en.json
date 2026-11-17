@@ -823,6 +823,8 @@
     "no_blinko_notes":      "No Blinko notes found in that file",
     "blinko_accounts":      "This backup has notes from several Blinko accounts ({names}) and none matches your username. Export Markdown from your own Blinko account instead.",
     "import_failed":        "Import failed",
+    "wrong_evernote_file":  "Pick an Evernote export (.enex or .zip).",
+    "wrong_blinko_file":    "Pick a Blinko backup (.bko or .zip).",
     "imported_toast":       "Imported {count, plural, one {# note} other {# notes}}",
     "summary_imported":     "{count, plural, one {# note imported.} other {# notes imported.}}",
     "summary_skipped":      "{count, plural, one {# was already here and was skipped.} other {# were already here and were skipped.}}",
