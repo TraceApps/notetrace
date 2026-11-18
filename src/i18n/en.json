@@ -433,6 +433,7 @@
     "settings": { "title": "Settings" }
   },
   "common": {
+    "tap_exit": "Tap again to exit",
     "sign_out":     "Sign Out",
     "undo":         "Undo",
     "log_out":      "Log Out",

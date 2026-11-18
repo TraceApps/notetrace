@@ -8,6 +8,7 @@
   import { portal } from './lib/portal.js';
   import { handleBack } from './lib/back-stack.js';
   import Router, { location, push, replace } from 'svelte-spa-router';
+  import { HOME_TAB, isHomeTab, trackTabDepth } from './lib/tab-nav.js';
 
   import BottomNav from './components/layout/BottomNav.svelte';
   import Sidebar   from './components/layout/Sidebar.svelte';
@@ -331,6 +332,7 @@
   }
 
   onMount(async () => {
+    trackTabDepth();
     // Update checks: a device that was already using the app keeps checking,
     // a fresh one stays quiet until setup asks. Runs first so nothing above
     // can skip it (see lib/updates.js).
@@ -449,6 +451,10 @@
           if (sidebarOpen && !sidebarPinned) { sidebarOpen = false; return; }
           if (canGoBack) {
             window.history.back();
+          } else if (!isHomeTab(getStore(location))) {
+            // Tabs don't add to the history (lib/tab-nav.js): from another
+            // tab, back goes to Notes, and from there it leaves (cooktrace#99).
+            replace(HOME_TAB);
           } else {
             const now = Date.now();
             if (now - lastBack < 2000) {
@@ -456,7 +462,7 @@
             } else {
               lastBack = now;
               import('./stores/toast.js').then(({ showSuccess }) => {
-                showSuccess('Tap again to exit');
+                showSuccess(getStore(_)('common.tap_exit'));
               });
             }
           }

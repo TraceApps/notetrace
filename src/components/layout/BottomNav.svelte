@@ -1,5 +1,6 @@
 <script>
-  import { location, push } from 'svelte-spa-router';
+  import { location } from 'svelte-spa-router';
+  import { goTab } from '../../lib/tab-nav.js';
   import { _ } from 'svelte-i18n';
   import { updateAvailable } from '../../lib/updates.js';
   import { pwaUpdateReady } from '../../lib/pwa-update.js';
@@ -33,11 +34,11 @@
   })();
 
   async function go(path) {
-    if (path !== '#search') { push(path); return; }
+    if (path !== '#search') { goTab(path); return; }
     const base = $location.split('?')[0];
     const onNotes = base === '/' || /^\/(notes|reminders|archive|trash|shared|label\/)/.test(base);
     if (!onNotes) {
-      await push('/');
+      await goTab('/');
       await tick();
       await new Promise(r => setTimeout(r, 80));
     }
