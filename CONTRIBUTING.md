@@ -71,7 +71,7 @@ The English source text may also change occasionally without renaming the key. T
 - **Formatting words.** Markdown terms (heading, bold, quote, code block) have settled translations in most languages; prefer those.
 - **Match the tone.** NoteTrace's English copy is informal and direct ("What should we call you?", "Nothing to Buy"). Try to keep that register rather than translating to a more formal style.
 - **Length awareness.** Some buttons are tight on small screens. If your translation is significantly longer than the English, test on a phone-sized viewport.
-- **Do not translate proper nouns or product names.** `NoteTrace`, `Trace` (the AI assistant), `Google Keep`, `Takeout`, `Evernote`, `Memos`, `Blinko`, `Obsidian`, `Joplin`, `Markdown`, `ntfy`, `Gotify`, `Apprise` stay as-is.
+- **Do not translate proper nouns or product names.** `NoteTrace`, `Trace` (the AI assistant), `Google Keep`, `Takeout`, `Evernote`, `Memos`, `Blinko`, `Obsidian`, `Joplin`, `Markdown`, `ntfy`, `Gotify`, `Apprise` stay as-is. The one exception: when Android or the service itself shows its name translated in your language, use that name, so it matches what people see on their phone (Android shows Health Connect as "Santé Connect" in French).
 
 ### For code contributors: instrumenting new strings
 
