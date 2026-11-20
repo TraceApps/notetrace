@@ -1,6 +1,9 @@
 import { writable, get, derived } from 'svelte/store';
 import { pickInitialLocale } from '../i18n/index.js';
 import { DB } from '../lib/db.js';
+import { regionalDefault, rememberInstanceDefaults } from '../lib/regional-defaults.js';
+import { REGIONAL_OPTIONS } from '../../server/lib/regional-options.js';
+import { settingScope } from '../lib/setting-key.js';
 
 const _dlog = import.meta.env.DEV
   ? console.log
@@ -333,18 +336,23 @@ export function reloadSettingStores({ force = false } = {}) {
     _recentlyChanged.clear();
   }
   for (const { key, defaultValue, store } of _settingStores) {
-    const next = DB.getSetting(key, defaultValue);
+    const next = DB.getSetting(key, _resolve(defaultValue));
     if (JSON.stringify(get(store)) !== JSON.stringify(next)) store.set(next);
   }
 }
 
+// A store's default may be a function, worked out each time it's needed:
+// the regional ones follow the server's defaults and this device's locale
+// (regionalStore, below).
+const _resolve = d => (typeof d === 'function' ? d() : d);
+
 function createSettingStore(key, defaultValue) {
-  const store = writable(DB.getSetting(key, defaultValue));
+  const store = writable(DB.getSetting(key, _resolve(defaultValue)));
   _settingStores.push({ key, defaultValue, store });
 
   window.addEventListener('wl:setting', (e) => {
     if (e.detail && e.detail.key === key) {
-      const next = DB.getSetting(key, defaultValue);
+      const next = DB.getSetting(key, _resolve(defaultValue));
       const prev = get(store);
       if (JSON.stringify(prev) !== JSON.stringify(next)) store.set(next);
     }
@@ -353,7 +361,7 @@ function createSettingStore(key, defaultValue) {
   return {
     subscribe: store.subscribe,
     set(value) {
-      const current = DB.getSetting(key, defaultValue);
+      const current = DB.getSetting(key, _resolve(defaultValue));
       if (JSON.stringify(current) === JSON.stringify(value)) {
         store.set(value);
         return;
@@ -366,11 +374,58 @@ function createSettingStore(key, defaultValue) {
       scheduleSave(key, value);
     },
     update(fn) {
-      const current = DB.getSetting(key, defaultValue);
+      const current = DB.getSetting(key, _resolve(defaultValue));
       this.set(fn(current));
     },
     get() { return get(store); }
   };
+}
+
+// ── Regional defaults (from nutritrace#326) ──────────────────────────────
+// Language, date and time start, for someone who never chose, from the
+// server's defaults (Settings > Users), else this device's locale, else
+// `fallback`. Their own choice always wins, and the default is never saved
+// as theirs.
+
+/** Whose defaults: the server's, as settings are kept per server (the
+ *  Android app can switch servers; lib/setting-key.js). */
+export function instanceDefaultsScope() {
+  return settingScope();
+}
+
+/** What a regional setting nobody chose shows. */
+export function regionalFallback(key, fallback) {
+  return regionalDefault(key, fallback, { scope: instanceDefaultsScope(), allowed: REGIONAL_OPTIONS[key]?.values || null });
+}
+
+function regionalStore(key, fallback) {
+  return createSettingStore(key, () => regionalFallback(key, fallback));
+}
+
+/**
+ * The server's defaults, kept for offline, and every store showing a
+ * default (nobody chose) moved to them at once. Nothing is written into
+ * the account or sent.
+ */
+export function applyInstanceDefaults(values) {
+  if (!rememberInstanceDefaults(values, instanceDefaultsScope())) return false;
+  for (const { key, defaultValue, store } of _settingStores) {
+    if (typeof defaultValue === 'function') store.set(DB.getSetting(key, defaultValue()));
+  }
+  return true;
+}
+
+/** Ask the server for its defaults (signed in or not). Offline, the last
+ *  ones stay. In the Android app's Local mode there's no server: the
+ *  phone's locale alone. */
+export async function loadInstanceDefaults() {
+  if (isNative && !getServerUrl()) return;
+  try {
+    const res = await fetch(apiUrl('/api/app-config/defaults'), { credentials: 'include', signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return;
+    const body = await res.json();
+    applyInstanceDefaults(body?.values || {});
+  } catch { /* offline: the last ones stay */ }
 }
 
 // ── Device prefs (local-only) ──────────────────────────────────────────────
@@ -459,9 +514,9 @@ export const startPage   = createSettingStore('startPage',   '/');
 // UI language. English is the only one shipped today; translations register
 // themselves in src/i18n/index.js as they arrive.
 // The browser or phone's own language until one is chosen (nutritrace#323).
-export const language    = createSettingStore('language',    pickInitialLocale());
-export const dateFormat  = createSettingStore('dateFormat',  'US');
-export const timeFormat  = createSettingStore('timeFormat',  '12h');
+export const language    = regionalStore('language',    pickInitialLocale);
+export const dateFormat  = regionalStore('dateFormat',  'US');
+export const timeFormat  = regionalStore('timeFormat',  '12h');
 export const timezone    = createSettingStore('timezone',    '');
 
 // AI Assistant ("Trace" persona)

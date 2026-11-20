@@ -14,6 +14,7 @@
   import { validatePassword } from '../../lib/validation.js';
   import { confirmDialog } from '../../stores/confirmDialog.js';
   import { envLocks } from '../../stores/settings.js';
+  import SettingsRegionalDefaults from './SettingsRegionalDefaults.svelte';
 
   // ── User Management state ────────────────────────────────────────────────────
   let umUsers        = [];
@@ -743,6 +744,8 @@
             </button>
           </div>
         </div>
+
+        <SettingsRegionalDefaults />
 
         <div class="setting-divider"></div>
         <button class="setting-row setting-action danger" on:click={disableUserManagement}>

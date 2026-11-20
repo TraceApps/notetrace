@@ -172,6 +172,7 @@ Open `http://localhost:3004` and a first-run wizard walks you through creating a
 | `BACKUP_SCHEDULE` | - | `off` \| `daily` \| `weekly` \| `monthly`. Locks the UI field when set. |
 | `BACKUP_TIME` | - | Auto-backup time (HH:MM, container TZ). Locks the UI field. |
 | `BACKUP_RETENTION` | - | How many auto-backups to keep. |
+| `DEFAULT_LANGUAGE` / `DEFAULT_DATE_FORMAT` / `DEFAULT_TIME_FORMAT` | each device's language and region | What everyone who hasn't chosen their own starts with. Each one set locks it in Settings > Users > Defaults for Everyone. Values as `.env.example` lists them. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM` / `SMTP_SECURE` | - | Password reset + invite email. Without SMTP, invites fall back to a copyable link. |
 | `AI_PROVIDER` / `AI_API_KEY` / `AI_MODEL` / `AI_BASE_URL` / `AI_ENABLED` | - | Lock Trace to a server-side provider. |
 | `AI_TRANSCRIBE_MODEL` | provider default | Speech-to-text model for voice notes when Trace is set by env (`gpt-4o-mini-transcribe` on OpenAI, `whisper-1` on OpenAI-compatible servers). |

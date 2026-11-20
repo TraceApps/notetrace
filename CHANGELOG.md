@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Defaults for everyone** (from [nutritrace#326](https://github.com/TraceApps/nutritrace/issues/326), thanks @stupleb). An admin can pick the language, date format and time format that anyone who hasn't chosen their own starts with, in Settings > Users > Defaults for Everyone, or set them with `DEFAULT_*` environment variables, which lock them there. Without one, each device's own region decides: a British browser starts with day-first dates and the 24-hour clock. A person's own choice always wins, and nothing is written into their settings, so a later change reaches everyone who still hasn't chosen. An account that never picked a date or time format now follows its device's region instead of the US format.
+
 ### Fixed
 
 - **Back leaves the Android app instead of walking through every tab** (from [cooktrace#99](https://github.com/TraceApps/cooktrace/issues/99), thanks @sreich). Each tab you opened was added to the back history, so back went through all of them before the app offered to exit. Now back goes one step inside a tab, from any other tab to Notes, and from Notes it offers to exit; pages left open in a tab you switched away from no longer come back. The installed web app works the same way, except that it closes from Notes without asking; a browser tab keeps the browser's usual history.
