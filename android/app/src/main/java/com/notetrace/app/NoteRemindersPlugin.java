@@ -38,8 +38,8 @@ public class NoteRemindersPlugin extends Plugin {
     /** From MainActivity: a reminder notification opened the app. */
     public static void handleIntent(Intent intent) {
         if (intent == null || !ACTION_OPEN_NOTE.equals(intent.getAction())) return;
-        long id = intent.getLongExtra(NoteReminderScheduler.EXTRA_NOTE_ID, -1);
-        if (id < 0) return;
+        long id = intent.getLongExtra(NoteReminderScheduler.EXTRA_NOTE_ID, NoteReminderScheduler.MISSING_NOTE_ID);
+        if (!NoteReminderScheduler.isValidReminderId(id)) return;
         intent.setAction(null); // don't reopen it on a configuration change
         if (instance != null && instance.hasListeners("reminderOpen")) {
             JSObject data = new JSObject();

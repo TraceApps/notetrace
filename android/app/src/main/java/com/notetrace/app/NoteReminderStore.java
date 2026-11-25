@@ -56,9 +56,11 @@ final class NoteReminderStore {
             JSONArray arr = new JSONArray(new String(bytes, 0, off, StandardCharsets.UTF_8));
             for (int i = 0; i < arr.length(); i++) {
                 JSONObject o = arr.optJSONObject(i);
-                if (o == null || !o.has("id") || o.optString("at", "").isEmpty()) continue;
+                if (o == null || o.optString("at", "").isEmpty()) continue;
+                long id = o.optLong("id", NoteReminderScheduler.MISSING_NOTE_ID);
+                if (!NoteReminderScheduler.isValidReminderId(id)) continue;
                 Reminder r = new Reminder();
-                r.id = o.optLong("id");
+                r.id = id;
                 r.title = o.optString("title", "");
                 r.body = o.optString("body", "");
                 r.at = o.optString("at");

@@ -48,8 +48,8 @@ public class NoteReminderReceiver extends BroadcastReceiver {
 
     private void handle(Context ctx, Intent intent) {
         String action = intent.getAction();
-        long noteId = intent.getLongExtra(NoteReminderScheduler.EXTRA_NOTE_ID, -1);
-        if (noteId < 0 || action == null) return;
+        long noteId = intent.getLongExtra(NoteReminderScheduler.EXTRA_NOTE_ID, NoteReminderScheduler.MISSING_NOTE_ID);
+        if (!NoteReminderScheduler.isValidReminderId(noteId) || action == null) return;
         switch (action) {
             case NoteReminderScheduler.ACTION_FIRE:
                 fire(ctx, noteId, intent.getLongExtra(NoteReminderScheduler.EXTRA_OCCURRENCE, 0L),
