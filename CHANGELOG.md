@@ -16,6 +16,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Back leaves the Android app instead of walking through every tab** (from [cooktrace#99](https://github.com/TraceApps/cooktrace/issues/99), thanks @sreich). Each tab you opened was added to the back history, so back went through all of them before the app offered to exit. Now back goes one step inside a tab, from any other tab to Notes, and from Notes it offers to exit; pages left open in a tab you switched away from no longer come back. The installed web app works the same way, except that it closes from Notes without asking; a browser tab keeps the browser's usual history.
 - **Evernote exports and Blinko backups can be picked in the Android app** (the same bug as [cooktrace#98](https://github.com/TraceApps/cooktrace/issues/98), thanks @sreich). The file picker in Settings > Import & Export greyed out `.enex` and `.bko` files. It now shows every file, and one that isn't an Evernote export or a Blinko backup gets a message saying what to pick.
 
+### Security
+
+- **Someone a note is shared with can't rewrite links in your other notes** (an access audit after [cooktrace#110](https://github.com/TraceApps/cooktrace/issues/110)). When someone you share a note with renames it, links to it change only in your notes they can edit too; before, they could have any link text rewritten across all your notes, ones never shared with them included.
+
 ---
 
 ## [1.2.0-dev03] - 2026-11-14 (pre-release)

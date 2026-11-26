@@ -523,8 +523,12 @@ function _updateAsMember(u, { row, role, member }, patch) {
     if ('color' in patch)   { sets.push('color = ?');   args.push(_cleanColor(patch.color)); }
     if ('read_only' in patch) { sets.push('read_only = ?'); args.push(patch.read_only ? 1 : 0); }
     if (sets.length) db.prepare(`UPDATE notes SET ${sets.join(', ')}, updated_at = ? WHERE id = ?`).run(...args, ts, id);
-    if ('title' in patch && patch.rename_links !== false) _renameLinks(row.user_id, id, patch.rename_links_from != null ? _cleanTitle(patch.rename_links_from) : row.title, _cleanTitle(patch.title), ts);
-    if (patch.links_from != null) _renameLinks(row.user_id, id, _cleanTitle(patch.links_from), row.title, ts);
+    // A member's rename keeps links to this note working, but only in the
+    // owner's notes this member may edit anyway: any text could be named
+    // (or made the title first) and rewritten across the owner's notes,
+    // ones never shared included (an access audit, after cooktrace#110).
+    if ('title' in patch && patch.rename_links !== false) _renameLinks(row.user_id, id, patch.rename_links_from != null ? _cleanTitle(patch.rename_links_from) : row.title, _cleanTitle(patch.title), ts, u);
+    if (patch.links_from != null) _renameLinks(row.user_id, id, _cleanTitle(patch.links_from), row.title, ts, u);
   }
   if (Array.isArray(patch.labels)) _setLabels(u, id, _labelsWanted(u, id, patch), ts);
   return getNote(u, id);
@@ -1200,8 +1204,10 @@ export function listBacklinks(u, noteId) {
 /**
  * Renaming a note keeps links to it working: [[Old title]] in the owner's
  * other notes becomes [[New title]]. Other people's notes aren't touched.
+ * `editor`: someone the note is shared with, renaming it; only the owner's
+ * notes they're an edit member of change.
  */
-function _renameLinks(ownerId, noteId, oldTitle, newTitle, ts) {
+function _renameLinks(ownerId, noteId, oldTitle, newTitle, ts, editor = null) {
   const from = String(oldTitle || '').trim();
   const to = String(newTitle || '').trim();
   if (!from || !to || from === to) return 0;
@@ -1211,9 +1217,11 @@ function _renameLinks(ownerId, noteId, oldTitle, newTitle, ts) {
   ).get(ownerId ?? null, noteId, from, to);
   if (clash) return 0;
   const re = new RegExp(`\\[\\[\\s*${_escapeRe(from)}\\s*\\]\\]`, 'gi');
+  const theirs = editor == null ? '' : `AND trashed_at IS NULL AND EXISTS (SELECT 1 FROM note_members nm
+      WHERE nm.note_id = notes.id AND nm.user_id = ? AND nm.role = 'edit' AND nm.deleted_at IS NULL)`;
   const rows = db.prepare(
-    `SELECT id, body_md FROM notes WHERE user_id IS ? AND id != ? AND deleted_at IS NULL AND instr(lower(body_md), lower(?)) > 0`
-  ).all(ownerId ?? null, noteId, from);
+    `SELECT id, body_md FROM notes WHERE user_id IS ? AND id != ? AND deleted_at IS NULL AND instr(lower(body_md), lower(?)) > 0 ${theirs}`
+  ).all(ownerId ?? null, noteId, from, ...(editor == null ? [] : [editor]));
   let changed = 0;
   for (const r of rows) {
     const next = r.body_md.replace(re, () => `[[${to}]]`);
