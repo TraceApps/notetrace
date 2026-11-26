@@ -42,6 +42,11 @@ public final class NoteReminderScheduler {
     static final String EXTRA_NOTE_ID = "noteId";
     static final String EXTRA_OCCURRENCE = "occurrence";
     static final String EXTRA_SNOOZE = "snooze";
+    static final long MISSING_NOTE_ID = -1;
+
+    // Keep these bounds in sync with TASK_DIGEST_ID_BASE and DIGEST_DAYS in note-reminders.js.
+    private static final long TASK_DIGEST_ID_BASE = -100;
+    private static final int DIGEST_DAYS = 14;
 
     /** An alarm that was delayed (Doze, reboot) still shows if it's this late at most. */
     static final long LATE_WINDOW_MS = 10 * 60 * 1000L;
@@ -50,6 +55,10 @@ public final class NoteReminderScheduler {
     private static final int SNOOZE_REQUEST_BASE = 2_000_000;
 
     private NoteReminderScheduler() {}
+
+    static boolean isValidReminderId(long id) {
+        return id >= 0 || (id <= TASK_DIGEST_ID_BASE && id > TASK_DIGEST_ID_BASE - DIGEST_DAYS);
+    }
 
     static SharedPreferences prefs(Context ctx) {
         return ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
